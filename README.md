@@ -70,8 +70,8 @@ Canonical error codes: `UDHAAR_REQUIRES_CUSTOMER` (400), `NEGATIVE_STOCK` (soft)
 3. **Act 3** — Wi-Fi OFF (or Simulate Offline) → speak a sale → Pending Sync → Wi-Fi ON → flush → `</>` X-Ray → Replay Test.
 4. **Act 4** — "Subah ka hisaab batao" → Pulse → Khata → SMEConnect → judges scan the QR → `/verify`.
 
-## Stack
+## Tools & AI disclosure (CYE 04-HK)
 
-Runtime AI is **Google Gemini** (`gemini-3.5-flash-lite` for 85% audio/parchi traffic, `gemini-3.8-flash` for 15% Q&A, TTS model for read-outs). Platform: **Supabase** (Postgres, Auth, RLS, `pg_trgm`), **Next.js 16 / React 19 / Tailwind CSS v4**, **idb-keyval**, `@noble/ed25519`, `react-qr-code`, `lucide-react`, `zod`, Vitest + PGlite. Fonts: Inter, JetBrains Mono, Noto Sans Arabic, Noto Nastaliq Urdu.
+Built with **Claude (Anthropic, Claude Code)**, **Codex** and **Antigravity** as AI coding assistants, under the team's direction and review. Runtime AI is **Google Gemini** (`gemini-3.5-flash-lite` for 85% audio/parchi traffic, `gemini-3.8-flash` for 15% Q&A, TTS model for read-outs). Platform: **Supabase** (Postgres, Auth, RLS, `pg_trgm`), **Next.js 16 / React 19 / Tailwind CSS v4**, **idb-keyval**, `@noble/ed25519`, `react-qr-code`, `lucide-react`, `zod`, Vitest + PGlite. Fonts: Inter, JetBrains Mono, Noto Sans Arabic, Noto Nastaliq Urdu.
 
 *Informational only — DukaanOS is not a lender, wallet or credit bureau; the Trade Passport is not a credit score or underwriting decision.*
