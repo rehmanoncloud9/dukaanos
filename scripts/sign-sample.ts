@@ -1,0 +1,4 @@
+/** Dev helper: prints a /verify URL for a sample passport signed with ED25519_PRIVATE_KEY. */
+import { signPassport, toPayload } from "../src/lib/crypto/passport";
+const s = { shop_id: "0f6a3b6e-1111-4222-8333-444455556666", shop_name: "Bismillah Kiryana", city: "G-10 Markaz, Islamabad", active_days: 142, period_days: 30, period_from: "2026-10-25", period_to: "2026-11-24", gmv_paisa: 12400000, sales_count: 210, cash_sales_paisa: 9176000, credit_sales_paisa: 3224000, recovered_paisa: 2947000, purchases_paisa: 2619000, active_trading_days: 14, receivable_paisa: 930000, ledger_balanced: true, tx_count_total: 192, head_entry_hash: "9f8a7c12e41b09c2".padEnd(64, "a") };
+signPassport(toPayload(s), process.env.ED25519_PRIVATE_KEY!).then((r) => console.log(`${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/verify#${r.token}`));
