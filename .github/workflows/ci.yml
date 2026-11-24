@@ -36,6 +36,8 @@ jobs:
       - run: npx next typegen
       - run: npm run lint
       - run: npm run verify
+      - name: AI rules eval (no API key required)
+        run: npm run eval:ai
       - name: Build Next.js (without prod secrets)
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
@@ -66,3 +68,5 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
       - run: npm run verify
+      - name: AI rules eval (no API key required)
+        run: npm run eval:ai

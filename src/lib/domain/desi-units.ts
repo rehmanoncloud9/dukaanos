@@ -1,140 +1,127 @@
-/**
- * Desi-Unit Normalizer — deterministic, integer-only.
- *
- * Quantities are tracked in QUARTERS (1 = 4 quarters) so that adha (½), sawa (1¼),
- * dedh (1½), dhai (2½) and paune (¾) never touch floating point. Base units are
- * grams, millilitres or pieces.
- */
+/** Deterministic conversion of Pakistani conversational units into base units. */
 
 import { formatAmount, mulDiv, type Paisa } from "./money";
+import { normalizeUrduNumberWords, parseQuantityNumber } from "./urdu-numbers";
 
 export type BaseUnit = "g" | "ml" | "pcs";
 export type UnitFamily = "mass" | "volume" | "count" | "pack";
 
 export interface UnitDef {
   family: UnitFamily;
-  /** base units per 1 of this unit (ignored for "pack": uses product pack size) */
+  /** Base units in one named unit. A pack uses the matched product's pack size. */
   base: number;
   canonical: string;
 }
 
 const UNIT_TABLE: Array<[string[], UnitDef]> = [
-  [["g", "gm", "gms", "gram", "grams", "giram"], { family: "mass", base: 1, canonical: "g" }],
-  [["kg", "kgs", "kilo", "kilos", "killo", "kilogram", "kg.", "کلو"], { family: "mass", base: 1000, canonical: "kilo" }],
+  [["g", "gm", "gms", "gram", "grams", "giram", "گرام"], { family: "mass", base: 1, canonical: "g" }],
+  [["kg", "kgs", "kilo", "kilos", "killo", "kilogram", "kg.", "کلو", "کلوگرام"], { family: "mass", base: 1000, canonical: "kilo" }],
   [["pao", "pau", "paao", "paav", "pav", "paoo", "پاؤ", "پاو"], { family: "mass", base: 250, canonical: "pao" }],
-  [["ml", "mili", "millilitre", "milliliter"], { family: "volume", base: 1, canonical: "ml" }],
-  [["l", "ltr", "litre", "liter", "litr", "leter", "لیٹر"], { family: "volume", base: 1000, canonical: "litre" }],
+  [["ml", "mili", "millilitre", "milliliter", "ملی لیٹر"], { family: "volume", base: 1, canonical: "ml" }],
+  [["l", "ltr", "litre", "liter", "litr", "leter", "لیٹر", "لٹر"], { family: "volume", base: 1000, canonical: "litre" }],
   [["darjan", "darjen", "dozen", "darzan", "درجن"], { family: "count", base: 12, canonical: "darjan" }],
-  [["pc", "pcs", "piece", "pieces", "adad", "dana", "daney", "nag", "عدد"], { family: "count", base: 1, canonical: "pcs" }],
-  [
-    ["packet", "packets", "pkt", "pack", "packs", "paket", "tin", "dabba", "dibba", "bottle", "botal", "bag", "bori", "carton", "peti", "sachet", "pouch", "box", "roll", "bar", "tikki", "پیکٹ", "ڈبہ"],
-    { family: "pack", base: 1, canonical: "pack" },
-  ],
+  [["pc", "pcs", "piece", "pieces", "adad", "dana", "daney", "nag", "عدد", "پیس"], { family: "count", base: 1, canonical: "pcs" }],
+  [["packet", "packets", "pkt", "pack", "packs", "paket", "tin", "tins", "dabba", "dibba", "dabbe", "bottle", "bottles", "botal", "bag", "bori", "carton", "cartons", "peti", "sachet", "sachets", "pouch", "pouches", "box", "boxes", "roll", "rolls", "bar", "bars", "tikki", "پیکٹ", "ڈبہ"], { family: "pack", base: 1, canonical: "pack" }],
 ];
 
-const UNIT_INDEX = new Map<string, UnitDef>();
-for (const [names, def] of UNIT_TABLE) for (const n of names) UNIT_INDEX.set(n, def);
+/** Legacy exported number dictionary retained for existing domain consumers. */
+export const NUMBER_WORDS: Record<string, number> = {
+  ek: 1, aik: 1, ik: 1, ikk: 1, one: 1, do: 2, dou: 2, two: 2, teen: 3, three: 3,
+  char: 4, chaar: 4, four: 4, panch: 5, paanch: 5, punj: 5, five: 5, chhe: 6,
+  chhay: 6, chay: 6, che: 6, six: 6, saat: 7, sat: 7, seven: 7, aath: 8, ath: 8,
+  eight: 8, nau: 9, nine: 9, das: 10, dus: 10, ten: 10, gyarah: 11, barah: 12,
+  terah: 13, chaudah: 14, pandrah: 15, solah: 16, satrah: 17, atharah: 18,
+  unees: 19, bees: 20, pachees: 25, tees: 30, chalees: 40, pachas: 50,
+  pachaas: 50, saath: 60, sattar: 70, assi: 80, nabbe: 90, sau: 100,
+  "ایک": 1, "دو": 2, "تین": 3, "چار": 4, "پانچ": 5, "چھ": 6, "سات": 7,
+  "آٹھ": 8, "نو": 9, "دس": 10,
+};
 
-export function lookupUnit(word: string | null | undefined): UnitDef | null {
-  if (!word) return null;
-  return UNIT_INDEX.get(word.trim().toLowerCase()) ?? null;
+const UNIT_INDEX = new Map<string, UnitDef>();
+for (const [names, def] of UNIT_TABLE) for (const name of names) UNIT_INDEX.set(name, def);
+
+const PACK_SIZE_REQUIRED = new Set(["bag", "bori", "carton", "peti", "box", "case", "sack",
+  // Urdu-script variants preserved after normalizeUrduNumberWords maps them to Roman equivalents.
+  // کارتن (kaartan, variant of کارٹن) is kept for orthographic tolerance.
+  "کارتن", "کارٹن", "بوری", "بیگ", "باکس",
+]);
+
+/** True for package labels whose conversion to inventory units is not implied. */
+export function requiresExplicitPackSize(word: string | null | undefined): boolean {
+  if (!word) return false;
+  return normalizeUrduNumberWords(word).trim().toLowerCase().split(/\s+/).some((token) => PACK_SIZE_REQUIRED.has(token));
 }
 
-/** Whole-number words (Roman Urdu / Punjabi + Urdu script). */
-export const NUMBER_WORDS: Record<string, number> = {
-  ek: 1, aik: 1, ik: 1, ikk: 1, one: 1, "ایک": 1,
-  do: 2, dou: 2, two: 2, "دو": 2,
-  teen: 3, three: 3, "تین": 3,
-  char: 4, chaar: 4, four: 4, "چار": 4,
-  panch: 5, paanch: 5, punj: 5, five: 5, "پانچ": 5,
-  chhe: 6, chhay: 6, chay: 6, che: 6, six: 6, "چھ": 6,
-  saat: 7, sat: 7, seven: 7, "سات": 7,
-  aath: 8, ath: 8, eight: 8, "آٹھ": 8,
-  nau: 9, nine: 9, "نو": 9,
-  das: 10, dus: 10, ten: 10, "دس": 10,
-  gyarah: 11, barah: 12, terah: 13, chaudah: 14, pandrah: 15, solah: 16,
-  satrah: 17, atharah: 18, unees: 19, bees: 20, pachees: 25, tees: 30,
-  chalees: 40, pachas: 50, pachaas: 50, saath: 60, sattar: 70, assi: 80, nabbe: 90,
-  sau: 100,
-};
+/** Resolve a Roman Urdu, English, or supported Urdu-script unit name. */
+export function lookupUnit(word: string | null | undefined): UnitDef | null {
+  if (!word) return null;
+  const key = word.trim().toLowerCase();
+  return UNIT_INDEX.get(key) ?? UNIT_INDEX.get(normalizeUrduNumberWords(key)) ?? null;
+}
 
-/** Fraction words expressed in quarters, and how they combine with a following number. */
-const FRACTION_WORDS: Record<string, { standalone: number; combine?: (n: number) => number }> = {
-  adha: { standalone: 2 }, aadha: { standalone: 2 }, aadhi: { standalone: 2 }, adhi: { standalone: 2 }, adhaa: { standalone: 2 }, "آدھا": { standalone: 2 }, "آدھی": { standalone: 2 },
-  sawa: { standalone: 5, combine: (n) => n * 4 + 1 }, "سوا": { standalone: 5, combine: (n) => n * 4 + 1 },
-  dedh: { standalone: 6 }, derh: { standalone: 6 }, dirh: { standalone: 6 }, deedh: { standalone: 6 }, "ڈیڑھ": { standalone: 6 },
-  dhai: { standalone: 10 }, dhaai: { standalone: 10 }, arhai: { standalone: 10 }, adhai: { standalone: 10 }, "ڈھائی": { standalone: 10 },
-  paune: { standalone: 3, combine: (n) => n * 4 - 1 }, pone: { standalone: 3, combine: (n) => n * 4 - 1 }, "پونے": { standalone: 3, combine: (n) => n * 4 - 1 },
-};
-
-/** True when a token can belong to a quantity phrase (number, fraction or unit word). */
-export function isQuantityToken(tok: string): boolean {
-  const t = tok.toLowerCase();
-  return /^\d+(\.\d+)?$/.test(t) || /^\d+(\.\d+)?[a-z]+$/.test(t) || t in NUMBER_WORDS || t in FRACTION_WORDS || UNIT_INDEX.has(t);
+/** True when a token can be part of a supported number or unit expression. */
+export function isQuantityToken(token: string): boolean {
+  const normalized = normalizeUrduNumberWords(token).toLowerCase();
+  return lookupUnit(normalized) !== null || parseQuantityNumber(normalized) !== null;
 }
 
 export interface QuantityPhrase {
-  /** quantity in quarters (4 = 1). null when no quantity was stated. */
+  /** Quantity in quarters (4 = 1), when exactly representable in quarters. */
   quarters: number | null;
+  /** Quantity multiplied by 100, preserving decimal values exactly. */
+  hundredths: number | null;
   unit: UnitDef | null;
-  /** the unit word as spoken */
+  /** Normalized unit spelling. The original phrase remains on the proposal. */
   unitWord: string | null;
-}
-
-function parseNumberToken(tok: string): number | null {
-  if (/^\d+(\.\d+)?$/.test(tok)) return Number(tok);
-  if (tok in NUMBER_WORDS) return NUMBER_WORDS[tok];
-  return null;
-}
-
-/** Quarters from a numeric value; rejects anything finer than ¼. */
-function toQuarters(n: number): number {
-  return Math.round(n * 4);
+  /** True if interpreting the supplied phrase would require guessing. */
+  unresolved: boolean;
 }
 
 /**
- * Parse a spoken quantity phrase: "dedh pao", "adha kilo", "sawa do kilo",
- * "2.5 kg", "ek darjan", "250g", "teen pao", "pao", "2".
+ * Parse a quantity phrase such as `dhai pao`, `پونے دو کلو`, `500g`, or `2.5 kg`.
+ * Unknown words and unsupported decimal precision are never rounded into a guess.
  */
 export function parseQuantityPhrase(phrase: string | null | undefined): QuantityPhrase {
-  if (!phrase) return { quarters: null, unit: null, unitWord: null };
-  const cleaned = phrase
-    .toLowerCase()
-    .replace(/(\d)([a-z؀-ۿ])/g, "$1 $2")
-    .replace(/[,]/g, " ")
-    .trim();
-  const toks = cleaned.split(/\s+/).filter(Boolean);
-  let quarters: number | null = null;
-  let unit: UnitDef | null = null;
-  let unitWord: string | null = null;
+  if (!phrase?.trim()) return { quarters: null, hundredths: null, unit: null, unitWord: null, unresolved: false };
+  const normalized = normalizeUrduNumberWords(phrase.replace(/(\d)([a-z])/gi, "$1 $2")).toLowerCase();
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  const unitWord = tokens.find((token) => lookupUnit(token) !== null) ?? null;
+  const unit = lookupUnit(unitWord);
+  let value = parseQuantityNumber(normalized);
 
-  for (let i = 0; i < toks.length; i++) {
-    const t = toks[i];
-    const frac = FRACTION_WORDS[t];
-    if (frac) {
-      const next = toks[i + 1] !== undefined ? parseNumberToken(toks[i + 1]) : null;
-      if (frac.combine && next !== null) {
-        quarters = frac.combine(next);
-        i++;
-      } else {
-        quarters = frac.standalone;
-      }
-      continue;
-    }
-    const n = parseNumberToken(t);
-    if (n !== null && quarters === null) {
-      quarters = toQuarters(n);
-      continue;
-    }
-    const u = lookupUnit(t);
-    if (u && !unit) {
-      unit = u;
-      unitWord = t;
+  // Preserve the established API behavior for phrases that include the item
+  // name after the quantity (`ek darjan anday`, `pao cheeni`). Only a valid
+  // leading quantity prefix is accepted; unknown words inside it still fail.
+  // The prefix must contain at least one recognized unit to avoid treating
+  // bare numbers like "do unknown" as a resolved quantity phrase.
+  if (value === null) {
+    for (let end = tokens.length - 1; end > 0; end--) {
+      if (tokens.slice(end).some((token) => parseQuantityNumber(token) !== null || lookupUnit(token) !== null)) continue;
+      const prefix = tokens.slice(0, end);
+      if (!prefix.some((token) => lookupUnit(token) !== null)) break;
+      value = parseQuantityNumber(prefix.join(" "));
+      if (value !== null) break;
     }
   }
-  // A bare unit ("pao cheeni") means one of that unit.
-  if (quarters === null && unit) quarters = 4;
-  return { quarters, unit, unitWord };
+
+  if (value !== null) {
+    const hundredths = Math.round(value * 100);
+    const positive = hundredths > 0;
+    return {
+      quarters: hundredths % 25 === 0 ? hundredths / 25 : null,
+      hundredths,
+      unit,
+      unitWord,
+      unresolved: !positive || !Number.isSafeInteger(hundredths),
+    };
+  }
+
+  // A single bare unit means one of that unit (for example, `pao cheeni` is
+  // tokenized by the fallback parser as quantity `pao`, item `cheeni`).
+  if (unit && tokens[0] === unitWord && tokens.slice(1).every((token) => parseQuantityNumber(token) === null && lookupUnit(token) === null)) {
+    return { quarters: 4, hundredths: 100, unit, unitWord, unresolved: false };
+  }
+  return { quarters: null, hundredths: null, unit, unitWord, unresolved: true };
 }
 
 export interface ProductUnitInfo {
@@ -148,10 +135,10 @@ export interface LineResolution {
   qty_base_units: number;
   line_total_paisa: Paisa;
   value_first: boolean;
-  /** human formula for the X-Ray, e.g. unit("dedh pao") → 375g @ 160/kg = 60 PKR */
   formula: string;
 }
 
+/** Format integer base units for user-facing review. */
 export function formatBaseQty(qty: number, unit: BaseUnit): string {
   if (unit === "pcs") return `${qty} pcs`;
   const big = unit === "g" ? "kg" : "L";
@@ -162,43 +149,43 @@ export function formatBaseQty(qty: number, unit: BaseUnit): string {
   return `${qty}${unit}`;
 }
 
-/** "Rs. 160/kg", "Rs. 50/pcs", "Rs. 2,600/5L" */
-export function formatUnitPrice(p: ProductUnitInfo): string {
-  const per =
-    p.base_unit === "pcs"
-      ? p.pack_size_base_units === 1
-        ? "pc"
-        : `${p.pack_size_base_units} pcs`
-      : p.pack_size_base_units === 1000
-        ? p.base_unit === "g"
-          ? "kg"
-          : "L"
-        : formatBaseQty(p.pack_size_base_units, p.base_unit);
-  return `Rs. ${formatAmount(p.unit_price_paisa)}/${per}`;
+/** Format a catalog price with its unit basis. */
+export function formatUnitPrice(product: ProductUnitInfo): string {
+  const per = product.base_unit === "pcs"
+    ? product.pack_size_base_units === 1 ? "pc" : `${product.pack_size_base_units} pcs`
+    : product.pack_size_base_units === 1000
+      ? product.base_unit === "g" ? "kg" : "L"
+      : formatBaseQty(product.pack_size_base_units, product.base_unit);
+  return `Rs. ${formatAmount(product.unit_price_paisa)}/${per}`;
 }
 
-/** Spoken-unit → base units for a given product. */
-export function quantityToBaseUnits(q: QuantityPhrase, product: ProductUnitInfo): number {
-  const quarters = q.quarters ?? 4;
-  const u = q.unit;
-  let perUnit: number;
-  if (!u || u.family === "pack") {
-    perUnit = product.pack_size_base_units;
-  } else if (u.family === "count") {
-    perUnit = product.base_unit === "pcs" ? u.base : u.base * product.pack_size_base_units;
-  } else {
-    // mass/volume: desi usage treats kilo≈litre and pao≈250ml for liquids
-    perUnit = product.base_unit === "pcs" ? product.pack_size_base_units : u.base;
+/** Convert a parsed spoken quantity into product inventory base units. */
+export function quantityToBaseUnits(quantity: QuantityPhrase, product: ProductUnitInfo): number {
+  if (quantity.unresolved) throw new RangeError("quantity phrase is not safely interpretable");
+  if (!Number.isSafeInteger(product.pack_size_base_units) || product.pack_size_base_units <= 0) {
+    throw new RangeError("product pack size must be a positive safe integer");
   }
-  return Math.round((quarters * perUnit) / 4);
+  const amountHundredths = quantity.hundredths ?? (quantity.quarters ?? 4) * 25;
+  const unit = quantity.unit;
+  let perUnit: number;
+  if (!unit || unit.family === "pack") {
+    perUnit = product.pack_size_base_units;
+  } else if (unit.family === "count") {
+    perUnit = product.base_unit === "pcs" ? unit.base : unit.base * product.pack_size_base_units;
+  } else {
+    // Local trade convention: kilo≈litre and pao≈250ml for liquids.
+    perUnit = product.base_unit === "pcs" ? product.pack_size_base_units : unit.base;
+  }
+  return mulDiv(amountHundredths, perUnit, 100);
 }
 
+/** Resolve quantity or value-first price to integer base units and integer paisa. */
 export function resolveLine(
   product: ProductUnitInfo,
   input: { quantity?: QuantityPhrase | null; value_paisa?: Paisa | null; spoken?: string },
 ): LineResolution {
   const priceLabel = formatUnitPrice(product);
-  if (input.value_paisa && input.value_paisa > 0) {
+  if (input.value_paisa !== null && input.value_paisa !== undefined && input.value_paisa > 0) {
     const qty = Math.max(1, mulDiv(input.value_paisa, product.pack_size_base_units, product.unit_price_paisa));
     return {
       qty_base_units: qty,
@@ -207,10 +194,11 @@ export function resolveLine(
       formula: `value("${formatAmount(input.value_paisa)} ka") → ${formatAmount(input.value_paisa)} ÷ ${priceLabel} = ${formatBaseQty(qty, product.base_unit)}`,
     };
   }
-  const q = input.quantity ?? { quarters: 4, unit: null, unitWord: null };
-  const qty = Math.max(1, quantityToBaseUnits(q, product));
+  const quantity = input.quantity ?? { quarters: null, hundredths: null, unit: null, unitWord: null, unresolved: false };
+  const qty = Math.max(1, quantityToBaseUnits(quantity, product));
   const total = mulDiv(qty, product.unit_price_paisa, product.pack_size_base_units);
-  const spokenUnit = q.unitWord ? `${describeQuarters(q.quarters)} ${q.unitWord}`.trim() : describeQuarters(q.quarters);
+  const count = quantity.hundredths === null ? describeQuarters(quantity.quarters) : String(quantity.hundredths / 100);
+  const spokenUnit = quantity.unitWord ? `${count} ${quantity.unitWord}` : count;
   return {
     qty_base_units: qty,
     line_total_paisa: total,
@@ -219,13 +207,14 @@ export function resolveLine(
   };
 }
 
-export function describeQuarters(q: number | null): string {
-  if (q === null) return "1";
-  if (q % 4 === 0) return String(q / 4);
-  return (q / 4).toString();
+/** Format an exact quarter count for X-Ray and review text. */
+export function describeQuarters(quarters: number | null): string {
+  if (quarters === null) return "1";
+  if (quarters % 4 === 0) return String(quarters / 4);
+  return (quarters / 4).toString();
 }
 
-/** "375g (1.5 pao)" style secondary label used on review rows. */
+/** Format a base quantity with a secondary spoken pao count when applicable. */
 export function describeQty(qty: number, unit: BaseUnit, spoken?: QuantityPhrase | null): string {
   const base = formatBaseQty(qty, unit);
   if (spoken?.unit?.canonical === "pao" && spoken.quarters !== null) {

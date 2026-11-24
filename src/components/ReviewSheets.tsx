@@ -25,6 +25,9 @@ const REASON_LABEL: Record<string, string> = {
   UDHAAR_REQUIRES_CUSTOMER: "Customer needed",
   OVERPAYMENT_TO_KHATA: "Extra cash → khata",
   NEGATIVE_STOCK: "Stock",
+  UNRESOLVED_NUMBER: "Number needs correction",
+  UNVERIFIED_EXTRACTION: "Review extraction",
+  EXPLICIT_CASH_REQUIRED: "Confirm cash received",
 };
 
 /* ───────────────────────────── customer chips ───────────────────────────── */
@@ -104,8 +107,9 @@ function CustomerRail({ proposalCustomer, customers, selected, onSelect, require
 /* ───────────────────────────── line rows ───────────────────────────── */
 
 function NewSkuEditor({ line, onSave }: { line: ProposalLine; onSave: (l: ProposalLine) => void }) {
-  const [open, setOpen] = useState(!line.value_first && line.unit_price_paisa <= 0);
+  const [open, setOpen] = useState(Boolean(line.number_unresolved) || (!line.value_first && line.unit_price_paisa <= 0));
   const [price, setPrice] = useState(line.price_known && line.unit_price_paisa ? String(line.unit_price_paisa / 100) : "");
+  const [quantity, setQuantity] = useState(line.quantity_phrase ?? "");
   const [unit, setUnit] = useState<BaseUnit>(line.base_unit);
   const unitLabel = unit === "g" ? "per kg" : unit === "ml" ? "per litre" : "per piece";
   if (!open) {
@@ -116,7 +120,14 @@ function NewSkuEditor({ line, onSave }: { line: ProposalLine; onSave: (l: Propos
     );
   }
   return (
-    <div className="mt-2 flex items-center gap-1.5 rounded-[10px] border border-dashed border-maal/50 bg-maal-bg p-1.5">
+    <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-[10px] border border-dashed border-maal/50 bg-maal-bg p-1.5">
+      <input
+        value={quantity}
+        onChange={(e) => setQuantity(e.target.value)}
+        placeholder="quantity e.g. 2 packet"
+        aria-label={`Quantity for ${line.name}`}
+        className="h-9 min-w-28 flex-1 rounded-[8px] bg-surface px-2 text-[13px] outline-none"
+      />
       <span className="pl-1 text-[13px] font-semibold text-maal">Rs.</span>
       <input autoFocus inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ""))} placeholder="price" className="h-9 w-20 rounded-[8px] bg-surface px-2 text-[15px] outline-none num" />
       <select value={unit} onChange={(e) => setUnit(e.target.value as BaseUnit)} className="h-9 rounded-[8px] bg-surface px-1.5 text-[13px]">
@@ -128,7 +139,15 @@ function NewSkuEditor({ line, onSave }: { line: ProposalLine; onSave: (l: Propos
         disabled={!price}
         onClick={() => {
           const pack = unit === "pcs" ? 1 : 1000;
-          onSave(recalcNewSkuLine({ ...line, base_unit: unit, pack_size_base_units: pack, unit_price_paisa: rupeesToPaisa(Number(price)), price_known: true, confidence: 1 }));
+          onSave(recalcNewSkuLine({
+            ...line,
+            quantity_phrase: quantity.trim() || null,
+            base_unit: unit,
+            pack_size_base_units: pack,
+            unit_price_paisa: rupeesToPaisa(Number(price)),
+            price_known: true,
+            confidence: 1,
+          }));
           setOpen(false);
         }}
         className="tactile ml-auto h-9 rounded-[8px] bg-maal px-3 text-[13px] font-semibold text-white disabled:opacity-40"
@@ -159,6 +178,9 @@ function LineRow({ line, stockBefore, onChange, onRemove }: { line: ProposalLine
         <button className="min-w-0 flex-1 text-left" onClick={() => setEditing((e) => !e)}>
           <div className="text-[15px] font-medium leading-5">{line.name}</div>
           <div className="text-[13px] leading-[18px] text-ink-2">{sub}</div>
+          {line.number_unresolved && (
+            <div className="mt-1 text-[12px] font-semibold text-udhaar">Number unclear — correct the quantity before saving</div>
+          )}
           {line.stock_after !== null && line.stock_after < 0 && (
             <div className="mt-1 text-[12px] font-semibold text-udhaar">Stock → {formatBaseQty(line.stock_after, line.base_unit)} (soft warning)</div>
           )}
@@ -217,7 +239,7 @@ export function SaleReviewSheet({ proposal: initial, idemKey, trace, onClose }: 
   };
 
   const needsCustomer = p.credit_paisa !== 0 && !p.customer.selected_id;
-  const priceMissing = p.lines.some((l) => l.kind === "new_sku" && l.line_total_paisa <= 0);
+  const priceMissing = p.lines.some((l) => (l.kind === "new_sku" && l.line_total_paisa <= 0) || l.number_unresolved);
 
   const save = async () => {
     setBusy(true);

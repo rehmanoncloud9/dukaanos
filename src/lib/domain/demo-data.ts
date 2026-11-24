@@ -67,7 +67,7 @@ export const DEMO_CUSTOMERS: DemoCustomer[] = [
   { code: "CHHOTE_ALI", name: "Chhote Ali", role_tag: "Electrician", phone: "03001110001", aliases: ["chhota ali", "chote ali", "ali electrician", "ali bijli wala", "چھوٹے علی"] },
   { code: "ALI_DRIVER", name: "Ali Driver", role_tag: "Gali 4", phone: "03001110002", aliases: ["ali driver", "ali gaari wala", "driver ali"] },
   { code: "ALI_TAILOR", name: "Ali Tailor", role_tag: "Markaz", phone: "03001110003", aliases: ["ali tailor", "ali darzi", "darzi ali"] },
-  { code: "TARIQ_M", name: "Tariq Mehmood", role_tag: "Street 12", phone: "03001110004", aliases: ["tariq", "tarik", "tariq bhai", "tariq mehmood", "طارق"] },
+  { code: "TARIQ_M", name: "Tariq Mehmood", role_tag: "Street 12", phone: "03001110004", aliases: ["tariq", "tarik", "tariq bhai", "tariq mehmood", "tariq mechanic", "mechanic tariq", "طارق"] },
   { code: "TARIQ_B", name: "Tariq Butt", role_tag: "Chai Dhaba", phone: "03001110005", aliases: ["tariq butt", "butt sahib", "tariq chai wala"] },
   { code: "BILAL", name: "Bilal Ahmed", role_tag: "Workshop", phone: "03001110006", aliases: ["bilal", "bilal bhai", "bilal workshop", "بلال"] },
 ];

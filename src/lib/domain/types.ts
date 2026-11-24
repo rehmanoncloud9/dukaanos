@@ -11,6 +11,10 @@ export interface ParsedItem {
   quantity_phrase: string | null;
   /** value-first rupees ("250 ka khula oil" → 250) */
   value_rupees: number | null;
+  /** Unmodified evidence for a value-first amount, when supplied by extraction. */
+  value_phrase?: string | null;
+  /** Extraction could not reconcile a spoken number with its raw phrase. */
+  number_unresolved?: boolean;
   is_loose: boolean;
   confidence: number;
 }
@@ -21,13 +25,20 @@ export interface ParsedTurn {
   customer_mention: string | null;
   items: ParsedItem[];
   discount_rupees: number | null;
+  discount_phrase?: string | null;
   cash_paid_rupees: number | null;
+  cash_phrase?: string | null;
   payment_mode: PaymentMode;
   /** amount for intent = payment ("Bilal ne 1500 jama karwaye") */
   payment_amount_rupees: number | null;
+  payment_amount_phrase?: string | null;
   /** free-form question for the agent model (intent = question) */
   question: string | null;
   confidence: number;
+  /** Set only after raw number evidence passes deterministic validation. */
+  tier1_evidence_verified?: boolean;
+  /** Non-item numeric evidence was present but could not be reconciled. */
+  number_unresolved?: boolean;
 }
 
 export interface ProductRow {
@@ -96,6 +107,8 @@ export interface ProposalLine {
   stock_after: number | null;
   /** false for a QuickAdd SKU whose price the shopkeeper has not confirmed */
   price_known: boolean;
+  /** The displayed quantity/amount still needs an explicit human correction. */
+  number_unresolved?: boolean;
 }
 
 export interface CustomerCandidate {
@@ -115,7 +128,10 @@ export type TierReason =
   | "NO_ITEMS"
   | "UDHAAR_REQUIRES_CUSTOMER"
   | "OVERPAYMENT_TO_KHATA"
-  | "NEGATIVE_STOCK";
+  | "NEGATIVE_STOCK"
+  | "UNRESOLVED_NUMBER"
+  | "UNVERIFIED_EXTRACTION"
+  | "EXPLICIT_CASH_REQUIRED";
 
 export interface StockWarning {
   code: "NEGATIVE_STOCK";

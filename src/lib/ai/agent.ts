@@ -15,7 +15,7 @@ import { formatRs } from "@/lib/domain/money";
 import { matchCatalog } from "@/lib/domain/pakphone";
 import type { Catalog, ParsedTurn, PaymentProposal, SaleProposal } from "@/lib/domain/types";
 import { rpc } from "@/lib/supabase/server";
-import { generateWithFallback } from "./models";
+import { generateContentOnce } from "./models";
 
 export const AGENT_TOOLS: FunctionDeclaration[] = [
   {
@@ -180,14 +180,15 @@ export async function runAgent(opts: {
   let model = env.agentModel();
   let rounds = 0;
   for (; rounds < 5; rounds++) {
-    const call = await generateWithFallback(env.agentModel(), {
+    const call = await generateContentOnce(env.agentModel(), {
       contents,
       config: {
         systemInstruction: system,
         tools: [{ functionDeclarations: AGENT_TOOLS }],
         thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        maxOutputTokens: 1_024,
       },
-    }, Math.max(env.aiTimeoutMs(), 12_000));
+    }, Math.max(env.aiTimeoutMs(), 12_000), { shopId: opts.shopId, kind: "qa" });
     model = call.model;
     const calls = call.response.functionCalls ?? [];
     const modelContent = call.response.candidates?.[0]?.content;

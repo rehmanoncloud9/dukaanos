@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Bill compiler: turns a ParsedTurn (mentions only) + the shop catalog into a
  * deterministic, integer-paisa proposal and decides the safety tier.
  * The LLM never does arithmetic — every number below is computed here (and
@@ -12,7 +12,7 @@ import {
   type BaseUnit,
   type ProductUnitInfo,
 } from "./desi-units";
-import { mulDiv, rupeesToPaisa } from "./money";
+import { formatAmount, mulDiv, rupeesToPaisa } from "./money";
 import {
   customerCandidates,
   isAmbiguous,
@@ -79,14 +79,23 @@ export function buildLines(parsed: ParsedTurn, catalog: Catalog): ProposalLine[]
     const report = matchCatalog(item.spoken, entries, 3);
     const top = report.results[0];
     const quantity = parseQuantityPhrase(item.quantity_phrase);
-    const valuePaisa = item.value_rupees && item.value_rupees > 0 ? rupeesToPaisa(item.value_rupees) : null;
+    const valueValid = item.value_rupees === null || (Number.isFinite(item.value_rupees) && item.value_rupees > 0);
+    const valueEvidenceUnresolved = Boolean(item.value_phrase && item.value_rupees === null);
+    const valuePaisa = item.value_rupees !== null && valueValid ? rupeesToPaisa(item.value_rupees) : null;
+    const missingNumberEvidence = !item.quantity_phrase && item.value_rupees === null;
+    const numberUnresolved = Boolean(item.number_unresolved || valueEvidenceUnresolved || missingNumberEvidence || (item.quantity_phrase && quantity.unresolved) || !valueValid);
+    const safeQuantity = quantity.unresolved
+      ? { quarters: 4, hundredths: 100, unit: null, unitWord: null, unresolved: false }
+      : quantity;
     const trace = top
       ? { score: top.score, matched: top.matched, ms: report.ms, key: top.key }
       : { score: 0, matched: "", ms: report.ms, key: report.key };
 
     if (top && top.score >= PRODUCT_MATCH_THRESHOLD) {
       const product = catalog.products.find((p) => p.id === top.id)!;
-      const res = resolveLine(product, { quantity, value_paisa: valuePaisa });
+      const res = resolveLine(product, { quantity: safeQuantity, value_paisa: valuePaisa });
+      // A perfect alias match (score 1.0) cannot be ambiguous; collision only matters for imperfect matches.
+      const collision = Boolean(top && top.score < 1 && report.results[1] && top.score - report.results[1].score < 0.12);
       lines.push({
         key: lineKey(),
         kind: "catalog",
@@ -104,9 +113,10 @@ export function buildLines(parsed: ParsedTurn, catalog: Catalog): ProposalLine[]
         is_loose: item.is_loose,
         formula: res.formula,
         match: trace,
-        confidence: Math.min(item.confidence, top.score >= 0.9 ? 1 : top.score),
+        confidence: Math.min(item.confidence, top.score >= 0.9 ? 1 : top.score, collision || numberUnresolved ? 0.5 : 1),
         stock_after: product.stock_base_units - res.qty_base_units,
-        price_known: true,
+        price_known: product.unit_price_paisa > 0,
+        number_unresolved: numberUnresolved,
       });
     } else {
       // QuickAddChip: uncataloged item never errors — it becomes an editable new SKU line.
@@ -133,6 +143,7 @@ export function buildLines(parsed: ParsedTurn, catalog: Catalog): ProposalLine[]
           confidence: Math.min(item.confidence, 0.5),
           stock_after: null,
           price_known: false,
+          number_unresolved: numberUnresolved,
         }),
       );
     }
@@ -146,26 +157,30 @@ export function buildLines(parsed: ParsedTurn, catalog: Catalog): ProposalLine[]
  */
 export function recalcNewSkuLine(line: ProposalLine): ProposalLine {
   const quantity = parseQuantityPhrase(line.quantity_phrase);
+  if (quantity.unresolved || (line.number_unresolved && !line.value_first && !line.quantity_phrase?.trim())) {
+    return { ...line, number_unresolved: true, confidence: Math.min(line.confidence, 0.5) };
+  }
   if (line.value_paisa && line.value_paisa > 0) {
     if (!line.price_known || line.unit_price_paisa <= 0) {
-      return {
+    return {
         ...line,
         unit_price_paisa: line.value_paisa,
         qty_base_units: line.pack_size_base_units,
         line_total_paisa: line.value_paisa,
-        formula: `value("${line.value_paisa / 100} ka") → new SKU "${line.name}" @ Rs. ${line.value_paisa / 100}/${packLabel(line)} (QuickAdd)`,
+      formula: `value("${formatAmount(line.value_paisa)} ka") → new SKU "${line.name}" @ ${packLabel(line)} (QuickAdd)`,
+      number_unresolved: false,
       };
     }
     const info: ProductUnitInfo = line;
     const res = resolveLine(info, { value_paisa: line.value_paisa });
-    return { ...line, qty_base_units: res.qty_base_units, line_total_paisa: res.line_total_paisa, formula: `${res.formula} (QuickAdd)` };
+    return { ...line, qty_base_units: res.qty_base_units, line_total_paisa: res.line_total_paisa, formula: `${res.formula} (QuickAdd)`, number_unresolved: false };
   }
   if (line.unit_price_paisa <= 0) {
     const qty = Math.max(1, Math.round(((quantity.quarters ?? 4) * line.pack_size_base_units) / 4));
-    return { ...line, qty_base_units: qty, line_total_paisa: 0, formula: `new SKU "${line.name}" × ${formatBaseQty(qty, line.base_unit)} — price needed` };
+  return { ...line, qty_base_units: qty, line_total_paisa: 0, formula: `new SKU "${line.name}" × ${formatBaseQty(qty, line.base_unit)} — price needed`, number_unresolved: false };
   }
   const res = resolveLine(line, { quantity });
-  return { ...line, qty_base_units: res.qty_base_units, line_total_paisa: res.line_total_paisa, formula: `${res.formula} (QuickAdd)` };
+  return { ...line, qty_base_units: res.qty_base_units, line_total_paisa: res.line_total_paisa, formula: `${res.formula} (QuickAdd)`, number_unresolved: false };
 }
 
 function packLabel(line: Pick<ProposalLine, "base_unit" | "pack_size_base_units">): string {
@@ -175,8 +190,10 @@ function packLabel(line: Pick<ProposalLine, "base_unit" | "pack_size_base_units"
 
 /** Recompute a catalog line after the shopkeeper edits its quantity phrase or value. */
 export function recalcCatalogLine(line: ProposalLine, stockBefore: number | null): ProposalLine {
+  const quantity = parseQuantityPhrase(line.quantity_phrase);
+  if (quantity.unresolved) return { ...line, number_unresolved: true, confidence: Math.min(line.confidence, 0.5) };
   const res = resolveLine(line, {
-    quantity: parseQuantityPhrase(line.quantity_phrase),
+    quantity,
     value_paisa: line.value_first ? line.value_paisa : null,
   });
   return {
@@ -185,6 +202,7 @@ export function recalcCatalogLine(line: ProposalLine, stockBefore: number | null
     line_total_paisa: res.line_total_paisa,
     formula: res.formula,
     stock_after: stockBefore === null ? null : stockBefore - res.qty_base_units,
+    number_unresolved: false,
   };
 }
 
@@ -200,6 +218,7 @@ export function setLineQty(line: ProposalLine, qtyBaseUnits: number, stockBefore
     value_paisa: null,
     formula: `edit → ${formatBaseQty(qty, line.base_unit)} @ Rs. ${line.unit_price_paisa / 100}/${packLabel(line)} = ${total / 100} PKR`,
     stock_after: stockBefore === null ? null : stockBefore - qty,
+    number_unresolved: false,
   };
 }
 
@@ -228,6 +247,8 @@ export interface SettlementInput {
   customer: SaleProposal["customer"];
   customers: CustomerRow[];
   confidence: number;
+  tier1EvidenceVerified?: boolean;
+  numberUnresolved?: boolean;
 }
 
 /** Totals, split settlement, tier gate and warnings — pure and deterministic. */
@@ -256,6 +277,9 @@ export function settle(input: SettlementInput): SaleProposal {
 
   const reasons: TierReason[] = [];
   if (lines.length === 0) reasons.push("NO_ITEMS");
+  if (input.numberUnresolved || lines.some((line) => line.number_unresolved)) reasons.push("UNRESOLVED_NUMBER");
+  if (!input.tier1EvidenceVerified) reasons.push("UNVERIFIED_EXTRACTION");
+  if (input.payment_mode !== "cash" && input.cash_paid_paisa === null) reasons.push("EXPLICIT_CASH_REQUIRED");
   if (credit > 0) reasons.push("UDHAAR");
   if (credit < 0) reasons.push("OVERPAYMENT_TO_KHATA");
   if (credit !== 0 && !hasCustomer) reasons.push("UDHAAR_REQUIRES_CUSTOMER");
@@ -289,7 +313,7 @@ export function settle(input: SettlementInput): SaleProposal {
   };
 }
 
-export function buildSaleProposal(parsed: ParsedTurn, catalog: Catalog): SaleProposal {
+export function buildSaleProposal(parsed: ParsedTurn, catalog: Catalog, options: { tier1EvidenceVerified?: boolean } = {}): SaleProposal {
   const lines = buildLines(parsed, catalog);
   const customer = buildCustomerBlock(parsed.customer_mention, catalog.customers);
   return settle({
@@ -300,6 +324,8 @@ export function buildSaleProposal(parsed: ParsedTurn, catalog: Catalog): SalePro
     customer,
     customers: catalog.customers,
     confidence: parsed.confidence,
+    tier1EvidenceVerified: options.tier1EvidenceVerified ?? parsed.tier1_evidence_verified ?? false,
+    numberUnresolved: parsed.number_unresolved,
   });
 }
 
@@ -336,6 +362,7 @@ export function resettle(
     customer,
     customers,
     confidence: 1, // human-reviewed
+    tier1EvidenceVerified: false,
   });
 }
 
@@ -346,6 +373,9 @@ export function buildPaymentProposal(parsed: ParsedTurn, customers: CustomerRow[
   const reasons: TierReason[] = [];
   if (!customer.selected_id) reasons.push("UDHAAR_REQUIRES_CUSTOMER");
   if (customer.ambiguous) reasons.push("AMBIGUOUS_CUSTOMER");
+  if (parsed.number_unresolved || parsed.payment_amount_rupees === null || !Number.isFinite(parsed.payment_amount_rupees) || parsed.payment_amount_rupees <= 0) {
+    reasons.push("UNRESOLVED_NUMBER");
+  }
   return {
     kind: "payment",
     amount_paisa: amount,

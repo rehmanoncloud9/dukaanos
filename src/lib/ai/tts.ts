@@ -3,7 +3,7 @@
  * The PWA falls back to the browser's speechSynthesis (ur-PK) if this is unavailable or >2 s.
  */
 import { env } from "@/lib/env";
-import { generateWithFallback } from "./models";
+import { generateContentOnce } from "./models";
 
 function pcmToWav(pcm: Buffer, sampleRate = 24000, channels = 1, bits = 16): Buffer {
   const header = Buffer.alloc(44);
@@ -24,14 +24,14 @@ function pcmToWav(pcm: Buffer, sampleRate = 24000, channels = 1, bits = 16): Buf
   return Buffer.concat([header, pcm]);
 }
 
-export async function synthesizeUrdu(text: string): Promise<{ wav: Buffer; model: string; latency_ms: number }> {
-  const call = await generateWithFallback(env.ttsModel(), {
+export async function synthesizeUrdu(text: string, shopId: string): Promise<{ wav: Buffer; model: string; latency_ms: number }> {
+  const call = await generateContentOnce(env.ttsModel(), {
     contents: [{ role: "user", parts: [{ text: `Parhiye, narm aur saaf Urdu lehje mein: ${text}` }] }],
     config: {
       responseModalities: ["AUDIO"],
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } },
     },
-  }, 8000);
+  }, 8000, { shopId, kind: "tts" });
   const part = call.response.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
   const data = part?.inlineData?.data;
   if (!data) throw new Error("TTS returned no audio");
