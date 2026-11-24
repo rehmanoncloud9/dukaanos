@@ -27,6 +27,7 @@ export interface CommitResponse {
   journal: JournalRow[];
   delta: number;
   warnings: Array<{ code: "NEGATIVE_STOCK"; product_id: string; name: string; stock_after: number; base_unit: BaseUnit }>;
+  credit_warning?: { code: "CREDIT_LIMIT_EXCEEDED"; customer_id: string; name: string; balance_after_paisa: number; credit_limit_paisa: number } | null;
   customer?: { id: string; name: string; role_tag: string | null; phone: string | null; balance_paisa: number } | null;
   lines?: Array<Record<string, unknown>>;
   math_check?: { stated_total_paisa: number | null; computed_total_paisa: number; passed: boolean; delta_paisa: number };
@@ -61,6 +62,7 @@ export interface FeedTx {
 export interface StateCustomer extends CustomerRow {
   code: string | null;
   days_overdue: number | null;
+  credit_limit_paisa?: number | null;
 }
 
 export interface StateProduct extends ProductRow {
