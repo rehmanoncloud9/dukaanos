@@ -1,0 +1,114 @@
+"use client";
+
+import { MessageSquare, Volume2 } from "lucide-react";
+import type { Pulse } from "@/lib/api/contracts";
+import { speak } from "@/lib/client/speak";
+import { useDukaan } from "@/lib/client/store";
+import { formatBaseQty } from "@/lib/domain/desi-units";
+import { reminderText, smsLink, waLink, wholesaleListText } from "@/lib/domain/messages";
+import { formatRs } from "@/lib/domain/money";
+import { Money, Pill, Sheet, SW } from "./ui";
+
+export function pulseSpeech(p: Pulse): string {
+  return [
+    `Aaj galla mein ${formatRs(p.galla.cash_in_galla_paisa)} hain.`,
+    `${p.galla.sales_count} sales, udhaar ${formatRs(p.galla.udhaar_paisa)}.`,
+    p.overdue.count ? `${p.overdue.count} customers ka ${formatRs(p.overdue.total_paisa)} pandrah din se zyada ruka hua hai.` : "Koi purana udhaar nahi.",
+    p.stockout.count ? `${p.stockout.items.map((s) => s.name.replace(/\s*\(.*\)/, "")).join(" aur ")} do din mein khatam ho sakte hain.` : "",
+  ].join(" ");
+}
+
+export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => void }) {
+  const { state } = useDukaan();
+  const shop = state?.shop.name ?? "DukaanOS";
+  const list = wholesaleListText(
+    shop,
+    pulse.stockout.items.map((s) => ({ name: s.name, suggested_base_units: s.suggested_base_units, base_unit: s.base_unit, pack_size_base_units: s.pack_size_base_units, pack_label: s.pack_size_base_units === 5000 ? "tin" : undefined })),
+  );
+  return (
+    <Sheet
+      open
+      onClose={onClose}
+      title="Munshi Pulse"
+      right={
+        <Pill tone="cash" mono className="h-6">
+          SQL {pulse.sql_ms}ms · Rs. 0 LLM
+        </Pill>
+      }
+    >
+      <div className="space-y-3 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">
+        <div className="surface-card p-4">
+          <div className="section-label">Cash in galla · today</div>
+          <Money paisa={pulse.galla.cash_in_galla_paisa} className="mt-1 block text-[30px] font-bold tracking-[-0.02em]" />
+          <div className="mt-2 grid grid-cols-3 gap-2 text-[12.5px] text-ink-2">
+            <div>
+              Sales <b className="block text-[15px] text-ink num">{formatRs(pulse.galla.cash_sales_paisa)}</b>
+            </div>
+            <div>
+              Udhaar <b className="block text-[15px] text-udhaar num">{formatRs(pulse.galla.udhaar_paisa)}</b>
+            </div>
+            <div>
+              Est. margin <b className="block text-[15px] text-cash num">{formatRs(pulse.galla.est_margin_paisa)}</b>
+            </div>
+          </div>
+        </div>
+
+        <div className="surface-card overflow-hidden">
+          <div className="flex items-center justify-between px-4 pb-2 pt-3">
+            <span className="text-[15px] font-semibold">Overdue udhaar (15+ days)</span>
+            <Pill tone="udhaar">{formatRs(pulse.overdue.total_paisa)}</Pill>
+          </div>
+          {pulse.overdue.items.length === 0 && <div className="px-4 pb-3 text-[13px] text-ink-2">Sab saaf hai ✓</div>}
+          {pulse.overdue.items.map((o) => {
+            const msg = reminderText({ name: o.name, shop, balance_paisa: o.balance_paisa, days_overdue: o.days_overdue });
+            return (
+              <div key={o.id} className="hairline-t flex items-center gap-2 px-4 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[15px] font-medium">{o.name}</div>
+                  <div className="text-[12.5px] text-ink-2">
+                    {o.days_overdue}d overdue · {formatRs(o.balance_paisa)}
+                  </div>
+                </div>
+                <a href={waLink(o.phone, msg)} target="_blank" rel="noreferrer" className="tactile flex h-8 items-center gap-1 rounded-full bg-cash-bg px-3 text-[13px] font-semibold text-cash-ink">
+                  <MessageSquare size={13} strokeWidth={SW} /> Remind
+                </a>
+                <a href={smsLink(o.phone, msg)} className="tactile flex h-8 items-center rounded-full bg-surface-sunken px-3 text-[13px] font-semibold">
+                  SMS
+                </a>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="surface-card overflow-hidden">
+          <div className="flex items-center justify-between px-4 pb-2 pt-3">
+            <span className="text-[15px] font-semibold">2-day stockout velocity</span>
+            <Pill tone="maal">{pulse.stockout.count} items</Pill>
+          </div>
+          {pulse.stockout.items.map((s) => (
+            <div key={s.id} className="hairline-t flex items-center justify-between px-4 py-2.5">
+              <div>
+                <div className="text-[15px] font-medium">{s.name}</div>
+                <div className="text-[12.5px] text-ink-2">
+                  {formatBaseQty(s.stock_base_units, s.base_unit)} left · ~{formatBaseQty(Math.round(s.daily_avg), s.base_unit)}/day
+                </div>
+              </div>
+              <span className="num text-[15px] font-bold text-udhaar">{s.days_left}d</span>
+            </div>
+          ))}
+          {pulse.stockout.items.length > 0 && (
+            <div className="p-3">
+              <a href={waLink(null, list)} target="_blank" rel="noreferrer" className="tactile flex h-11 items-center justify-center gap-2 rounded-[12px] bg-maal text-[15px] font-semibold text-white">
+                <MessageSquare size={16} strokeWidth={SW} /> Wholesale WhatsApp List
+              </a>
+            </div>
+          )}
+        </div>
+
+        <button onClick={() => void speak(pulseSpeech(pulse))} className="tactile flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[15px] font-semibold">
+          <Volume2 size={16} strokeWidth={SW} /> Suniye (Urdu readout)
+        </button>
+      </div>
+    </Sheet>
+  );
+}

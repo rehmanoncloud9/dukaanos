@@ -1,0 +1,216 @@
+"use client";
+
+import { FileAudio, LogOut, Play, RefreshCw, ShieldAlert, ShieldCheck, Trash2, Upload, WifiOff } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { api, friendlyError } from "@/lib/client/api";
+import { dequeue, listReplays, type ReplayClip } from "@/lib/client/queue";
+import { useDukaan } from "@/lib/client/store";
+import { cx, Pill, PrimaryButton, SecondaryButton, Sheet, Spinner, SW } from "./ui";
+
+interface Health {
+  ok: boolean;
+  missing_env: string[];
+  pinned_models: Record<string, string | null>;
+  models_available: Record<string, boolean> | null;
+  model_check_error: string | null;
+  cutover_audit: { gemini_2_5_references: number; ok: boolean };
+}
+
+export function SettingsSheet({ onClose }: { onClose: () => void }) {
+  const { shops, shop, setShopId, pending, queue, flush, simulatedOffline, setSimulatedOffline, refresh, toast, signOut, openSheet, submitTurn, session } = useDukaan();
+  const [secret, setSecret] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [health, setHealth] = useState<Health | null>(null);
+  const [chain, setChain] = useState<{ ok: boolean; code: string; checked: number; ms: number; first_broken_seq?: number } | null>(null);
+
+  const act = async (name: string, fn: () => Promise<void>) => {
+    setBusy(name);
+    try {
+      await fn();
+    } catch (e) {
+      toast(friendlyError(e), "err");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const demoCall = (action: "reset" | "tamper") =>
+    act(action, async () => {
+      const r = await api<{ result: { tampered_seq?: number } }>(`/api/demo/${action}`, { json: { shop_id: shop!.id, secret: secret || undefined }, timeoutMs: 120_000 });
+      await refresh();
+      if (action === "tamper") {
+        toast(`Ledger row #${r.result.tampered_seq} silently edited — now run Verify chain`, "warn");
+        setChain(null);
+      } else {
+        toast("Demo shop reset & re-seeded (14-day history)", "ok");
+        setChain(null);
+      }
+    });
+
+  return (
+    <Sheet open onClose={onClose} title="Settings">
+      <div className="space-y-4 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">
+        <section>
+          <div className="section-label mb-2">Shop</div>
+          <div className="surface-card overflow-hidden">
+            {shops?.map((s) => (
+              <button key={s.id} onClick={() => setShopId(s.id)} className="hairline-b flex w-full items-center justify-between px-4 py-3 text-left last:border-b-0">
+                <span>
+                  <span className="block text-[15px] font-semibold">{s.name}</span>
+                  <span className="text-[12.5px] text-ink-2">{s.is_stage_shop ? "Stage shop (protected)" : s.is_demo_shop ? "Isolated judge sandbox" : s.city ?? "Live shop"} · {s.role}</span>
+                </span>
+                {shop?.id === s.id && <Pill tone="cash">Active</Pill>}
+              </button>
+            ))}
+          </div>
+          <div className="mt-1.5 text-[12px] text-ink-2">{session?.user.email}</div>
+        </section>
+
+        <section>
+          <div className="section-label mb-2">Offline sync</div>
+          <div className="surface-card space-y-3 p-4">
+            <div className="flex items-center justify-between">
+              <Pill tone={pending ? "amber" : "cash"}>{pending} Pending Sync</Pill>
+              <button onClick={() => void act("flush", flush)} className="tactile flex h-8 items-center gap-1.5 rounded-full bg-surface-sunken px-3 text-[13px] font-semibold">
+                {busy === "flush" ? <Spinner /> : <RefreshCw size={13} strokeWidth={SW} />} Flush now
+              </button>
+            </div>
+            <button onClick={() => setSimulatedOffline(!simulatedOffline)} className={cx("tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] text-[14px] font-semibold", simulatedOffline ? "bg-amber-bg text-amber-ink" : "bg-surface-sunken")}>
+              <WifiOff size={15} strokeWidth={SW} /> Simulate Offline: {simulatedOffline ? "ON" : "OFF"}
+            </button>
+            {queue.map((q) => (
+              <div key={q.idempotency_key} className="flex items-center gap-2 text-[13px]">
+                <FileAudio size={14} strokeWidth={SW} className="text-ink-2" />
+                <span className="min-w-0 flex-1 truncate">{q.kind === "text" ? q.text : `Voice clip · ${new Date(q.created_at).toLocaleTimeString()}`}</span>
+                <Pill tone={q.status === "review" ? "maal" : q.status === "failed" ? "udhaar" : "amber"}>{q.status}</Pill>
+                {q.status !== "pending" && (
+                  <button className="tactile text-[12.5px] font-semibold text-cash" onClick={() => void submitTurn({ blob: q.blob, mime: q.mime, text: q.text }, q.idempotency_key)}>
+                    Open
+                  </button>
+                )}
+                <button aria-label="Discard" onClick={() => void dequeue(q.idempotency_key).then(refresh)} className="text-ink-3">
+                  <Trash2 size={14} strokeWidth={SW} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <div className="section-label mb-2">Judge proof tools</div>
+          <div className="surface-card space-y-2.5 p-4">
+            <button
+              onClick={() => void act("chain", async () => setChain(await api("/api/shop/chain")))}
+              className="tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold"
+            >
+              {busy === "chain" ? <Spinner /> : <ShieldCheck size={15} strokeWidth={SW} />} Verify SHA-256 chain
+            </button>
+            {chain && (
+              <div className={cx("rounded-[10px] px-3 py-2 font-mono text-[12px]", chain.ok ? "bg-cash-bg text-cash-ink" : "bg-udhaar-bg text-udhaar-ink")}>
+                {chain.ok ? `CHAIN_OK · ${chain.checked} links · ${chain.ms}ms` : `CHAIN_BROKEN at #${chain.first_broken_seq} (${chain.code})`}
+              </div>
+            )}
+            {shop?.is_demo_shop && (
+              <>
+                {shop.is_stage_shop && (
+                  <input value={secret} onChange={(e) => setSecret(e.target.value)} type="password" placeholder="DEMO_RESET_SECRET (stage shop)" className="h-10 w-full rounded-[10px] bg-canvas px-3 text-[14px] outline-none" />
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <SecondaryButton onClick={() => void demoCall("tamper")} className="flex h-10 items-center justify-center gap-1.5 text-[13px]">
+                    {busy === "tamper" ? <Spinner /> : <ShieldAlert size={14} strokeWidth={SW} />} Tamper test
+                  </SecondaryButton>
+                  <PrimaryButton onClick={() => void demoCall("reset")} busy={busy === "reset"} className="h-10 text-[13px]">
+                    Judge Demo Reset
+                  </PrimaryButton>
+                </div>
+                <p className="text-[12px] text-ink-2">Tamper test edits one historical ledger row behind the app’s back (balanced, so SUM=0 still holds) — the hash chain catches it. Reset restores the shop.</p>
+              </>
+            )}
+            <button onClick={() => openSheet({ type: "replays" })} className="tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold">
+              <Play size={14} strokeWidth={SW} /> Real-audio replay library
+            </button>
+          </div>
+        </section>
+
+        <section>
+          <div className="section-label mb-2">Health · Dec 1 cutover audit</div>
+          <div className="surface-card p-4">
+            <button onClick={() => void act("health", async () => setHealth(await api<Health>("/api/system/health", { shop: false })))} className="tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold">
+              {busy === "health" && <Spinner />} Run health check
+            </button>
+            {health && (
+              <div className="mt-3 space-y-1 font-mono text-[11.5px]">
+                {Object.entries(health.pinned_models).map(([k, v]) => (
+                  <div key={k} className="flex justify-between">
+                    <span>{k}: {v ?? "—"}</span>
+                    <span className={health.models_available?.[k] ? "text-cash" : health.models_available ? "text-udhaar" : "text-ink-2"}>
+                      {health.models_available ? (health.models_available[k] ? "live ✓" : v ? "missing ✗" : "") : "?"}
+                    </span>
+                  </div>
+                ))}
+                <div className={health.cutover_audit.ok ? "text-cash" : "text-udhaar"}>gemini-2.5 refs: {health.cutover_audit.gemini_2_5_references}</div>
+                {health.missing_env.length > 0 && <div className="text-udhaar">missing env: {health.missing_env.join(", ")}</div>}
+                {health.model_check_error && <div className="text-ink-2">model list: {health.model_check_error.slice(0, 120)}</div>}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <div className="grid grid-cols-2 gap-2">
+          <a href="/verify" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
+            /verify
+          </a>
+          <a href="/report" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
+            SMEConnect report
+          </a>
+        </div>
+        <button onClick={() => void signOut()} className="tactile flex h-11 w-full items-center justify-center gap-2 rounded-[12px] text-[14px] font-semibold text-udhaar-ink">
+          <LogOut size={15} strokeWidth={SW} /> Sign out
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** Stage backup: replay a REAL previously-recorded clip through the live pipeline (new idempotency key). */
+export function ReplaysSheet({ onClose }: { onClose: () => void }) {
+  const { submitTurn, closeSheet } = useDukaan();
+  const [clips, setClips] = useState<ReplayClip[] | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    void listReplays().then(setClips);
+  }, []);
+  const send = (blob: Blob, mime: string) => {
+    closeSheet();
+    void submitTurn({ blob, mime });
+  };
+  return (
+    <Sheet open onClose={onClose} title="Real-audio replay">
+      <div className="space-y-2.5 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">
+        <p className="text-[13px] text-ink-2">Every clip you record is kept on this phone (last 12). If the auditorium echo kills the live mic, replay a real recording through the same pipeline.</p>
+        <input ref={fileRef} type="file" accept="audio/*" hidden onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) send(f, f.type || "audio/webm");
+        }} />
+        <SecondaryButton className="flex w-full items-center justify-center gap-2" onClick={() => fileRef.current?.click()}>
+          <Upload size={15} strokeWidth={SW} /> Load audio file
+        </SecondaryButton>
+        <div className="surface-card overflow-hidden">
+          {clips === null && <div className="p-4"><Spinner /></div>}
+          {clips?.length === 0 && <div className="p-4 text-[13px] text-ink-2">No recordings yet — use the mic once.</div>}
+          {clips?.map((c) => (
+            <div key={c.id} className="hairline-b flex items-center gap-2 px-4 py-3 last:border-b-0">
+              <button aria-label="Play" onClick={() => void new Audio(URL.createObjectURL(c.blob)).play()} className="tactile grid h-9 w-9 place-items-center rounded-full bg-surface-sunken">
+                <Play size={14} strokeWidth={SW} />
+              </button>
+              <span className="min-w-0 flex-1 truncate text-[13.5px]" dir="auto">{c.transcript}</span>
+              <button onClick={() => send(c.blob, c.mime)} className="tactile h-8 rounded-full bg-ink px-3 text-[12.5px] font-semibold text-white">
+                Replay
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Sheet>
+  );
+}

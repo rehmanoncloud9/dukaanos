@@ -1,0 +1,105 @@
+"use client";
+
+import { Mic, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { MIN_CLIP_MS, Recorder } from "@/lib/audio/recorder";
+import { cx, Spinner, SW } from "./ui";
+
+/**
+ * 66px Hold-to-Talk mic. Hold → record (turns #047857 with a REAL 5-bar AnalyserNode meter),
+ * slide left to cancel, release to send. Auto-stops at 20 s.
+ */
+export function MicButton({ onClip, onDenied, busy }: { onClip: (blob: Blob, mime: string) => void; onDenied: (msg: string) => void; busy?: boolean }) {
+  const rec = useRef<Recorder | null>(null);
+  const startX = useRef(0);
+  const [recording, setRecording] = useState(false);
+  const [levels, setLevels] = useState([0, 0, 0, 0, 0]);
+  const [cancelling, setCancelling] = useState(false);
+  const [secs, setSecs] = useState(0);
+  const tick = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const finish = async (cancel: boolean) => {
+    const r = rec.current;
+    rec.current = null;
+    if (tick.current) clearInterval(tick.current);
+    setRecording(false);
+    setLevels([0, 0, 0, 0, 0]);
+    setCancelling(false);
+    if (!r) return;
+    if (cancel) {
+      r.cancel();
+      return;
+    }
+    try {
+      const res = await r.stop();
+      if (res.durationMs < MIN_CLIP_MS || res.blob.size < 800) {
+        onDenied("Mic dabaa kar rakhein aur bolein (hold to talk)");
+        return;
+      }
+      onClip(res.blob, res.mime);
+    } catch (e) {
+      onDenied(e instanceof Error ? e.message : "Recording failed");
+    }
+  };
+
+  const start = async (e: React.PointerEvent) => {
+    if (busy || rec.current) return;
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    startX.current = e.clientX;
+    if (!Recorder.supported()) {
+      onDenied("Is browser mein mic nahi — neeche type karein");
+      return;
+    }
+    const r = new Recorder();
+    rec.current = r;
+    try {
+      await r.start(setLevels, () => void finish(false));
+      setRecording(true);
+      setSecs(0);
+      tick.current = setInterval(() => setSecs((s) => s + 1), 1000);
+      navigator.vibrate?.(15);
+    } catch {
+      rec.current = null;
+      onDenied("Mic permission denied — typed input is open below");
+    }
+  };
+
+  return (
+    <div className="relative flex flex-col items-center">
+      {recording && (
+        <div className="absolute -top-11 whitespace-nowrap rounded-full bg-ink px-3 py-1 text-[12px] font-semibold text-white num">
+          {cancelling ? "Release to cancel" : `0:${String(secs).padStart(2, "0")} · ← slide to cancel`}
+        </div>
+      )}
+      <button
+        aria-label="Hold to talk"
+        onPointerDown={start}
+        onPointerMove={(e) => recording && setCancelling(startX.current - e.clientX > 70)}
+        onPointerUp={() => void finish(cancelling)}
+        onPointerCancel={() => void finish(true)}
+        onContextMenu={(e) => e.preventDefault()}
+        className={cx(
+          "tactile grid h-[66px] w-[66px] select-none place-items-center rounded-full text-white shadow-[0_8px_24px_rgba(0,0,0,0.22)] transition-colors",
+          recording ? (cancelling ? "bg-udhaar" : "bg-cash") : "bg-ink",
+        )}
+        style={{ touchAction: "none" }}
+      >
+        {busy ? (
+          <Spinner className="h-6 w-6" />
+        ) : recording ? (
+          cancelling ? (
+            <X size={26} strokeWidth={SW} />
+          ) : (
+            <span className="flex h-[26px] items-center gap-[3px]">
+              {levels.map((l, i) => (
+                <span key={i} className="eq-bar" style={{ height: `${6 + Math.round(l * 20)}px` }} />
+              ))}
+            </span>
+          )
+        ) : (
+          <Mic size={24} strokeWidth={SW} />
+        )}
+      </button>
+    </div>
+  );
+}

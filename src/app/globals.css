@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+/* ── DukaanOS Daylight Financial tokens (DESIGN.md §2, verbatim) ── */
+@theme {
+  /* Daylight Financial Surfaces & High-Contrast Ink */
+  --color-canvas: #F2F2F7;          /* iOS grouped background */
+  --color-surface: #FFFFFF;         /* 100% opaque elevated cards */
+  --color-surface-sunken: #EBEBEF;  /* Segmented control & subtle wells */
+  --color-ink: #0A0A0A;             /* 19.8:1 primary ink */
+  --color-ink-2: #52525B;           /* 7.4:1 secondary ink (bans text-gray-400) */
+  --color-ink-3: #71717A;           /* Tertiary captions / inactive icons */
+
+  /* Strictly Restrained Semantic Accents */
+  --color-cash: #047857;            /* Cash / Verified / Settled */
+  --color-cash-bg: #DCFCE7;         /* High-contrast status pill fill */
+  --color-cash-ink: #14532D;        /* Status pill text */
+
+  --color-udhaar: #C2410C;          /* Udhaar / Overdue / MATH_MISMATCH */
+  --color-udhaar-bg: #FEE2E2;       /* High-contrast alert pill fill */
+  --color-udhaar-ink: #991B1B;      /* Alert pill text */
+
+  --color-maal: #0F766E;            /* Maal / Inventory / Parchi Scan */
+  --color-maal-bg: #F0FDFA;         /* New Item / Stock pill fill */
+
+  /* Apple Wallet Pass Surface (Screen 6 Only) */
+  --color-pass-bg: #0F172A;
+  --color-pass-elevated: #1E293B;
+  --color-pass-emerald: #10B981;
+  --color-pass-ink: #F8FAFC;
+  --color-pass-muted: #94A3B8;
+
+  /* Offline / pending amber */
+  --color-amber-bg: #FEF3C7;
+  --color-amber-ink: #92400E;
+
+  /* Hairlines & Concentric Radii */
+  --color-border-card: rgba(0, 0, 0, 0.08);
+  --color-border-hairline: rgba(0, 0, 0, 0.06);
+  --radius-card: 16px;
+  --radius-sheet: 24px;
+  --radius-pass: 20px;
+  --radius-cta: 14px;
+  --radius-chip: 12px;
+
+  /* Typography */
+  --font-sans: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-urdu-ui: var(--font-noto-arabic), "Noto Sans Arabic", sans-serif;
+  --font-urdu-read: var(--font-nastaliq), "Noto Nastaliq Urdu", serif;
+
+  /* Motion */
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-tactile: cubic-bezier(0.2, 0, 0, 1);
+}
+
+html, body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.num {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+.rs-prefix {
+  font-size: 0.62em;
+  font-weight: 500;
+  opacity: 0.58;
+  margin-right: 3px;
+}
+
+.hairline-b { border-bottom: 1px solid var(--color-border-hairline); }
+@media (min-resolution: 2dppx) { .hairline-b { border-bottom-width: 0.5px; } }
+.hairline-t { border-top: 1px solid var(--color-border-hairline); }
+@media (min-resolution: 2dppx) { .hairline-t { border-top-width: 0.5px; } }
+
+.section-label {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-2);
+}
+
+.surface-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-card);
+  border-radius: var(--radius-card);
+}
+
+.tactile {
+  transition: transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 120ms ease;
+  touch-action: manipulation;
+}
+.tactile:active { transform: scale(0.97); }
+
+/* Urdu */
+.urdu-ui { font-family: var(--font-urdu-ui); font-weight: 600; line-height: 1.75; padding-block: 3px; }
+.urdu-read { font-family: var(--font-urdu-read); font-size: 16px; line-height: 2.15; overflow: visible; }
+
+/* Sticky chrome only — cards stay opaque */
+.chrome-blur {
+  background: rgba(242, 242, 247, 0.82);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+}
+.tabbar-blur {
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+}
+
+/* 5-bar real AnalyserNode meter */
+.eq-bar { width: 3px; border-radius: 9999px; background: #fff; transition: height 80ms linear; }
+
+/* Bottom sheet */
+@keyframes sheet-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes scrim-in { from { opacity: 0; } to { opacity: 1; } }
+.sheet-in { animation: sheet-in 300ms var(--ease-spring); }
+.scrim-in { animation: scrim-in 200ms ease-out; }
+
+/* 5 s undo countdown */
+@keyframes countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.countdown { transform-origin: left; animation: countdown linear forwards; }
+
+@keyframes flash-in { 0% { background: #DCFCE7; } 100% { background: transparent; } }
+.row-flash { animation: flash-in 1600ms ease-out; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 0.9s linear infinite; }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+
+@media print {
+  .no-print { display: none !important; }
+  html, body { background: #fff; }
+}
