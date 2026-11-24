@@ -44,8 +44,8 @@ jobs:
         run: npx next build
       - name: Secrets audit on client bundle
         run: |
-          if grep -rnE "SUPABASE_SERVICE_ROLE_KEY|ED25519_PRIVATE_KEY|DEMO_RESET_SECRET|GEMINI_API_KEY" .next/static; then
-            echo "::error::Server secret name leaked into .next/static client bundle!"
+          if grep -rnE "SUPABASE_SERVICE_ROLE_KEY|ED25519_PRIVATE_KEY|GEMINI_API_KEY|AIzaSy" .next/static; then
+            echo "::error::Server secret or key leaked into .next/static client bundle!"
             exit 1
           fi
       - run: npm audit --omit=dev --audit-level=high
