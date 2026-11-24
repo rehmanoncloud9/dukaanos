@@ -1,7 +1,9 @@
 import { z } from "zod";
 import type { CommitResponse } from "@/lib/api/contracts";
 import { handle, ok, parseJson } from "@/lib/api/http";
-import { rpc, shopContext } from "@/lib/supabase/server";
+import { requireShopContext } from "@/lib/server/auth";
+import { enforceRateLimit } from "@/lib/server/ratelimit";
+import { rpc } from "@/lib/supabase/server";
 
 export const maxDuration = 60;
 
@@ -39,7 +41,8 @@ const Body = z.object({
 /** commit_sale — the ONLY way a sale reaches the books (server recomputes every paisa). */
 export const POST = handle(async (req: Request) => {
   const t0 = Date.now();
-  const { sb, shopId } = shopContext(req);
+  const { sb, shopId, userId } = await requireShopContext(req);
+  await enforceRateLimit(`write:${userId}`, 120, "1 minute");
   const body = await parseJson(req, Body);
   const res = await rpc<CommitResponse>(sb, "commit_sale", {
     p_shop_id: shopId,

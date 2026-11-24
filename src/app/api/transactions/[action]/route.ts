@@ -1,7 +1,9 @@
 import { z } from "zod";
 import type { CommitResponse } from "@/lib/api/contracts";
 import { ApiError, handle, ok, parseJson } from "@/lib/api/http";
-import { rpc, shopContext } from "@/lib/supabase/server";
+import { requireShopContext } from "@/lib/server/auth";
+import { enforceRateLimit } from "@/lib/server/ratelimit";
+import { rpc } from "@/lib/supabase/server";
 
 export const maxDuration = 60;
 
@@ -65,7 +67,8 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ action:
   const { action } = await ctx.params;
   const route = ROUTES[action as keyof typeof ROUTES];
   if (!route) throw new ApiError("BAD_REQUEST", `Unknown transaction action "${action}"`, undefined, 404);
-  const { sb, shopId } = shopContext(req);
+  const { sb, shopId, userId } = await requireShopContext(req);
+  await enforceRateLimit(`write:${userId}`, 120, "1 minute");
   const body = await parseJson(req, route.schema as z.ZodType<Record<string, unknown>>);
   const res = await rpc<CommitResponse>(sb, route.fn, { p_shop_id: shopId, p_payload: body });
   return ok({ ...res, api_ms: Date.now() - t0 });

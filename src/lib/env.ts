@@ -4,7 +4,15 @@ function opt(name: string, fallback = ""): string {
   return process.env[name]?.trim() || fallback;
 }
 
+function numOpt(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
 export const env = {
+  isProd: () => process.env.NODE_ENV === "production",
   supabaseUrl: () => opt("NEXT_PUBLIC_SUPABASE_URL"),
   supabaseAnonKey: () => opt("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseServiceKey: () => opt("SUPABASE_SERVICE_ROLE_KEY"),
@@ -20,6 +28,16 @@ export const env = {
   demoResetSecret: () => opt("DEMO_RESET_SECRET"),
   stageEmail: () => opt("STAGE_EMAIL", "stage@dukaanos.pk"),
   appUrl: () => opt("NEXT_PUBLIC_APP_URL", "http://localhost:3000"),
+  turnstileSiteKey: () => opt("NEXT_PUBLIC_TURNSTILE_SITE_KEY"),
+  turnstileSecretKey: () => opt("TURNSTILE_SECRET_KEY"),
+  aiCapVoice: () => numOpt("AI_DAILY_CAP_VOICE", 400),
+  aiCapParchi: () => numOpt("AI_DAILY_CAP_PARCHI", 30),
+  aiCapQa: () => numOpt("AI_DAILY_CAP_QA", 60),
+  aiCapTts: () => numOpt("AI_DAILY_CAP_TTS", 60),
+  aiGlobalDailyPkrCap: () => numOpt("AI_GLOBAL_DAILY_PKR_CAP", 5000),
+  minSupportedAppVersion: () => opt("MIN_SUPPORTED_APP_VERSION", "1.0.0"),
+  latestAppVersion: () => opt("LATEST_APP_VERSION", "1.0.0"),
+  cronSecret: () => opt("CRON_SECRET"),
 };
 
 export function missingEnv(): string[] {

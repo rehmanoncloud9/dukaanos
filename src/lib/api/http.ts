@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { ZodType } from "zod";
 
@@ -12,6 +13,7 @@ export const ERROR_STATUS: Record<string, number> = {
   IDEMPOTENCY_KEY_REQUIRED: 400,
   BAD_REQUEST: 400,
   AUTH_REQUIRED: 401,
+  RECENT_AUTH_REQUIRED: 401,
   FORBIDDEN: 403,
   NOT_A_DEMO_SHOP: 403,
   PRODUCT_NOT_FOUND: 404,
@@ -21,6 +23,7 @@ export const ERROR_STATUS: Record<string, number> = {
   CANNOT_REVERSE_REVERSAL: 409,
   AUDIO_TOO_LARGE: 413,
   IMAGE_TOO_LARGE: 413,
+  PAYLOAD_TOO_LARGE: 413,
   UNSUPPORTED_MEDIA: 415,
   MATH_MISMATCH: 422,
   RATE_LIMITED: 429,
@@ -30,6 +33,14 @@ export const ERROR_STATUS: Record<string, number> = {
   SERVER_MISCONFIGURED: 500,
   AI_UNAVAILABLE: 503,
   AI_TIMEOUT: 504,
+};
+
+const GENERIC_PROD_MESSAGES: Record<string, string> = {
+  INTERNAL: "An unexpected error occurred",
+  DB_ERROR: "Database operation failed",
+  SERVER_MISCONFIGURED: "Service temporarily unavailable",
+  FORBIDDEN: "Access denied",
+  AUTH_REQUIRED: "Authentication required",
 };
 
 export class ApiError extends Error {
@@ -47,13 +58,32 @@ export function ok<T>(data: T, init?: ResponseInit) {
   return NextResponse.json(data, init);
 }
 
-export function errorResponse(e: unknown) {
+export function errorResponse(e: unknown, requestId?: string) {
+  const isProd = process.env.NODE_ENV === "production";
+  const headers: Record<string, string> = {};
+  if (requestId) headers["x-request-id"] = requestId;
+
   if (e instanceof ApiError) {
-    return NextResponse.json({ error: { code: e.code, message: e.message, details: e.details ?? null } }, { status: e.status });
+    const safeMessage =
+      isProd && e.status >= 500
+        ? (GENERIC_PROD_MESSAGES[e.code] ?? "Internal server error")
+        : e.message;
+    const safeDetails = isProd && e.status >= 500 ? null : (e.details ?? null);
+    if (e.status >= 500) {
+      console.error("[api] error", { requestId, code: e.code, message: e.message });
+    }
+    return NextResponse.json(
+      { error: { code: e.code, message: safeMessage, details: safeDetails } },
+      { status: e.status, headers },
+    );
   }
+
   const msg = e instanceof Error ? e.message : String(e);
-  console.error("[api] unhandled", e);
-  return NextResponse.json({ error: { code: "INTERNAL", message: msg } }, { status: 500 });
+  console.error("[api] unhandled", { requestId, message: msg });
+  return NextResponse.json(
+    { error: { code: "INTERNAL", message: isProd ? "An unexpected error occurred" : msg } },
+    { status: 500, headers },
+  );
 }
 
 /** Map a Postgres exception ("UDHAAR_REQUIRES_CUSTOMER", "PRODUCT_NOT_FOUND: …") to an ApiError. */
@@ -61,8 +91,8 @@ export function fromDbError(err: { message?: string; hint?: string | null; code?
   const message = err.message ?? "DB_ERROR";
   const code = message.split(":")[0].trim();
   if (ERROR_STATUS[code]) return new ApiError(code, message, err.hint ?? err.details ?? undefined);
-  if (err.code === "42501" || /permission denied/i.test(message)) return new ApiError("FORBIDDEN", message);
-  if (/JWT|token/i.test(message)) return new ApiError("AUTH_REQUIRED", message);
+  if (err.code === "42501" || /permission denied/i.test(message)) return new ApiError("FORBIDDEN", "Access denied");
+  if (/JWT|token/i.test(message)) return new ApiError("AUTH_REQUIRED", "Authentication required");
   return new ApiError("DB_ERROR", message, err.details ?? undefined, 500);
 }
 
@@ -91,15 +121,21 @@ export function shopIdFrom(req: Request): string {
   return id;
 }
 
-/** Wrap a route handler body with uniform error handling. */
+/** Wrap a route handler body with uniform error handling and x-request-id propagation. */
 export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response>) {
   return async (...args: A): Promise<Response> => {
+    const req = args[0] as Request | undefined;
+    const requestId = req?.headers?.get("x-request-id") || randomUUID();
     try {
-      return await fn(...args);
+      const res = await fn(...args);
+      if (!res.headers.has("x-request-id")) {
+        res.headers.set("x-request-id", requestId);
+      }
+      return res;
     } catch (e) {
       // Next.js control-flow signals (prerender bail-out, redirects…) must propagate untouched.
       if (e && typeof e === "object" && "digest" in e && /^(NEXT_|DYNAMIC_SERVER_USAGE|BAILOUT)/.test(String((e as { digest: unknown }).digest))) throw e;
-      return errorResponse(e);
+      return errorResponse(e, requestId);
     }
   };
 }

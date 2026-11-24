@@ -2,7 +2,8 @@ import { signPassport, toPayload, type TradeSummary } from "@/lib/crypto/passpor
 import { ApiError, handle, ok } from "@/lib/api/http";
 import { numify } from "@/lib/api/shop";
 import { env } from "@/lib/env";
-import { rpc, shopContext } from "@/lib/supabase/server";
+import { requireShopContext } from "@/lib/server/auth";
+import { rpc } from "@/lib/supabase/server";
 
 export const maxDuration = 60;
 
@@ -16,7 +17,7 @@ const DISCLAIMER =
  */
 export const GET = handle(async (req: Request) => {
   const t0 = Date.now();
-  const { sb, shopId } = shopContext(req);
+  const { sb, shopId } = await requireShopContext(req);
   const days = Math.min(90, Math.max(7, Number(new URL(req.url).searchParams.get("days") ?? 30) || 30));
   const priv = env.ed25519PrivateKey();
   if (!priv) throw new ApiError("SERVER_MISCONFIGURED", "ED25519_PRIVATE_KEY missing — run npm run setup");
