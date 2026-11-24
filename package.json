@@ -1,0 +1,46 @@
+{
+  "name": "dukaanos",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:gen": "tsx scripts/gen-seed.ts",
+    "db:apply": "tsx --env-file=.env.local scripts/db-apply.ts",
+    "setup": "tsx scripts/setup.ts",
+    "eval": "tsx --env-file-if-exists=.env.local scripts/eval-munshi.ts",
+    "verify": "tsc --noEmit && vitest run"
+  },
+  "dependencies": {
+    "@google/genai": "^3.6.1",
+    "@noble/ed25519": "^3.2.0",
+    "@noble/hashes": "^2.4.0",
+    "@supabase/supabase-js": "^2.119.2",
+    "idb-keyval": "^6.3.0",
+    "lucide-react": "^1.79.0",
+    "next": "16.4.6",
+    "pg": "^8.23.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-qr-code": "^2.2.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.6.0",
+    "@tailwindcss/turbopack": "4.3.3",
+    "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.1.1"
+  }
+}
