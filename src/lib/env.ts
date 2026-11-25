@@ -16,6 +16,7 @@ export const env = {
   supabaseUrl: () => opt("NEXT_PUBLIC_SUPABASE_URL"),
   supabaseAnonKey: () => opt("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseServiceKey: () => opt("SUPABASE_SERVICE_ROLE_KEY"),
+  aiBillingMode: (): "free" | "billed" => (opt("AI_BILLING_MODE", "free") === "billed" ? "billed" : "free"),
   geminiKey: () => opt("GEMINI_API_KEY"),
   // Approved fast/agent routes. No generic fallback model is used in production.
   fastModel: () => opt("AI_FAST_MODEL", "gemini-3.5-flash-lite"),
@@ -45,7 +46,6 @@ export function missingEnv(): string[] {
     ["NEXT_PUBLIC_SUPABASE_URL", env.supabaseUrl],
     ["NEXT_PUBLIC_SUPABASE_ANON_KEY", env.supabaseAnonKey],
     ["SUPABASE_SERVICE_ROLE_KEY", env.supabaseServiceKey],
-    ["GEMINI_API_KEY", env.geminiKey],
     ["ED25519_PRIVATE_KEY", env.ed25519PrivateKey],
     ["NEXT_PUBLIC_ED25519_PUBLIC_KEY", env.ed25519PublicKey],
     ["DEMO_RESET_SECRET", env.demoResetSecret],

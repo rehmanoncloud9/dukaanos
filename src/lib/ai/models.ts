@@ -101,9 +101,11 @@ export async function generateContentOnce(
     const usage = tokenUsage(response);
     attempts.push({ model: actualModel, ok: true, ms: Date.now() - attemptStarted });
     if (billing?.shopId && reservation) {
-      const estimate = usage.available
-        ? estimateCostPkrMicros(actualModel, usage, env.aiUsdToPkrRate()).costPkrMicros
-        : reservation.cost_micros;
+      const estimate = env.aiBillingMode() === "free"
+        ? 0
+        : usage.available
+          ? estimateCostPkrMicros(actualModel, usage, env.aiUsdToPkrRate()).costPkrMicros
+          : reservation.cost_micros;
       await recordUsage(
         billing.shopId,
         billing.kind,

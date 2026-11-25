@@ -41,13 +41,16 @@ function capForKind(kind: AiKind): number {
 /** Reserve one call and a conservative token allowance before calling Gemini. */
 export async function checkQuota(shopId: string, kind: AiKind, model: string): Promise<QuotaLease> {
   const tokenReservation = RESERVATION_TOKENS[kind];
+  const isFree = env.aiBillingMode() === "free";
   const reservation = {
     ...tokenReservation,
-    cost_micros: estimateCostPkrMicros(
-      model,
-      { ...tokenReservation, cached_input_tokens: 0 },
-      env.aiUsdToPkrRate(),
-    ).costPkrMicros,
+    cost_micros: isFree
+      ? 0
+      : estimateCostPkrMicros(
+        model,
+        { ...tokenReservation, cached_input_tokens: 0 },
+        env.aiUsdToPkrRate(),
+      ).costPkrMicros,
   };
   const globalCapMicros = Math.round(env.aiGlobalDailyPkrCap() * 1_000_000);
   const res = await rpc<QuotaResult>(adminClient(), "consume_ai_quota", {
