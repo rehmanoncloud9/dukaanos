@@ -78,7 +78,7 @@ Canonical error codes: `UDHAAR_REQUIRES_CUSTOMER` (400), `NEGATIVE_STOCK` (soft)
 
 ## Tools & AI disclosure (CYE 04-HK)
 
-Built with **Claude (Anthropic, Claude Code)**, **Codex**, and **Antigravity** as AI coding assistants, under the team's direction and review.
+Built with **Claude (Anthropic, free tier)**, **Codex (free tier)**, and **Antigravity (free tier)** as AI coding assistants, under the team's direction and review.
 
 - **Runtime AI (Free Tier + Local Fallbacks):** **Google AI Studio Free Tier** (`AI_BILLING_MODE=free`, zero paid API keys) with `AI_FAST_MODEL` (`gemini-3.5-flash-lite` for audio/text & parchi OCR), `AI_AGENT_MODEL` (`gemini-3.8-flash` for Q&A), and `AI_TTS_MODEL` (`gemini-3.8-flash-lite-tts`), backed by deterministic local fallbacks (`fallback-parser.ts`, `agent.ts` rules fallback, and browser `speechSynthesis` `ur-PK`).
 - **Web Platform & Libraries:** **Supabase Free Tier** (Postgres, Auth, RLS, `pg_trgm`), **Vercel Hobby** (hosting + daily purge cron), **Cloudflare Turnstile** (free bot protection, optional), **Next.js 16 / React 19 / Tailwind CSS v4**, `idb-keyval`, `@noble/ed25519`, `@noble/hashes`, `react-qr-code`, `lucide-react`, `zod`, `@google/genai`, `pg`, Vitest + `@electric-sql/pglite`.
