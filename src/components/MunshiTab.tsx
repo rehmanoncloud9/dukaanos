@@ -121,14 +121,14 @@ export function MunshiTab() {
           <div className={cx("section-label flex items-center gap-1.5", lang === "ur" && "urdu-ui")} dir="auto">
             <span className="h-1.5 w-1.5 rounded-full bg-cash" /> {tr("todayCash", lang)}
           </div>
-          <Money paisa={today.cash_sales_paisa} className="mt-1.5 block text-[28px] font-bold leading-[32px] tracking-[-0.02em]" />
+          <Money paisa={today.cash_sales_paisa} className="mt-1.5 block text-[22px] font-bold leading-[26px] tracking-[-0.02em]" />
           <div className="mt-1 text-[13px] text-ink-2" dir="auto">{today.sales_count} {tr("sales", lang)}</div>
         </div>
         <div className="surface-card p-3.5">
           <div className={cx("section-label flex items-center gap-1.5", lang === "ur" && "urdu-ui")} dir="auto">
             <span className="h-1.5 w-1.5 rounded-full bg-udhaar" /> {tr("todayUdhaar", lang)}
           </div>
-          <Money paisa={today.udhaar_paisa} className="mt-1.5 block text-[28px] font-bold leading-[32px] tracking-[-0.02em] text-udhaar" />
+          <Money paisa={today.udhaar_paisa} className="mt-1.5 block text-[22px] font-bold leading-[26px] tracking-[-0.02em] text-udhaar" />
           <div className="mt-1 text-[13px] text-ink-2" dir="auto">{today.udhaar_accounts} {tr("accounts", lang)}</div>
         </div>
       </div>

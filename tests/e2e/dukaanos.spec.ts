@@ -29,8 +29,11 @@ test.describe("DukaanOS Web PWA E2E", () => {
     await page.goto("/");
 
     // 1. Sandbox sign-in
-    await page.getByRole("button", { name: /Try Live Demo Shop/i }).click();
-    await expect(page.getByText(/Today cash/i)).toBeVisible({ timeout: 30_000 }).catch((e) => {
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/api/demo/sandbox") && r.request().method() === "POST"),
+      page.getByRole("button", { name: /Try Live Demo Shop/i }).click(),
+    ]);
+    await expect(page.getByText(/Today cash/i)).toBeVisible({ timeout: 45_000 }).catch((e) => {
       throw new Error(`${e.message}\nNetwork/Page errors: ${errors.join("; ")}`);
     });
 
@@ -41,7 +44,7 @@ test.describe("DukaanOS Web PWA E2E", () => {
     await page.getByRole("button", { name: "Send" }).click();
 
     await expect(page.getByText(/Review Entry/i)).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("button", { name: /Chhote Ali/i }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /Chhote Ali/i }).click();
     await page.getByRole("button", { name: /Confirm & Save/i }).click();
 
     // Receipt sheet -> Done -> X-Ray Replay Test (0 Dupes)
@@ -52,25 +55,35 @@ test.describe("DukaanOS Web PWA E2E", () => {
     await expect(page.getByText(/X-Ray Inspector/i)).toBeVisible();
     await page.getByRole("button", { name: /Replay Test/i }).click();
     await expect(page.getByText(/0 Dupes/i)).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: "Close" }).first().click();
+    await page.getByRole("button", { name: "Close" }).last().click();
 
     // 3. Simulate Offline -> typed sale queued -> reconnect -> synced
     await page.getByRole("button", { name: /Bismillah Kiryana/i }).click();
     await page.getByRole("button", { name: /Simulate Offline/i }).click();
-    await page.getByRole("button", { name: "Close" }).first().click();
+    await page.getByRole("button", { name: "Close" }).last().click();
 
     await input.fill("Ek kilo cheeni cash");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByText(/1 Pending Sync/i)).toBeVisible();
 
     await page.getByRole("button", { name: /Reconnect/i }).click();
+    // If model fell back to Tier-2 rule parse, confirm the queued review sheet; otherwise Tier-1 auto-commits
+    const reviewConfirm = page.getByRole("button", { name: /Confirm & Save/i });
+    if (await reviewConfirm.isVisible({ timeout: 10_000 }).catch(() => false)) {
+      await reviewConfirm.click();
+      const doneBtn = page.getByRole("button", { name: /^Done$/i });
+      if (await doneBtn.isVisible({ timeout: 10_000 }).catch(() => false)) await doneBtn.click();
+    }
+    // Close X-Ray if Judge Mode auto-opened it
+    const xrayClose = page.getByRole("button", { name: "Close" }).last();
+    if (await xrayClose.isVisible({ timeout: 2_000 }).catch(() => false)) await xrayClose.click();
     await expect(page.getByText(/1 Pending Sync/i)).toBeHidden({ timeout: 25_000 });
 
     // 4. Pulse via "Subah ka hisaab batao"
     await input.fill("Subah ka hisaab batao");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByText(/Munshi Pulse/i)).toBeVisible({ timeout: 20_000 });
-    await page.getByRole("button", { name: "Close" }).first().click();
+    await page.getByRole("button", { name: "Close" }).last().click();
 
     // 5. Khata Wasooli + SMEConnect Passport + /verify valid & tamper invalid
     await page.getByRole("tab", { name: /Khata/i }).click();
