@@ -17,10 +17,9 @@ export const env = {
   supabaseAnonKey: () => opt("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseServiceKey: () => opt("SUPABASE_SERVICE_ROLE_KEY"),
   geminiKey: () => opt("GEMINI_API_KEY"),
-  // Pinned late-2026 models (Dec 1 cutover-safe). Swappable without code changes.
+  // Approved fast/agent routes. No generic fallback model is used in production.
   fastModel: () => opt("AI_FAST_MODEL", "gemini-3.5-flash-lite"),
   agentModel: () => opt("AI_AGENT_MODEL", "gemini-3.8-flash"),
-  fallbackModel: () => opt("AI_FALLBACK_MODEL"),
   ttsModel: () => opt("AI_TTS_MODEL", "gemini-3.8-flash-lite-tts"),
   aiTimeoutMs: () => Number(opt("AI_TIMEOUT_MS", "6000")),
   ed25519PrivateKey: () => opt("ED25519_PRIVATE_KEY"),
@@ -35,6 +34,7 @@ export const env = {
   aiCapQa: () => numOpt("AI_DAILY_CAP_QA", 60),
   aiCapTts: () => numOpt("AI_DAILY_CAP_TTS", 60),
   aiGlobalDailyPkrCap: () => numOpt("AI_GLOBAL_DAILY_PKR_CAP", 5000),
+  aiUsdToPkrRate: () => numOpt("AI_USD_TO_PKR_RATE", 280),
   minSupportedAppVersion: () => opt("MIN_SUPPORTED_APP_VERSION", "1.0.0"),
   latestAppVersion: () => opt("LATEST_APP_VERSION", "1.0.0"),
   cronSecret: () => opt("CRON_SECRET"),

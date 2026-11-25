@@ -1,3 +1,5 @@
+import { parseRupeeAmount } from "./urdu-numbers";
+
 /**
  * Integer-paisa money helpers. 1 PKR = 100 paisa.
  * Floating point is forbidden for stored money: every value that leaves this
@@ -16,7 +18,10 @@ export function assertPaisa(value: number, label = "amount"): Paisa {
 /** Convert a spoken/typed rupee figure (e.g. 250, 1500, 12.5) to integer paisa. */
 export function rupeesToPaisa(rupees: number): Paisa {
   if (!Number.isFinite(rupees)) throw new Error(`invalid rupee amount: ${rupees}`);
-  return Math.round(rupees * 100);
+  const negative = rupees < 0;
+  const parsed = parseRupeeAmount(String(Math.abs(rupees)));
+  if (!parsed) throw new Error(`rupee amount must have at most two decimal places and be within the safe integer range: ${rupees}`);
+  return assertPaisa(negative ? -parsed.paisa : parsed.paisa);
 }
 
 const grouping = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
@@ -55,7 +60,31 @@ export function formatJournal(paisa: Paisa): string {
 
 /** Deterministic integer rounding of (a * b) / c, half away from zero. */
 export function mulDiv(a: number, b: number, c: number): number {
+  if (![a, b, c].every(Number.isSafeInteger)) throw new Error("mulDiv expects safe integer operands");
   if (c === 0) throw new Error("division by zero");
-  const q = (a * b) / c;
-  return q < 0 ? -Math.round(-q) : Math.round(q);
+  const gcd = (left: number, right: number): number => {
+    let x = Math.abs(left);
+    let y = Math.abs(right);
+    while (y !== 0) [x, y] = [y, x % y];
+    return x;
+  };
+  let left = a;
+  let right = b;
+  let denominator = c;
+  const cancelLeft = gcd(left, denominator);
+  left /= cancelLeft;
+  denominator /= cancelLeft;
+  const cancelRight = gcd(right, denominator);
+  right /= cancelRight;
+  denominator /= cancelRight;
+
+  const numerator = left * right;
+  if (!Number.isSafeInteger(numerator)) throw new Error("mulDiv intermediate exceeds safe integer range");
+  const quotient = Math.trunc(numerator / denominator);
+  const remainder = numerator % denominator;
+  const roundUp = Math.abs(remainder) >= Math.ceil(Math.abs(denominator) / 2);
+  const sign = (numerator < 0) !== (denominator < 0) ? -1 : 1;
+  const result = quotient + (roundUp ? sign : 0);
+  if (!Number.isSafeInteger(result)) throw new Error("mulDiv result exceeds safe integer range");
+  return result;
 }

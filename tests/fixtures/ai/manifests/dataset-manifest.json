@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0.0",
+  "provenance": "synthetic",
+  "real_consented_samples": {
+    "voice_audio_clips": 0,
+    "parchi_images": 0,
+    "status": "unavailable_in_repository",
+    "note": "No real shopkeeper audio recordings or photographed handwritten parchis are committed. See engineering/ai/P2_FIELD_VALIDATION.md for consent and collection requirements."
+  },
+  "datasets": [
+    {
+      "id": "golden-voice-fixtures",
+      "path": "tests/fixtures/ai/voice/golden-voice-fixtures.json",
+      "kind": "voice",
+      "provenance": "synthetic",
+      "description": "Synthetic Pakistani kiryana counter transcripts and simulated model extractions covering Urdu numbers, dialects, Tier-1/Tier-2 safety, self-corrections, and prompt injection."
+    },
+    {
+      "id": "golden-parchi-fixtures",
+      "path": "tests/fixtures/ai/parchi/golden-parchi-fixtures.json",
+      "kind": "parchi",
+      "provenance": "synthetic",
+      "description": "Synthetic wholesale parchi OCR evidence fixtures covering Nastaliq Urdu, Arabic-Indic numerals, package sizes, unit conversion safety, arithmetic mismatches, and prompt injection."
+    }
+  ]
+}

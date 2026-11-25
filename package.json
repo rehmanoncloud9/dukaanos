@@ -13,6 +13,9 @@
     "db:apply": "tsx --env-file=.env.local scripts/db-apply.ts",
     "setup": "tsx scripts/setup.ts",
     "eval": "tsx --env-file-if-exists=.env.local scripts/eval-munshi.ts",
+    "eval:ai": "tsx --env-file-if-exists=.env.local scripts/eval-munshi.ts --rules && tsx scripts/eval-ai.ts --all",
+    "eval:ai:voice": "tsx --env-file-if-exists=.env.local scripts/eval-ai.ts --voice",
+    "eval:ai:parchi": "tsx --env-file-if-exists=.env.local scripts/eval-ai.ts --parchi",
     "verify": "tsc --noEmit && vitest run"
   },
   "dependencies": {

@@ -3,6 +3,7 @@ import { listModelIds } from "@/lib/ai/models";
 import { synthesizeUrdu } from "@/lib/ai/tts";
 import { ApiError, bearer, handle, ok, parseJson } from "@/lib/api/http";
 import { env, missingEnv } from "@/lib/env";
+import { requireShopContext } from "@/lib/server/auth";
 import { rpc, userClient } from "@/lib/supabase/server";
 
 export const maxDuration = 60;
@@ -17,7 +18,7 @@ type Ctx = { params: Promise<{ endpoint: string }> };
 export const GET = handle(async (req: Request, ctx: Ctx) => {
   const { endpoint } = await ctx.params;
   if (endpoint === "health") {
-    const pinned = { fast: env.fastModel(), agent: env.agentModel(), fallback: env.fallbackModel() || null, tts: env.ttsModel() };
+    const pinned = { fast: env.fastModel(), agent: env.agentModel(), tts: env.ttsModel() };
     let models: Record<string, boolean> | null = null;
     let modelError: string | null = null;
     try {
@@ -57,9 +58,11 @@ const NewShop = z.object({
 export const POST = handle(async (req: Request, ctx: Ctx) => {
   const { endpoint } = await ctx.params;
   if (endpoint === "tts") {
-    bearer(req); // signed-in users only (cost control)
+    const { sb, shopId } = await requireShopContext(req);
+    const memberships = await rpc<Array<{ id: string }>>(sb, "my_shops", {});
+    if (!memberships.some((shop) => shop.id === shopId)) throw new ApiError("FORBIDDEN", "Shop membership required");
     const { text } = await parseJson(req, z.object({ text: z.string().trim().min(1).max(400) }));
-    const r = await synthesizeUrdu(text);
+    const r = await synthesizeUrdu(text, shopId);
     return new Response(new Uint8Array(r.wav), {
       headers: { "content-type": "audio/wav", "x-model": r.model, "x-latency-ms": String(r.latency_ms), "cache-control": "no-store" },
     });

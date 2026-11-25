@@ -7,32 +7,50 @@ import { loadCatalog, numify } from "@/lib/api/shop";
 import { buildPaymentProposal, buildSaleProposal, settle } from "@/lib/domain/bill";
 import { parseQuantityPhrase, resolveLine } from "@/lib/domain/desi-units";
 import { PULSE_REGEX } from "@/lib/domain/fallback-parser";
+import { requireShopContext } from "@/lib/server/auth";
+import { enforceRateLimit } from "@/lib/server/ratelimit";
+import { AUDIO_MIME_TYPES, audioContentMatches, readMultipartLimited } from "@/lib/server/media-validation";
 import type { Catalog, ProposalLine, SaleProposal } from "@/lib/domain/types";
-import { rpc, shopContext } from "@/lib/supabase/server";
+import { rpc } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const maxDuration = 60;
 
 const MAX_AUDIO_BYTES = 4 * 1024 * 1024;
+const MAX_MULTIPART_OVERHEAD = 128 * 1024;
 
 export const POST = handle(async (req: Request) => {
   const t0 = Date.now();
-  const { sb, shopId } = shopContext(req);
+  const { sb, shopId, userId } = await requireShopContext(req);
+  await enforceRateLimit(`ai:voice:${userId}`, 30, "1 minute");
 
   let audio: { base64: string; mimeType: string } | null = null;
   let text: string | null = null;
   const ct = req.headers.get("content-type") ?? "";
   if (ct.startsWith("multipart/form-data")) {
-    const form = await req.formData();
+    let parsed: FormData | null;
+    try {
+      parsed = await readMultipartLimited(req, MAX_AUDIO_BYTES + MAX_MULTIPART_OVERHEAD);
+    } catch {
+      throw new ApiError("BAD_REQUEST", "Malformed multipart audio request");
+    }
+    if (!parsed) throw new ApiError("AUDIO_TOO_LARGE", "Request exceeds the 4 MB audio limit");
+    const form = parsed;
     const file = form.get("audio");
     const t = form.get("text");
     text = typeof t === "string" && t.trim() ? t.trim() : null;
     if (file && typeof file !== "string") {
       const mime = (file.type || "").toLowerCase();
-      // MIME negotiation differs per browser (webm/opus, mp4, wav…): accept any audio/*
       if (!mime.startsWith("audio/")) throw new ApiError("UNSUPPORTED_MEDIA", `Expected audio/*, got "${mime || "unknown"}"`);
+      const mediaType = mime.split(";")[0].trim();
+      if (!AUDIO_MIME_TYPES.some((supported) => supported === mediaType)) {
+        throw new ApiError("UNSUPPORTED_MEDIA", "Supported audio formats are WebM, Ogg, WAV, MP4, MP3, and FLAC");
+      }
+      if (file.size === 0) throw new ApiError("BAD_REQUEST", "Audio clip is empty");
       if (file.size > MAX_AUDIO_BYTES) throw new ApiError("AUDIO_TOO_LARGE", `Clip is ${(file.size / 1e6).toFixed(1)} MB (max 4 MB)`);
-      audio = { base64: Buffer.from(await file.arrayBuffer()).toString("base64"), mimeType: mime.split(";")[0] };
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (!audioContentMatches(mediaType, bytes)) throw new ApiError("UNSUPPORTED_MEDIA", "Audio file contents do not match the declared format");
+      audio = { base64: Buffer.from(bytes).toString("base64"), mimeType: mediaType };
     }
   } else {
     text = (await parseJson(req, z.object({ text: z.string().trim().min(1).max(600) }))).text;
@@ -48,7 +66,7 @@ export const POST = handle(async (req: Request) => {
   }
 
   const { state, catalog } = await loadCatalog(sb, shopId);
-  const turn = await parseTurn({ audio, text, catalog, shopName: state.shop.name });
+  const turn = await parseTurn({ audio, text, catalog, shopName: state.shop.name, shopId });
   const p = turn.parsed;
   const baseTrace = (pakphone: PakPhoneTrace | null): TurnTrace => ({
     transcript: p.transcript,
@@ -133,7 +151,12 @@ async function upgradeWithTrgm(proposal: SaleProposal, sb: SupabaseClient, shopI
   let changed = false;
   const lines: ProposalLine[] = [];
   for (const l of proposal.lines) {
-    if (l.kind !== "new_sku") {
+    if (l.kind !== "new_sku" || l.number_unresolved) {
+      lines.push(l);
+      continue;
+    }
+    const quantity = parseQuantityPhrase(l.quantity_phrase);
+    if (quantity.unresolved || (!l.quantity_phrase && l.value_paisa === null)) {
       lines.push(l);
       continue;
     }
@@ -142,7 +165,7 @@ async function upgradeWithTrgm(proposal: SaleProposal, sb: SupabaseClient, shopI
       const hit = hits?.[0];
       const product = hit && hit.score >= 0.55 ? catalog.products.find((x) => x.id === hit.product_id) : undefined;
       if (hit && product) {
-        const res = resolveLine(product, { quantity: parseQuantityPhrase(l.quantity_phrase), value_paisa: l.value_paisa });
+        const res = resolveLine(product, { quantity, value_paisa: l.value_paisa });
         changed = true;
         lines.push({
           ...l,
