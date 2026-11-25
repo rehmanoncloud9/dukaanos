@@ -1,0 +1,26 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["jest"],
+    "paths": {
+      "@domain/*": ["../src/lib/domain/*"],
+      "@contracts": ["../src/lib/api/contracts.ts"],
+      "@passport": ["../src/lib/crypto/passport.ts"],
+      "@/lib/domain/*": ["../src/lib/domain/*"],
+      "@/*": ["./src/*"],
+      "@/assets/*": ["./assets/*"]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts",
+    "../src/lib/domain/**/*.ts",
+    "../src/lib/api/contracts.ts",
+    "../src/lib/crypto/passport.ts"
+  ],
+  "exclude": ["node_modules"]
+}
