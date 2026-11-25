@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import QRCode from "react-qr-code";
 import type { StateCustomer } from "@/lib/api/contracts";
 import { api, friendlyError } from "@/lib/client/api";
+import { tr } from "@/lib/client/i18n";
 import { useDukaan } from "@/lib/client/store";
 import { verifyPassport, type PassportPayload, type TradeSummary } from "@/lib/crypto/passport";
 import { reminderText, smsLink, waLink } from "@/lib/domain/messages";
@@ -15,7 +16,7 @@ import { cx, Money, PrimaryButton, Segmented, Sheet, shortDate, Spinner } from "
 type Filter = "all" | "overdue" | "settled";
 
 export function KhataTab() {
-  const { state, openSheet } = useDukaan();
+  const { state, openSheet, lang } = useDukaan();
   const [filter, setFilter] = useState<Filter>("all");
   const [adding, setAdding] = useState(false);
 
@@ -39,11 +40,11 @@ export function KhataTab() {
   return (
     <div className="space-y-3">
       <div className="surface-card p-4">
-        <div className="section-label">Total receivable</div>
+        <div className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("totalReceivable", lang)}</div>
         <Money paisa={receivable} className="mt-1 block text-[34px] font-bold leading-[38px] tracking-[-0.03em] text-udhaar" />
         <div className="hairline-t mt-3 flex justify-between pt-3 text-[14px]">
-          <span className="text-ink-2">{active.length} active accounts</span>
-          <span className="font-semibold text-udhaar">{overdue.length} overdue</span>
+          <span className="text-ink-2" dir="auto">{active.length} {tr("activeAccounts", lang)}</span>
+          <span className="font-semibold text-udhaar" dir="auto">{overdue.length} {tr("overdue", lang)}</span>
         </div>
       </div>
 
@@ -51,9 +52,9 @@ export function KhataTab() {
         value={filter}
         onChange={setFilter}
         options={[
-          { value: "all", label: "All" },
-          { value: "overdue", label: "Overdue" },
-          { value: "settled", label: "Settled" },
+          { value: "all", label: tr("all", lang) },
+          { value: "overdue", label: tr("overdueFilter", lang) },
+          { value: "settled", label: tr("settled", lang) },
         ]}
       />
 
@@ -145,8 +146,37 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
   const { state, openSheet, refresh, toast } = useDukaan();
   const c = state?.customers.find((x) => x.id === customerId);
   const [phone, setPhone] = useState(c?.phone ?? "");
+  const [items, setItems] = useState<import("@/lib/api/contracts").FeedTx[] | null>(null);
+  const [nextSeq, setNextSeq] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  useEffect(() => {
+    setItems(null);
+    setNextSeq(null);
+    api<{ items: import("@/lib/api/contracts").FeedTx[]; next_before_seq: number | null }>(`/api/shop/customer-ledger?customer_id=${customerId}&limit=50`)
+      .then((r) => {
+        setItems(r.items);
+        setNextSeq(r.next_before_seq);
+      })
+      .catch(() => {
+        setItems(state?.feed.filter((t) => t.customer_id === customerId) ?? []);
+      });
+  }, [customerId, state?.feed]);
+
   if (!c || !state) return null;
-  const history = state.feed.filter((t) => t.customer_id === c.id);
+  const history = items ?? state.feed.filter((t) => t.customer_id === c.id);
+
+  const loadMore = async () => {
+    if (!nextSeq || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const r = await api<{ items: import("@/lib/api/contracts").FeedTx[]; next_before_seq: number | null }>(`/api/shop/customer-ledger?customer_id=${c.id}&before_seq=${nextSeq}&limit=50`);
+      setItems((prev) => [...(prev ?? []), ...r.items]);
+      setNextSeq(r.next_before_seq);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
   return (
     <Sheet open onClose={onClose} title={c.name}>
       <div className="space-y-3 px-5 pb-[max(16px,env(safe-area-inset-bottom))]">
@@ -180,10 +210,16 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
         </PrimaryButton>
         <div className="section-label pt-1">Khata history (SHA-256 chained)</div>
         <div className="surface-card overflow-hidden">
-          {history.length === 0 && <div className="px-4 py-4 text-[13px] text-ink-2">Recent feed mein koi entry nahi</div>}
+          {items === null && <div className="flex items-center justify-center p-4 text-[13px] text-ink-2"><Spinner /></div>}
+          {items !== null && history.length === 0 && <div className="px-4 py-4 text-[13px] text-ink-2">Koi entry nahi</div>}
           {history.map((t) => (
             <FeedRow key={t.id} t={t} onOpen={() => openSheet({ type: "xray", txId: t.id })} />
           ))}
+          {nextSeq !== null && (
+            <button onClick={() => void loadMore()} disabled={loadingMore} className="hairline-t tactile flex h-11 w-full items-center justify-center text-[13px] font-semibold text-ink-2">
+              {loadingMore ? <Spinner /> : "Load older khata"}
+            </button>
+          )}
         </div>
       </div>
     </Sheet>

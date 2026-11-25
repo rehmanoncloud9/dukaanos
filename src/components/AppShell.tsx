@@ -1,19 +1,23 @@
 "use client";
 
 import { BookOpen, Camera, Lock, Mic, Package, QrCode, WifiOff } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
+import { newKey } from "@/lib/client/api";
+import { tr } from "@/lib/client/i18n";
 import { DukaanProvider, useDukaan, type Tab } from "@/lib/client/store";
-import { CustomerSheet, KhataTab, PassportSheet } from "./KhataTab";
+import { CustomerSheet, KhataTab } from "./KhataTab";
 import { MaalTab, ProductSheet } from "./MaalTab";
 import { MunshiTab } from "./MunshiTab";
 import { CreateShop, Loading, SetupNeeded, Splash } from "./Onboarding";
-import { ParchiSheet } from "./ParchiSheet";
 import { PulseSheet } from "./PulseSheet";
 import { AnswerSheet, PaymentSheet, ReceiptSheet, ReversalSheet, SaleReviewSheet } from "./ReviewSheets";
 import { ReplaysSheet, SettingsSheet } from "./SettingsSheet";
 import { cx, SW } from "./ui";
-import { XRaySheet } from "./XRaySheet";
-import { newKey } from "@/lib/client/api";
+
+const XRaySheet = dynamic(() => import("./XRaySheet").then((m) => m.XRaySheet), { ssr: false });
+const ParchiSheet = dynamic(() => import("./ParchiSheet").then((m) => m.ParchiSheet), { ssr: false });
+const PassportSheet = dynamic(() => import("./KhataTab").then((m) => m.PassportSheet), { ssr: false });
 
 export function DukaanApp() {
   return (
@@ -64,12 +68,24 @@ function Shell() {
     return () => window.removeEventListener("dukaan:filter", h);
   }, [setTab]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("share") === "parchi") {
+      setTab("maal");
+      openSheet({ type: "parchi" });
+      params.delete("share");
+      const next = params.toString();
+      window.history.replaceState({}, "", next ? `/?${next}` : "/");
+    }
+  }, [openSheet, setTab]);
+
   return (
     <>
       <div className="mx-auto min-h-dvh max-w-[430px] px-4 pb-[160px]">
         <Header />
+        <JudgeBanner />
         <OfflineBanner />
-        {stateError && !state && <div className="mb-3 rounded-[12px] bg-udhaar-bg px-3 py-2 text-[14px] text-udhaar-ink">{stateError}</div>}
+        {stateError && !state && <div role="alert" aria-live="assertive" className="mb-3 rounded-[12px] bg-udhaar-bg px-3 py-2 text-[14px] text-udhaar-ink">{stateError}</div>}
         {tab === "munshi" && <MunshiTab />}
         {tab === "khata" && <KhataTab />}
         {tab === "maal" && <MaalTab />}
@@ -83,7 +99,7 @@ function Shell() {
 }
 
 function Header() {
-  const { tab, state, shop, xrayOn, setXrayOn, openSheet } = useDukaan();
+  const { tab, state, shop, xrayOn, setXrayOn, openSheet, reviewCount, openQueuedReview, lang } = useDukaan();
   const press = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longFired = useRef(false);
   const name = state?.shop.name ?? shop?.name ?? "DukaanOS";
@@ -113,10 +129,21 @@ function Header() {
       {tab === "munshi" && (
         <>
           {titleButton(name)}
-          <span className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-surface-sunken px-2 text-[11.5px] font-semibold text-ink-2">
-            <Lock size={11} strokeWidth={SW} /> Zero FBR
+          <span className={cx("inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-surface-sunken px-2 text-[11.5px] font-semibold text-ink-2", lang === "ur" && "urdu-ui")} dir="auto">
+            <Lock size={11} strokeWidth={SW} /> {tr("zeroFbr", lang)}
           </span>
+          {reviewCount > 0 && (
+            <button
+              onClick={() => void openQueuedReview()}
+              aria-label={`Open ${reviewCount} queued review items`}
+              className="tactile inline-flex h-7 shrink-0 items-center gap-1 rounded-full bg-amber-bg px-2.5 text-[12px] font-semibold text-amber-ink"
+            >
+              Review {reviewCount}
+            </button>
+          )}
           <button
+            aria-label="Toggle X-Ray Judge Mode"
+            aria-pressed={xrayOn}
             onClick={() => {
               const next = !xrayOn;
               setXrayOn(next);
@@ -130,7 +157,7 @@ function Header() {
       )}
       {tab === "khata" && (
         <>
-          {titleButton("Khata")}
+          {titleButton(tr("khata", lang))}
           <button onClick={() => openSheet({ type: "passport" })} className="tactile ml-auto flex h-8 items-center gap-1.5 rounded-full bg-ink px-3 text-[13.5px] font-semibold text-white">
             <QrCode size={14} strokeWidth={SW} /> SMEConnect
           </button>
@@ -138,13 +165,26 @@ function Header() {
       )}
       {tab === "maal" && (
         <>
-          {titleButton("Maal")}
-          <button onClick={() => openSheet({ type: "parchi" })} className="tactile ml-auto flex h-8 items-center gap-1.5 rounded-full bg-maal px-3 text-[13.5px] font-semibold text-white">
-            <Camera size={14} strokeWidth={SW} /> Scan Parchi
+          {titleButton(tr("maal", lang))}
+          <button onClick={() => openSheet({ type: "parchi" })} className={cx("tactile ml-auto flex h-8 items-center gap-1.5 rounded-full bg-maal px-3 text-[13.5px] font-semibold text-white", lang === "ur" && "urdu-ui")} dir="auto">
+            <Camera size={14} strokeWidth={SW} /> {tr("scanParchi", lang)}
           </button>
         </>
       )}
     </header>
+  );
+}
+
+function JudgeBanner() {
+  const { xrayOn, setXrayOn, lang } = useDukaan();
+  if (!xrayOn) return null;
+  return (
+    <div className="mb-2.5 flex items-center justify-between rounded-[12px] bg-ink px-3 py-1.5 text-[12px] font-medium text-white">
+      <span dir="auto" className={lang === "ur" ? "urdu-ui" : "font-mono"}>{tr("judgeModeOn", lang)}</span>
+      <button onClick={() => setXrayOn(false)} className="ml-2 rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold">
+        OFF
+      </button>
+    </div>
   );
 }
 
@@ -168,19 +208,25 @@ function OfflineBanner() {
 }
 
 function TabBar() {
-  const { tab, setTab } = useDukaan();
+  const { tab, setTab, lang } = useDukaan();
   const items: Array<{ id: Tab; label: string; Icon: typeof Mic }> = [
-    { id: "munshi", label: "Munshi", Icon: Mic },
-    { id: "khata", label: "Khata", Icon: BookOpen },
-    { id: "maal", label: "Maal", Icon: Package },
+    { id: "munshi", label: tr("munshi", lang), Icon: Mic },
+    { id: "khata", label: tr("khata", lang), Icon: BookOpen },
+    { id: "maal", label: tr("maal", lang), Icon: Package },
   ];
   return (
-    <nav className="tabbar-blur hairline-t fixed inset-x-0 bottom-0 z-40 pb-safe">
-      <div className="mx-auto grid h-[58px] max-w-[430px] grid-cols-3">
+    <nav aria-label="Main navigation" className="tabbar-blur hairline-t fixed inset-x-0 bottom-0 z-40 pb-safe">
+      <div role="tablist" className="mx-auto grid h-[58px] max-w-[430px] grid-cols-3">
         {items.map(({ id, label, Icon }) => (
-          <button key={id} onClick={() => setTab(id)} className={cx("flex flex-col items-center justify-center gap-0.5 text-[11px] font-semibold", tab === id ? "text-ink" : "text-ink-3")}>
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={cx("flex min-h-[48px] flex-col items-center justify-center gap-0.5 text-[11px] font-semibold", tab === id ? "text-ink" : "text-ink-3")}
+          >
             <Icon size={20} strokeWidth={SW} />
-            {label}
+            <span dir="auto" className={lang === "ur" ? "urdu-ui text-[12px] leading-none" : ""}>{label}</span>
           </button>
         ))}
       </div>
@@ -193,7 +239,7 @@ function UndoToast() {
   if (!undo) return null;
   const left = Math.max(0, undo.until - Date.now());
   return (
-    <div className="fixed inset-x-0 bottom-[150px] z-40 mx-auto max-w-[430px] px-4">
+    <div role="status" aria-live="polite" className="fixed inset-x-0 bottom-[150px] z-40 mx-auto max-w-[430px] px-4">
       <div className="relative flex h-11 items-center overflow-hidden rounded-xl bg-[#0A0A0A] pl-4 pr-1 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
         <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">{undo.message}</span>
         <button onClick={() => void doUndo()} className="tactile h-9 rounded-lg px-3 text-[14px] font-bold text-[#34D399]">
@@ -208,10 +254,12 @@ function UndoToast() {
 function Toasts() {
   const { toasts } = useDukaan();
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-3 z-[60] mx-auto flex max-w-[430px] flex-col gap-2 px-4">
+    <div aria-live="polite" className="pointer-events-none fixed inset-x-0 top-3 z-[60] mx-auto flex max-w-[430px] flex-col gap-2 px-4">
       {toasts.map((t) => (
         <div
           key={t.id}
+          role={t.tone === "err" ? "alert" : "status"}
+          aria-live={t.tone === "err" ? "assertive" : "polite"}
           className={cx(
             "pointer-events-auto flex items-center gap-2 rounded-[14px] px-3.5 py-2.5 text-[13.5px] font-medium shadow-[0_8px_24px_rgba(0,0,0,0.12)] sheet-in",
             t.tone === "ok" && "bg-cash-bg text-cash-ink",

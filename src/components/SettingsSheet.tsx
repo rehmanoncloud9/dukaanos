@@ -1,11 +1,12 @@
 "use client";
 
-import { FileAudio, LogOut, Play, RefreshCw, ShieldAlert, ShieldCheck, Trash2, Upload, WifiOff } from "lucide-react";
+import { Download, FileAudio, LogOut, Play, RefreshCw, ShieldAlert, ShieldCheck, Trash2, Upload, UserX, WifiOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, friendlyError } from "@/lib/client/api";
-import { dequeue, listReplays, type ReplayClip } from "@/lib/client/queue";
+import { tr, type Lang } from "@/lib/client/i18n";
+import { listReplays, type ReplayClip } from "@/lib/client/queue";
 import { useDukaan } from "@/lib/client/store";
-import { cx, Pill, PrimaryButton, SecondaryButton, Sheet, Spinner, SW } from "./ui";
+import { cx, Pill, PrimaryButton, SecondaryButton, Segmented, Sheet, Spinner, SW } from "./ui";
 
 interface Health {
   ok: boolean;
@@ -17,7 +18,7 @@ interface Health {
 }
 
 export function SettingsSheet({ onClose }: { onClose: () => void }) {
-  const { shops, shop, setShopId, pending, queue, flush, simulatedOffline, setSimulatedOffline, refresh, toast, signOut, openSheet, submitTurn, session } = useDukaan();
+  const { shops, shop, setShopId, pending, queue, flush, openQueuedReview, discardQueued, simulatedOffline, setSimulatedOffline, refresh, toast, signOut, openSheet, submitTurn, session, lang, setLang } = useDukaan();
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
@@ -48,8 +49,20 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
     });
 
   return (
-    <Sheet open onClose={onClose} title="Settings">
+    <Sheet open onClose={onClose} title={tr("settings", lang)}>
       <div className="space-y-4 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">
+        <section>
+          <div className="section-label mb-2" dir="auto">{tr("language", lang)}</div>
+          <Segmented<Lang>
+            value={lang}
+            onChange={setLang}
+            options={[
+              { value: "en", label: "English" },
+              { value: "ur", label: "اردو" },
+            ]}
+          />
+        </section>
+
         <section>
           <div className="section-label mb-2">Shop</div>
           <div className="surface-card overflow-hidden">
@@ -84,11 +97,18 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
                 <span className="min-w-0 flex-1 truncate">{q.kind === "text" ? q.text : `Voice clip · ${new Date(q.created_at).toLocaleTimeString()}`}</span>
                 <Pill tone={q.status === "review" ? "maal" : q.status === "failed" ? "udhaar" : "amber"}>{q.status}</Pill>
                 {q.status !== "pending" && (
-                  <button className="tactile text-[12.5px] font-semibold text-cash" onClick={() => void submitTurn({ blob: q.blob, mime: q.mime, text: q.text }, q.idempotency_key)}>
+                  <button
+                    className="tactile min-h-[36px] px-2 text-[12.5px] font-semibold text-cash"
+                    onClick={() =>
+                      q.status === "review"
+                        ? void openQueuedReview(q.idempotency_key)
+                        : void submitTurn({ blob: q.blob, mime: q.mime, text: q.text }, q.idempotency_key)
+                    }
+                  >
                     Open
                   </button>
                 )}
-                <button aria-label="Discard" onClick={() => void dequeue(q.idempotency_key).then(refresh)} className="text-ink-3">
+                <button aria-label="Discard" onClick={() => void discardQueued(q.idempotency_key)} className="grid h-9 w-9 place-items-center text-ink-3">
                   <Trash2 size={14} strokeWidth={SW} />
                 </button>
               </div>
@@ -157,15 +177,51 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
         </section>
 
         <div className="grid grid-cols-2 gap-2">
-          <a href="/verify" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
+          <a href="/verify" target="_blank" rel="noreferrer" className="tactile flex h-11 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
             /verify
           </a>
-          <a href="/report" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
+          <a href="/report" target="_blank" rel="noreferrer" className="tactile flex h-11 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
             SMEConnect report
           </a>
         </div>
-        <button onClick={() => void signOut()} className="tactile flex h-11 w-full items-center justify-center gap-2 rounded-[12px] text-[14px] font-semibold text-udhaar-ink">
-          <LogOut size={15} strokeWidth={SW} /> Sign out
+
+        <section>
+          <div className="section-label mb-2">Data rights &amp; legal</div>
+          <div className="space-y-2">
+            <button
+              onClick={() =>
+                void act("export", async () => {
+                  const data = await api<Record<string, unknown>>("/api/account/export");
+                  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `dukaanos-export-${new Date().toISOString().slice(0, 10)}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  toast("Shop data exported (JSON)", "ok");
+                })
+              }
+              className="tactile flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold"
+            >
+              {busy === "export" ? <Spinner /> : <Download size={15} strokeWidth={SW} />} {tr("exportData", lang)}
+            </button>
+            <div className="grid grid-cols-3 gap-2">
+              <a href="/privacy" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
+                {tr("privacy", lang)}
+              </a>
+              <a href="/terms" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
+                {tr("terms", lang)}
+              </a>
+              <a href="/delete-account" className="tactile flex h-10 items-center justify-center gap-1 rounded-[12px] bg-udhaar-bg text-[12.5px] font-semibold text-udhaar-ink">
+                <UserX size={13} strokeWidth={SW} /> Delete
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <button onClick={() => void signOut()} className="tactile flex h-12 w-full items-center justify-center gap-2 rounded-[12px] text-[14px] font-semibold text-udhaar-ink">
+          <LogOut size={15} strokeWidth={SW} /> {tr("signOut", lang)}
         </button>
       </div>
     </Sheet>

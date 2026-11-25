@@ -5,6 +5,8 @@
  * so a retry can never double-post (the RPC dedupes on (shop_id, idempotency_key)).
  */
 import { createStore, del, entries, get, set } from "idb-keyval";
+import type { FeedTx, TurnTrace } from "@/lib/api/contracts";
+import type { PaymentProposal, SaleProposal } from "@/lib/domain/types";
 
 export interface QueuedTurn {
   idempotency_key: string;
@@ -17,6 +19,10 @@ export interface QueuedTurn {
   attempts: number;
   status: "pending" | "review" | "failed";
   last_error?: string;
+  review_kind?: "sale" | "payment" | "reversal";
+  proposal?: SaleProposal | PaymentProposal;
+  target?: FeedTx | null;
+  trace?: TurnTrace | null;
 }
 
 const pending = typeof indexedDB !== "undefined" ? createStore("dukaanos-queue", "pending") : undefined;
@@ -44,8 +50,17 @@ export async function pendingCount(shopId?: string): Promise<number> {
   return (await listQueue(shopId)).filter((q) => q.status !== "failed").length;
 }
 
+export async function reviewCount(shopId?: string): Promise<number> {
+  return (await listQueue(shopId)).filter((q) => q.status === "review").length;
+}
+
+export type FlushOutcome =
+  | "done"
+  | "review"
+  | { status: "review"; patch?: Partial<QueuedTurn> };
+
 /** Sequential flush. `process` returns "done" (remove), "review" (keep for human) or throws (retry later). */
-export async function flushQueue(shopId: string, process: (q: QueuedTurn) => Promise<"done" | "review">): Promise<{ done: number; review: number; failed: number }> {
+export async function flushQueue(shopId: string, process: (q: QueuedTurn) => Promise<FlushOutcome>): Promise<{ done: number; review: number; failed: number }> {
   const out = { done: 0, review: 0, failed: 0 };
   for (const q of await listQueue(shopId)) {
     if (q.status !== "pending") continue;
@@ -55,7 +70,8 @@ export async function flushQueue(shopId: string, process: (q: QueuedTurn) => Pro
         await dequeue(q.idempotency_key);
         out.done++;
       } else {
-        await updateQueued(q.idempotency_key, { status: "review" });
+        const patch = typeof r === "object" && r.patch ? r.patch : {};
+        await updateQueued(q.idempotency_key, { ...patch, status: "review" });
         out.review++;
       }
     } catch (e) {

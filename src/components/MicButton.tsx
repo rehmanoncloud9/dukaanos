@@ -13,6 +13,7 @@ export function MicButton({ onClip, onDenied, busy }: { onClip: (blob: Blob, mim
   const rec = useRef<Recorder | null>(null);
   const startX = useRef(0);
   const [recording, setRecording] = useState(false);
+  const [toggleMode, setToggleMode] = useState(false);
   const [levels, setLevels] = useState([0, 0, 0, 0, 0]);
   const [cancelling, setCancelling] = useState(false);
   const [secs, setSecs] = useState(0);
@@ -23,6 +24,7 @@ export function MicButton({ onClip, onDenied, busy }: { onClip: (blob: Blob, mim
     rec.current = null;
     if (tick.current) clearInterval(tick.current);
     setRecording(false);
+    setToggleMode(false);
     setLevels([0, 0, 0, 0, 0]);
     setCancelling(false);
     if (!r) return;
@@ -42,10 +44,8 @@ export function MicButton({ onClip, onDenied, busy }: { onClip: (blob: Blob, mim
     }
   };
 
-  const start = async (e: React.PointerEvent) => {
+  const beginRecording = async (isToggle: boolean) => {
     if (busy || rec.current) return;
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    startX.current = e.clientX;
     if (!Recorder.supported()) {
       onDenied("Is browser mein mic nahi — neeche type karein");
       return;
@@ -55,6 +55,7 @@ export function MicButton({ onClip, onDenied, busy }: { onClip: (blob: Blob, mim
     try {
       await r.start(setLevels, () => void finish(false));
       setRecording(true);
+      setToggleMode(isToggle);
       setSecs(0);
       tick.current = setInterval(() => setSecs((s) => s + 1), 1000);
       navigator.vibrate?.(15);
@@ -64,18 +65,43 @@ export function MicButton({ onClip, onDenied, busy }: { onClip: (blob: Blob, mim
     }
   };
 
+  const start = async (e: React.PointerEvent) => {
+    if (busy || rec.current) return;
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    startX.current = e.clientX;
+    await beginRecording(false);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === " " || e.key === "Enter") {
+      e.preventDefault();
+      if (recording) void finish(false);
+      else void beginRecording(true);
+    } else if (e.key === "Escape" && recording) {
+      e.preventDefault();
+      void finish(true);
+    }
+  };
+
   return (
     <div className="relative flex flex-col items-center">
       {recording && (
-        <div className="absolute -top-11 whitespace-nowrap rounded-full bg-ink px-3 py-1 text-[12px] font-semibold text-white num">
-          {cancelling ? "Release to cancel" : `0:${String(secs).padStart(2, "0")} · ← slide to cancel`}
+        <div aria-live="polite" className="absolute -top-11 whitespace-nowrap rounded-full bg-ink px-3 py-1 text-[12px] font-semibold text-white num">
+          {cancelling
+            ? "Release to cancel"
+            : toggleMode
+              ? `0:${String(secs).padStart(2, "0")} · Press Space/Enter to stop`
+              : `0:${String(secs).padStart(2, "0")} · ← slide to cancel`}
         </div>
       )}
       <button
-        aria-label="Hold to talk"
+        type="button"
+        aria-label={recording ? "Recording voice — release or press Space to stop" : "Hold to talk, or press Space to toggle recording"}
+        aria-pressed={recording}
+        onKeyDown={onKeyDown}
         onPointerDown={start}
-        onPointerMove={(e) => recording && setCancelling(startX.current - e.clientX > 70)}
-        onPointerUp={() => void finish(cancelling)}
+        onPointerMove={(e) => recording && !toggleMode && setCancelling(startX.current - e.clientX > 70)}
+        onPointerUp={() => !toggleMode && void finish(cancelling)}
         onPointerCancel={() => void finish(true)}
         onContextMenu={(e) => e.preventDefault()}
         className={cx(

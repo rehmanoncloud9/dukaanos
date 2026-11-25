@@ -7,8 +7,9 @@ import { summarizeLines, toCommitInput } from "@/lib/domain/bill";
 import { formatBaseQty } from "@/lib/domain/desi-units";
 import { formatRs } from "@/lib/domain/money";
 import type { PaymentProposal, SaleProposal } from "@/lib/domain/types";
-import { api, ClientApiError, friendlyError, isOffline, newKey, onOfflineChange, setApiShop, setSimulateOffline as setSimOffline, isSimulatedOffline } from "./api";
-import { dequeue, enqueue, flushQueue, listQueue, pendingCount, saveReplay, type QueuedTurn } from "./queue";
+import { api, ClientApiError, friendlyError, isOffline, newKey, onOfflineChange, registerAuthHandlers, setApiShop, setSimulateOffline as setSimOffline, isSimulatedOffline } from "./api";
+import { LANG_KEY, type Lang } from "./i18n";
+import { dequeue, enqueue, flushQueue, listQueue, pendingCount, saveReplay, type FlushOutcome, type QueuedTurn } from "./queue";
 import { browserSupabase, supabaseConfigured } from "./supabase";
 
 export type Tab = "munshi" | "khata" | "maal";
@@ -81,12 +82,17 @@ interface Store {
   closeSheet: () => void;
   xrayOn: boolean;
   setXrayOn: (v: boolean) => void;
+  lang: Lang;
+  setLang: (l: Lang) => void;
   online: boolean;
   simulatedOffline: boolean;
   setSimulatedOffline: (v: boolean) => void;
   pending: number;
+  reviewCount: number;
   queue: QueuedTurn[];
   flush: () => Promise<void>;
+  openQueuedReview: (key?: string) => Promise<void>;
+  discardQueued: (key: string) => Promise<void>;
   thinking: boolean;
   submitTurn: (input: { blob?: Blob; mime?: string; text?: string }, key?: string) => Promise<void>;
   confirmSale: (p: SaleProposal, key: string, trace: TurnTrace | null, opts?: { auto?: boolean }) => Promise<CommitResponse>;
@@ -101,7 +107,7 @@ interface Store {
   toasts: Toast[];
   toast: (message: string, tone?: Toast["tone"], action?: Toast["action"]) => void;
   highlightTx: string | null;
-  signInSandbox: () => Promise<void>;
+  signInSandbox: (turnstileToken?: string) => Promise<void>;
   signInPassword: (email: string, password: string) => Promise<void>;
   signInMagic: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -130,6 +136,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   const [tab, setTab] = useState<Tab>("munshi");
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [xrayOn, setXrayOn] = useState(false);
+  const [lang, setLangState] = useState<Lang>("en");
   const [online, setOnline] = useState(true);
   const [simulatedOffline, setSimulatedOfflineState] = useState(false);
   const [pending, setPending] = useState(0);
@@ -141,6 +148,10 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   const [highlightTx, setHighlightTx] = useState<string | null>(null);
   const flushing = useRef(false);
   const shopRef = useRef<string | null>(null);
+  const sheetRef = useRef<Sheet | null>(null);
+  useEffect(() => {
+    sheetRef.current = sheet;
+  }, [sheet]);
 
   const toast = useCallback((message: string, tone: Toast["tone"] = "info", action?: Toast["action"]) => {
     const id = newKey("t");
@@ -154,6 +165,8 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   /* ── auth ─────────────────────────────────────────── */
   useEffect(() => {
     setXrayOn(new URLSearchParams(window.location.search).get("xray") === "1");
+    const savedLang = localStorage.getItem(LANG_KEY);
+    if (savedLang === "ur" || savedLang === "en") setLangState(savedLang);
     setOnline(!isOffline());
     if (!configured) {
       setAuthReady(true);
@@ -192,6 +205,25 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     }
     reloadShops().catch((e) => setStateError(friendlyError(e)));
   }, [userId, reloadShops]);
+
+  useEffect(() => {
+    registerAuthHandlers({
+      onAuthExpired: () => {
+        setSession(null);
+        setSheet(null);
+        toast("Session khatam ho gaya — dobara sign in karein", "warn");
+      },
+      onShopForbidden: () => {
+        localStorage.removeItem(SHOP_KEY);
+        setApiShop(null);
+        shopRef.current = null;
+        setShopIdState(null);
+        setState(null);
+        void reloadShops().catch(() => undefined);
+      },
+    });
+    return () => registerAuthHandlers({});
+  }, [reloadShops, toast]);
 
   const setShopId = useCallback((id: string) => {
     localStorage.setItem(SHOP_KEY, id);
@@ -257,6 +289,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     const res = await api<CommitResponse>("/api/transactions/commit", { json: payload });
     await dequeue(key).catch(() => undefined);
     recordCommit(res, "/api/transactions/commit", payload, trace, p, summarizeLines(p.lines));
+    navigator.vibrate?.(12);
     void refresh();
     void updatePending();
     if (opts?.auto) {
@@ -277,6 +310,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     const res = await api<CommitResponse>("/api/transactions/payment", { json: payload });
     await dequeue(key).catch(() => undefined);
     recordCommit(res, "/api/transactions/payment", payload, trace ?? null, null, `Wasooli ${formatRs(amountPaisa)}`);
+    navigator.vibrate?.(12);
     void refresh();
     void updatePending();
     return res;
@@ -294,6 +328,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   const commitPurchase = useCallback(async (payload: Record<string, unknown>) => {
     const res = await api<CommitResponse>("/api/transactions/purchase", { json: payload });
     recordCommit(res, "/api/transactions/purchase", payload, null, null, `Restock ${formatRs(res.totals.total_paisa ?? 0)}`);
+    navigator.vibrate?.(12);
     void refresh();
     return res;
   }, [recordCommit, refresh]);
@@ -312,6 +347,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     setUndo(null);
     try {
       await reverse(u.txId, "undo-5s");
+      navigator.vibrate?.(12);
       toast("Undone — stock, cash & chain restored", "ok");
     } catch (e) {
       toast(friendlyError(e), "err");
@@ -319,29 +355,38 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   }, [undo, reverse, toast]);
 
   /* ── turns ─────────────────────────────────────────── */
-  const handleTurn = useCallback(async (res: TurnResponse, key: string): Promise<"done" | "review"> => {
+  const handleTurn = useCallback(async (res: TurnResponse, key: string, opts?: { deferSheet?: boolean }): Promise<FlushOutcome> => {
     switch (res.kind) {
       case "sale":
         if (res.proposal.tier === 1) {
           await confirmSale(res.proposal, key, res.trace, { auto: true });
           return "done";
         }
+        if (opts?.deferSheet) {
+          return { status: "review", patch: { review_kind: "sale", proposal: res.proposal, trace: res.trace } };
+        }
         setSheet({ type: "review", proposal: res.proposal, key, trace: res.trace });
         return "review";
       case "payment":
+        if (opts?.deferSheet) {
+          return { status: "review", patch: { review_kind: "payment", proposal: res.proposal, trace: res.trace } };
+        }
         setSheet({ type: "payment", proposal: res.proposal, key, trace: res.trace });
         return "review";
       case "reversal":
+        if (opts?.deferSheet) {
+          return { status: "review", patch: { review_kind: "reversal", target: res.target, trace: res.trace } };
+        }
         setSheet({ type: "reversal", target: res.target, key });
         return "review";
       case "pulse":
-        setSheet({ type: "pulse", pulse: res.pulse });
+        if (!opts?.deferSheet) setSheet({ type: "pulse", pulse: res.pulse });
         return "done";
       case "answer":
-        setSheet({ type: "answer", answer: res.answer, proposal: res.proposal, trace: res.trace, tools: res.tools });
+        if (!opts?.deferSheet) setSheet({ type: "answer", answer: res.answer, proposal: res.proposal, trace: res.trace, tools: res.tools });
         return "done";
       case "purchase":
-        setSheet({ type: "parchi" });
+        if (!opts?.deferSheet) setSheet({ type: "parchi" });
         return "done";
       default:
         toast(`Samajh nahi aaya${res.trace.transcript ? `: “${res.trace.transcript}”` : ""} — dobara bolein`, "warn");
@@ -381,8 +426,8 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       if (res.trace.source === "rules") toast("Model busy — rule-based parse, please review", "info");
       await handleTurn(res, key);
     } catch (e) {
-      if (e instanceof ClientApiError && (e.network || ["AI_TIMEOUT", "AI_UNAVAILABLE", "RATE_LIMITED"].includes(e.code))) {
-        await queueIt(e.network ? "Network down" : "Munshi busy");
+      if (e instanceof ClientApiError && (e.network || ["AI_TIMEOUT", "AI_UNAVAILABLE", "RATE_LIMITED", "AUTH_REQUIRED"].includes(e.code))) {
+        await queueIt(e.code === "AUTH_REQUIRED" ? "Session expired" : e.network ? "Network down" : "Munshi busy");
       } else {
         toast(friendlyError(e), "err");
       }
@@ -390,6 +435,32 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       setThinking(false);
     }
   }, [postTurn, handleTurn, toast, updatePending]);
+
+  const openQueuedReview = useCallback(async (key?: string) => {
+    const shop = shopRef.current;
+    if (!shop) return;
+    const all = await listQueue(shop);
+    const target = key ? all.find((q) => q.idempotency_key === key) : all.find((q) => q.status === "review");
+    if (!target) return;
+    if (target.review_kind === "sale" && target.proposal) {
+      setSheet({ type: "review", proposal: target.proposal as SaleProposal, key: target.idempotency_key, trace: target.trace ?? null });
+      return;
+    }
+    if (target.review_kind === "payment" && target.proposal) {
+      setSheet({ type: "payment", proposal: target.proposal as PaymentProposal, key: target.idempotency_key, trace: target.trace ?? null });
+      return;
+    }
+    if (target.review_kind === "reversal") {
+      setSheet({ type: "reversal", target: target.target ?? null, key: target.idempotency_key });
+      return;
+    }
+    await submitTurn({ blob: target.blob, mime: target.mime, text: target.text }, target.idempotency_key);
+  }, [submitTurn]);
+
+  const discardQueued = useCallback(async (key: string) => {
+    await dequeue(key);
+    await updatePending();
+  }, [updatePending]);
 
   const flush = useCallback(async () => {
     const shop = shopRef.current;
@@ -401,17 +472,20 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       const t0 = performance.now();
       const r = await flushQueue(shop, async (q) => {
         const res = await postTurn({ blob: q.blob, mime: q.mime, text: q.text });
-        return handleTurn(res, q.idempotency_key);
+        return handleTurn(res, q.idempotency_key, { deferSheet: true });
       });
       await updatePending();
       await refresh();
       if (r.done || r.review) {
         toast(`Synced ${r.done}${r.review ? ` · ${r.review} need review` : ""} in ${((performance.now() - t0) / 1000).toFixed(1)}s · 0 duplicates`, "ok");
       }
+      if (r.review > 0 && !sheetRef.current) {
+        await openQueuedReview();
+      }
     } finally {
       flushing.current = false;
     }
-  }, [postTurn, handleTurn, refresh, updatePending, toast]);
+  }, [postTurn, handleTurn, refresh, updatePending, openQueuedReview, toast]);
 
   /* ── connectivity ─────────────────────────────────────────── */
   useEffect(() => {
@@ -450,8 +524,13 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   }, [undo]);
 
   /* ── sign-in flows (Flow 1) ─────────────────────────────────────────── */
-  const signInSandbox = useCallback(async () => {
-    const r = await api<{ email: string; password: string; shop_id: string }>("/api/demo/sandbox", { json: {}, auth: false, shop: false, timeoutMs: 60_000 });
+  const signInSandbox = useCallback(async (turnstileToken?: string) => {
+    const r = await api<{ email: string; password: string; shop_id: string }>("/api/demo/sandbox", {
+      json: turnstileToken ? { turnstile_token: turnstileToken } : {},
+      auth: false,
+      shop: false,
+      timeoutMs: 60_000,
+    });
     localStorage.setItem(SHOP_KEY, r.shop_id);
     const { error } = await browserSupabase().auth.signInWithPassword({ email: r.email, password: r.password });
     if (error) throw new Error(error.message);
@@ -486,12 +565,18 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     toast(v ? "Simulate Offline ON — Wi-Fi OFF behaviour" : "Back online — flushing queue", v ? "warn" : "ok");
   }, [toast]);
 
+  const setLang = useCallback((l: Lang) => {
+    localStorage.setItem(LANG_KEY, l);
+    setLangState(l);
+  }, []);
+
   const shop = useMemo(() => shops?.find((s) => s.id === shopId) ?? null, [shops, shopId]);
+  const reviewCount = useMemo(() => queue.filter((q) => q.status === "review").length, [queue]);
 
   const value: Store = {
     configured, authReady, session, shops, shopId, shop, setShopId, state, stateError, refresh,
-    tab, setTab, sheet, openSheet, closeSheet, xrayOn, setXrayOn, online, simulatedOffline, setSimulatedOffline,
-    pending, queue, flush, thinking, submitTurn, confirmSale, confirmPayment, reverse, commitPurchase,
+    tab, setTab, sheet, openSheet, closeSheet, xrayOn, setXrayOn, lang, setLang, online, simulatedOffline, setSimulatedOffline,
+    pending, reviewCount, queue, flush, openQueuedReview, discardQueued, thinking, submitTurn, confirmSale, confirmPayment, reverse, commitPurchase,
     lastCommit, replayTest, undo, doUndo, dismissUndo: () => setUndo(null), toasts, toast, highlightTx,
     signInSandbox, signInPassword, signInMagic, signOut, createShop, reloadShops,
   };

@@ -4,6 +4,7 @@ import { AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { StateProduct } from "@/lib/api/contracts";
 import { api, friendlyError } from "@/lib/client/api";
+import { tr } from "@/lib/client/i18n";
 import { useDukaan } from "@/lib/client/store";
 import { formatBaseQty } from "@/lib/domain/desi-units";
 import { formatAmount, rupeesToPaisa } from "@/lib/domain/money";
@@ -28,7 +29,7 @@ export function isLow(p: StateProduct) {
 }
 
 export function MaalTab() {
-  const { state, openSheet } = useDukaan();
+  const { state, openSheet, lang } = useDukaan();
   const [filter, setFilter] = useState<"all" | "low">("all");
   useEffect(() => {
     const h = (e: Event) => {
@@ -60,8 +61,8 @@ export function MaalTab() {
         value={filter}
         onChange={setFilter}
         options={[
-          { value: "all", label: `All (${state.products.length})` },
-          { value: "low", label: `Low stock (${sorted.filter(isLow).length})` },
+          { value: "all", label: `${tr("all", lang)} (${state.products.length})` },
+          { value: "low", label: `${tr("lowStock", lang)} (${sorted.filter(isLow).length})` },
         ]}
       />
       <div className="surface-card overflow-hidden">
@@ -82,8 +83,8 @@ export function MaalTab() {
                 </div>
                 <div className="text-right">
                   <div className={cx("num text-[15px] font-bold", low ? "text-udhaar" : "text-ink")}>{stockLabel(p)}</div>
-                  <div className={cx("text-[12.5px]", low ? "font-semibold text-udhaar" : "text-ink-2")}>
-                    {p.stock_base_units < 0 ? "Negative" : low ? "Low stock" : "Healthy"}
+                  <div className={cx("text-[12.5px]", low ? "font-semibold text-udhaar" : "text-ink-2")} dir="auto">
+                    {p.stock_base_units < 0 ? tr("negative", lang) : low ? tr("lowStock", lang) : tr("healthy", lang)}
                   </div>
                 </div>
               </div>

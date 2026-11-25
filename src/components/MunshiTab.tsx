@@ -1,9 +1,10 @@
 "use client";
 
-import { Camera, ChevronDown, ChevronUp, Keyboard, SendHorizontal } from "lucide-react";
+import { Camera, ChevronDown, ChevronUp, Keyboard, RefreshCw, SendHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FeedTx, Pulse } from "@/lib/api/contracts";
 import { api } from "@/lib/client/api";
+import { tr } from "@/lib/client/i18n";
 import { useDukaan } from "@/lib/client/store";
 import { formatBaseQty } from "@/lib/domain/desi-units";
 import { formatRs } from "@/lib/domain/money";
@@ -64,25 +65,47 @@ export function FeedRow({ t, onOpen, flash }: { t: FeedTx; onOpen: () => void; f
 }
 
 export function MunshiTab() {
-  const { state, openSheet, submitTurn, thinking, toast, highlightTx } = useDukaan();
+  const { state, openSheet, submitTurn, thinking, toast, highlightTx, refresh, lang } = useDukaan();
   const [pulse, setPulse] = useState<Pulse | null>(null);
   const [stripOpen, setStripOpen] = useState(true);
   const [typing, setTyping] = useState(false);
   const [text, setText] = useState("");
   const [showAll, setShowAll] = useState(false);
+  const [extraFeed, setExtraFeed] = useState<FeedTx[]>([]);
+  const [nextSeq, setNextSeq] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const head = state?.chain_head?.seq;
 
   useEffect(() => {
     if (!state) return;
     api<Pulse>("/api/shop/pulse").then(setPulse).catch(() => undefined);
+    setExtraFeed([]);
+    setNextSeq(null);
   }, [state, head]);
 
   if (!state) return <SkeletonMunshi />;
   const today = state.today;
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
-  const todays = state.feed.filter((t) => new Date(t.created_at) >= dayStart);
-  const list = showAll ? state.feed.slice(0, 40) : (todays.length ? todays : state.feed).slice(0, 7);
+  const seenIds = new Set(state.feed.map((t) => t.id));
+  const combinedFeed = [...state.feed, ...extraFeed.filter((t) => !seenIds.has(t.id))];
+  const todays = combinedFeed.filter((t) => new Date(t.created_at) >= dayStart);
+  const list = showAll ? combinedFeed : (todays.length ? todays : combinedFeed).slice(0, 7);
+
+  const loadMoreFeed = async () => {
+    const cursor = nextSeq ?? combinedFeed[combinedFeed.length - 1]?.seq;
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await api<{ items: FeedTx[]; next_before_seq: number | null }>(`/api/shop/feed?before_seq=${cursor}&limit=40`);
+      setExtraFeed((prev) => [...prev, ...res.items]);
+      setNextSeq(res.next_before_seq);
+    } catch {
+      /* offline or end */
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const send = async (v: string) => {
     const s = v.trim();
@@ -95,18 +118,18 @@ export function MunshiTab() {
     <div className="space-y-2.5">
       <div className="grid grid-cols-2 gap-2.5">
         <div className="surface-card p-3.5">
-          <div className="section-label flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-cash" /> Today cash
+          <div className={cx("section-label flex items-center gap-1.5", lang === "ur" && "urdu-ui")} dir="auto">
+            <span className="h-1.5 w-1.5 rounded-full bg-cash" /> {tr("todayCash", lang)}
           </div>
           <Money paisa={today.cash_sales_paisa} className="mt-1.5 block text-[28px] font-bold leading-[32px] tracking-[-0.02em]" />
-          <div className="mt-1 text-[13px] text-ink-2">{today.sales_count} sales</div>
+          <div className="mt-1 text-[13px] text-ink-2" dir="auto">{today.sales_count} {tr("sales", lang)}</div>
         </div>
         <div className="surface-card p-3.5">
-          <div className="section-label flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-udhaar" /> Today udhaar
+          <div className={cx("section-label flex items-center gap-1.5", lang === "ur" && "urdu-ui")} dir="auto">
+            <span className="h-1.5 w-1.5 rounded-full bg-udhaar" /> {tr("todayUdhaar", lang)}
           </div>
           <Money paisa={today.udhaar_paisa} className="mt-1.5 block text-[28px] font-bold leading-[32px] tracking-[-0.02em] text-udhaar" />
-          <div className="mt-1 text-[13px] text-ink-2">{today.udhaar_accounts} accounts</div>
+          <div className="mt-1 text-[13px] text-ink-2" dir="auto">{today.udhaar_accounts} {tr("accounts", lang)}</div>
         </div>
       </div>
 
@@ -150,22 +173,40 @@ export function MunshiTab() {
       )}
 
       <div className="flex items-center justify-between px-1 pt-3">
-        <span className="section-label">{showAll ? "All entries" : `Today · ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" }).toUpperCase()}`}</span>
-        <button onClick={() => setShowAll((s) => !s)} className="section-label">
-          {showAll ? "Show less" : `${list.length} latest`}
-        </button>
+        <span className="section-label" dir="auto">{showAll ? tr("allEntries", lang) : `Today · ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" }).toUpperCase()}`}</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void refresh()}
+            aria-label="Refresh feed"
+            className="tactile grid h-7 w-7 place-items-center rounded-full text-ink-2 hover:bg-surface-sunken"
+          >
+            <RefreshCw size={13} strokeWidth={SW} />
+          </button>
+          <button onClick={() => setShowAll((s) => !s)} className="section-label min-h-[28px]">
+            {showAll ? tr("showLess", lang) : `${list.length} latest`}
+          </button>
+        </div>
       </div>
 
       <div className="surface-card overflow-hidden">
         {thinking && (
           <div className="hairline-b flex h-[60px] items-center gap-3 px-4 text-[14px] text-ink-2">
-            <Spinner className="text-cash" /> Munshi sun raha hai… <span className="font-mono text-[11px]">audio → JSON</span>
+            <Spinner className="text-cash" /> <span dir="auto">{tr("listening", lang)}</span> <span className="font-mono text-[11px]">audio → JSON</span>
           </div>
         )}
-        {list.length === 0 && !thinking && <div className="px-4 py-6 text-center text-[14px] text-ink-2">Koi entry nahi — mic dabaa kar bolein</div>}
+        {list.length === 0 && !thinking && <div className={cx("px-4 py-6 text-center text-[14px] text-ink-2", lang === "ur" && "urdu-ui")} dir="auto">{tr("emptyMunshi", lang)}</div>}
         {list.map((t) => (
           <FeedRow key={t.id} t={t} flash={highlightTx === t.id} onOpen={() => openSheet({ type: "xray", txId: t.id })} />
         ))}
+        {showAll && (nextSeq !== null || state.feed.length >= 25) && (
+          <button
+            onClick={() => void loadMoreFeed()}
+            disabled={loadingMore}
+            className="hairline-t tactile flex h-11 w-full items-center justify-center gap-2 text-[13.5px] font-semibold text-ink-2 disabled:opacity-50"
+          >
+            {loadingMore ? <Spinner /> : "Load older entries"}
+          </button>
+        )}
       </div>
 
       {/* Dock */}
@@ -191,7 +232,7 @@ export function MunshiTab() {
                 dir="auto"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder="Type Urdu / Roman: Chhote Ali ko dedh pao cheeni…"
+                placeholder={tr("typePlaceholder", lang)}
                 className="h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[15px] outline-none"
               />
               <button type="submit" disabled={!text.trim() || thinking} className="tactile grid h-11 w-11 place-items-center rounded-[12px] bg-ink text-white disabled:opacity-40" aria-label="Send">
@@ -203,8 +244,8 @@ export function MunshiTab() {
         <div className="pointer-events-auto relative flex items-center justify-center">
           <button
             onClick={() => setTyping((t) => !t)}
-            aria-label="Type instead"
-            className={cx("tactile absolute left-[calc(50%-112px)] grid h-11 w-11 place-items-center rounded-full border border-black/10 shadow-sm", typing ? "bg-ink text-white" : "bg-surface text-ink")}
+            aria-label={tr("typeInstead", lang)}
+            className={cx("tactile absolute left-[calc(50%-112px)] grid h-12 w-12 place-items-center rounded-full border border-black/10 shadow-sm", typing ? "bg-ink text-white" : "bg-surface text-ink")}
           >
             <Keyboard size={18} strokeWidth={SW} />
           </button>
@@ -218,9 +259,10 @@ export function MunshiTab() {
           />
           <button
             onClick={() => openSheet({ type: "parchi" })}
-            className="tactile absolute left-[calc(50%+46px)] flex h-11 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-4 text-[15px] font-semibold shadow-sm"
+            aria-label={tr("scanParchi", lang)}
+            className="tactile absolute left-[calc(50%+46px)] flex h-12 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-4 text-[15px] font-semibold shadow-sm"
           >
-            <Camera size={16} strokeWidth={SW} className="text-maal" /> Parchi
+            <Camera size={16} strokeWidth={SW} className="text-maal" /> <span dir="auto">{tr("parchi", lang)}</span>
           </button>
         </div>
       </div>

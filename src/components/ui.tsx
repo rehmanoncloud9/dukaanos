@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { formatAmount } from "@/lib/domain/money";
 
 export const SW = 1.75; // lucide strokeWidth lock
@@ -47,23 +47,54 @@ export function Spinner({ className }: { className?: string }) {
 }
 
 export function Sheet({ open, onClose, children, title, right, className }: { open: boolean; onClose: () => void; children: ReactNode; title?: ReactNode; right?: ReactNode; className?: string }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+
   useEffect(() => {
     if (!open) return;
-    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const prev = document.activeElement as HTMLElement | null;
+    const panel = panelRef.current;
+    if (panel) {
+      const first = panel.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      first?.focus();
+    }
+    const k = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key === "Tab" && panel) {
+        const focusable = Array.from(panel.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
     window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
+    return () => {
+      window.removeEventListener("keydown", k);
+      prev?.focus?.();
+    };
   }, [open, onClose]);
+
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined}>
       <button aria-label="Close" className="absolute inset-0 bg-black/30 scrim-in" onClick={onClose} />
-      <div className={cx("relative flex max-h-[88dvh] w-full max-w-[430px] flex-col rounded-t-[24px] bg-surface sheet-in", className)}>
+      <div ref={panelRef} className={cx("relative flex max-h-[88dvh] w-full max-w-[430px] flex-col rounded-t-[24px] bg-surface sheet-in", className)}>
         <div className="flex justify-center pb-1 pt-2">
           <span className="h-1 w-9 rounded-full bg-black/15" />
         </div>
         {(title || right) && (
           <div className="flex items-center justify-between px-5 pb-3 pt-2">
-            <div className="text-[19px] font-bold tracking-[-0.02em]">{title}</div>
+            <div id={titleId} className="text-[19px] font-bold tracking-[-0.02em]">{title}</div>
             {right ?? (
               <button onClick={onClose} className="tactile grid h-8 w-8 place-items-center rounded-full bg-surface-sunken" aria-label="Close">
                 <X size={16} strokeWidth={SW} />

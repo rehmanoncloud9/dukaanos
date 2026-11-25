@@ -1,9 +1,19 @@
 "use client";
 
 import { Lock, Mail, Store, UserRound } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { api } from "@/lib/client/api";
 import { useDukaan } from "@/lib/client/store";
 import { PrimaryButton, SecondaryButton, Spinner, SW } from "./ui";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: HTMLElement, opts: { sitekey: string; callback: (token: string) => void; "expired-callback"?: () => void; theme?: "light" | "dark" }) => string;
+      reset: (id?: string) => void;
+    };
+  }
+}
 
 export function Logo({ size = 44 }: { size?: number }) {
   return (
@@ -32,6 +42,44 @@ export function Splash() {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [siteKey, setSiteKey] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | undefined>(undefined);
+  const turnstileRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    api<{ turnstile_site_key: string | null }>("/api/app-config", { auth: false, shop: false })
+      .then((cfg) => setSiteKey(cfg.turnstile_site_key))
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!siteKey || !turnstileRef.current) return;
+    const renderWidget = () => {
+      if (!window.turnstile || !turnstileRef.current || turnstileRef.current.childElementCount > 0) return;
+      window.turnstile.render(turnstileRef.current, {
+        sitekey: siteKey,
+        theme: "light",
+        callback: (token) => setTurnstileToken(token),
+        "expired-callback": () => setTurnstileToken(undefined),
+      });
+    };
+    if (window.turnstile) {
+      renderWidget();
+      return;
+    }
+    const existing = document.querySelector<HTMLScriptElement>('script[data-turnstile="1"]');
+    if (existing) {
+      existing.addEventListener("load", renderWidget, { once: true });
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    s.async = true;
+    s.defer = true;
+    s.dataset.turnstile = "1";
+    s.addEventListener("load", renderWidget, { once: true });
+    document.head.appendChild(s);
+  }, [siteKey]);
 
   const run = async (name: string, fn: () => Promise<void>) => {
     setBusy(name);
@@ -55,7 +103,14 @@ export function Splash() {
       </div>
 
       <div className="mt-auto space-y-3 pt-10">
-        <PrimaryButton tone="cash" className="h-14 w-full text-[17px]" busy={busy === "sandbox"} onClick={() => void run("sandbox", signInSandbox)}>
+        {siteKey && <div ref={turnstileRef} className="flex justify-center" />}
+        <PrimaryButton
+          tone="cash"
+          className="h-14 w-full text-[17px]"
+          busy={busy === "sandbox"}
+          disabled={Boolean(siteKey && !turnstileToken)}
+          onClick={() => void run("sandbox", () => signInSandbox(turnstileToken))}
+        >
           <Store size={18} strokeWidth={SW} /> Try Live Demo Shop
         </PrimaryButton>
         <p className="-mt-1 text-center text-[12.5px] text-ink-2">Your own isolated sandbox · 3 Alis, 2 Tariqs, Bilal · 14-day history</p>
@@ -115,6 +170,11 @@ export function Splash() {
         <a href="/verify" className="block pt-2 text-center text-[13px] font-semibold text-ink-2 underline underline-offset-4">
           Verify an SMEConnect Passport →
         </a>
+        <div className="flex items-center justify-center gap-4 pt-1 text-[12px] text-ink-3">
+          <a href="/privacy" className="underline underline-offset-4 hover:text-ink-2">Privacy</a>
+          <a href="/terms" className="underline underline-offset-4 hover:text-ink-2">Terms</a>
+          <a href="/delete-account" className="underline underline-offset-4 hover:text-ink-2">Delete account</a>
+        </div>
       </div>
     </main>
   );
