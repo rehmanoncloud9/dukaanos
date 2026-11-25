@@ -179,37 +179,132 @@ export async function runAgent(opts: {
 
   let model = env.agentModel();
   let rounds = 0;
-  for (; rounds < 5; rounds++) {
-    const call = await generateContentOnce(env.agentModel(), {
-      contents,
-      config: {
-        systemInstruction: system,
-        tools: [{ functionDeclarations: AGENT_TOOLS }],
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-        maxOutputTokens: 1_024,
-      },
-    }, Math.max(env.aiTimeoutMs(), 12_000), { shopId: opts.shopId, kind: "qa" });
-    model = call.model;
-    const calls = call.response.functionCalls ?? [];
-    const modelContent = call.response.candidates?.[0]?.content;
-    if (!calls.length || !modelContent) {
-      return { answer: call.response.text ?? "", proposal, tool_calls: toolLog, model, latency_ms: Date.now() - t0, rounds: rounds + 1 };
-    }
-    contents.push(modelContent); // verbatim — keeps thought_signature parts intact
-    const responses = [];
-    for (const fc of calls) {
-      const ts = Date.now();
-      const fn = tools[fc.name ?? ""];
-      let result: unknown;
-      try {
-        result = fn ? await fn((fc.args ?? {}) as Record<string, unknown>) : { error: "unknown tool" };
-      } catch (e) {
-        result = { error: e instanceof Error ? e.message : String(e) };
+  try {
+    for (; rounds < 5; rounds++) {
+      const call = await generateContentOnce(env.agentModel(), {
+        contents,
+        config: {
+          systemInstruction: system,
+          tools: [{ functionDeclarations: AGENT_TOOLS }],
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          maxOutputTokens: 1_024,
+        },
+      }, Math.max(env.aiTimeoutMs(), 12_000), { shopId: opts.shopId, kind: "qa" });
+      model = call.model;
+      const calls = call.response.functionCalls ?? [];
+      const modelContent = call.response.candidates?.[0]?.content;
+      if (!calls.length || !modelContent) {
+        return { answer: call.response.text ?? "", proposal, tool_calls: toolLog, model, latency_ms: Date.now() - t0, rounds: rounds + 1 };
       }
-      toolLog.push({ name: fc.name ?? "?", args: fc.args, ms: Date.now() - ts });
-      responses.push({ functionResponse: { id: fc.id, name: fc.name, response: { result } } });
+      contents.push(modelContent); // verbatim — keeps thought_signature parts intact
+      const responses = [];
+      for (const fc of calls) {
+        const ts = Date.now();
+        const fn = tools[fc.name ?? ""];
+        let result: unknown;
+        try {
+          result = fn ? await fn((fc.args ?? {}) as Record<string, unknown>) : { error: "unknown tool" };
+        } catch (e) {
+          result = { error: e instanceof Error ? e.message : String(e) };
+        }
+        toolLog.push({ name: fc.name ?? "?", args: fc.args, ms: Date.now() - ts });
+        responses.push({ functionResponse: { id: fc.id, name: fc.name, response: { result } } });
+      }
+      contents.push({ role: "user", parts: responses });
     }
-    contents.push({ role: "user", parts: responses });
+    return { answer: "Maaf kijiye, jawab mukammal nahi ho saka. Dobara poochein.", proposal, tool_calls: toolLog, model, latency_ms: Date.now() - t0, rounds };
+  } catch {
+    return runDeterministicQaFallback(opts.question, opts.catalog, tools, toolLog, t0);
   }
-  return { answer: "Maaf kijiye, jawab mukammal nahi ho saka. Dobara poochein.", proposal, tool_calls: toolLog, model, latency_ms: Date.now() - t0, rounds };
+}
+
+async function runDeterministicQaFallback(
+  question: string,
+  catalog: Catalog,
+  tools: Record<string, (a: Record<string, unknown>) => Promise<unknown>>,
+  toolLog: AgentResult["tool_calls"],
+  t0: number,
+): Promise<AgentResult> {
+  const q = question.toLowerCase();
+  const runTool = async <T>(name: string, args: Record<string, unknown>): Promise<T> => {
+    const ts = Date.now();
+    const res = (await tools[name](args)) as T;
+    toolLog.push({ name, args, ms: Date.now() - ts });
+    return res;
+  };
+
+  if (/\b(pulse|hisaab|hisab|galla|aaj|kamai|munafa|margin|overdue)\b/.test(q)) {
+    const pulse = await runTool<{
+      today?: { sales_paisa?: number; cash_paisa?: number; udhaar_paisa?: number };
+      overdue_udhaar?: Array<unknown>;
+      stockout_risks?: Array<unknown>;
+    }>("get_munshi_pulse", {});
+    const sales = formatRs(Number(pulse.today?.sales_paisa ?? 0));
+    const cash = formatRs(Number(pulse.today?.cash_paisa ?? 0));
+    const udhaar = formatRs(Number(pulse.today?.udhaar_paisa ?? 0));
+    return {
+      answer: `Aaj ki kul bikri ${sales} hai (${cash} cash, ${udhaar} udhaar). ${pulse.overdue_udhaar?.length ?? 0} overdue khate aur ${pulse.stockout_risks?.length ?? 0} kam stock items hain.`,
+      proposal: null,
+      tool_calls: toolLog,
+      model: "rules-fallback",
+      latency_ms: Date.now() - t0,
+      rounds: 1,
+    };
+  }
+
+  const bestTokenMatch = <T extends { name: string }>(entries: Parameters<typeof matchCatalog>[1], minScore: number) => {
+    const direct = matchCatalog(question, entries, 1).results[0];
+    if (direct && direct.score >= minScore) return direct;
+    const words = q.replace(/[?؟.,!]/g, " ").split(/\s+/).filter((w) => w.length >= 2);
+    let best: typeof direct | undefined = direct;
+    for (let i = 0; i < words.length; i++) {
+      for (const phrase of [words[i], i + 1 < words.length ? `${words[i]} ${words[i + 1]}` : ""]) {
+        if (!phrase) continue;
+        const m = matchCatalog(phrase, entries, 1).results[0];
+        if (m && (!best || m.score > best.score)) best = m;
+      }
+    }
+    return best && best.score >= minScore ? best : undefined;
+  };
+
+  const custMatch = bestTokenMatch(customerEntries(catalog.customers), 0.65);
+  if (custMatch || /\b(udhaar|khata|balance|baqi|baki|wasooli)\b/.test(q)) {
+    const target = custMatch?.name ?? question;
+    const rows = await runTool<Array<{ name: string; balance: string; days_overdue: number | null } | undefined>>("get_customer_balance", { name: target });
+    const top = rows.find(Boolean);
+    if (top) {
+      const overdue = top.days_overdue ? ` (${top.days_overdue} din purana)` : "";
+      return {
+        answer: `${top.name} ke zimme ${top.balance} udhaar hai${overdue}.`,
+        proposal: null,
+        tool_calls: toolLog,
+        model: "rules-fallback",
+        latency_ms: Date.now() - t0,
+        rounds: 1,
+      };
+    }
+  }
+
+  const prodMatch = bestTokenMatch(productEntries(catalog.products), 0.6);
+  if (prodMatch || /\b(stock|maal|kitna|kitni|bachi|bacha|mojood|available|price|rate|qeemat)\b/.test(q)) {
+    const target = prodMatch?.name ?? question;
+    const item = await runTool<{ name: string; stock: string; days_left: number | null } | null>("get_stock", { product: target });
+    if (item) {
+      const days = item.days_left !== null ? ` (taqreeban ${item.days_left} din ka stock)` : "";
+      return {
+        answer: `${item.name} ka mojooda stock ${item.stock} hai${days}.`,
+        proposal: null,
+        tool_calls: toolLog,
+        model: "rules-fallback",
+        latency_ms: Date.now() - t0,
+        rounds: 1,
+      };
+    }
+  }
+
+  const recent = await runTool<Array<{ type: string; customer: string | null; total: string }>>("get_recent_transactions", { limit: 3 });
+  const summary = recent.length
+    ? `Aakhri ${recent.length} entries: ${recent.map((r) => `${r.type} ${r.total}${r.customer ? ` (${r.customer})` : ""}`).join(", ")}.`
+    : "Abhi koi recent entry nahi mili.";
+  return { answer: summary, proposal: null, tool_calls: toolLog, model: "rules-fallback", latency_ms: Date.now() - t0, rounds: 1 };
 }

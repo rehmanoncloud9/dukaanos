@@ -19,17 +19,22 @@ export const GET = handle(async (req: Request, ctx: Ctx) => {
   const { endpoint } = await ctx.params;
   if (endpoint === "health") {
     const pinned = { fast: env.fastModel(), agent: env.agentModel(), tts: env.ttsModel() };
+    const hasGeminiKey = Boolean(env.geminiKey());
     let models: Record<string, boolean> | null = null;
     let modelError: string | null = null;
-    try {
-      const ids = new Set(await listModelIds());
-      models = Object.fromEntries(Object.entries(pinned).filter(([, v]) => v).map(([k, v]) => [k, ids.has(v as string)]));
-    } catch (e) {
-      modelError = e instanceof Error ? e.message : String(e);
+    if (hasGeminiKey) {
+      try {
+        const ids = new Set(await listModelIds());
+        models = Object.fromEntries(Object.entries(pinned).filter(([, v]) => v).map(([k, v]) => [k, ids.has(v as string)]));
+      } catch (e) {
+        modelError = e instanceof Error ? e.message : String(e);
+      }
     }
     const legacy = Object.values(pinned).filter((m) => m && /gemini-2\.5/.test(m));
     return ok({
       ok: missingEnv().length === 0 && legacy.length === 0 && (!models || Object.values(models).every(Boolean)),
+      ai_billing_mode: env.aiBillingMode(),
+      gemini_configured: hasGeminiKey,
       missing_env: missingEnv(),
       pinned_models: pinned,
       models_available: models,
