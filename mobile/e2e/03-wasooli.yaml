@@ -1,0 +1,16 @@
+appId: pk.dukaanos.app
+---
+- launchApp
+- tapOn: "Khata"
+- extendedWaitUntil:
+    visible: "Total receivable"
+    timeout: 15000
+- tapOn: "Wasooli"
+- extendedWaitUntil:
+    visible: "Confirm Wasooli"
+    timeout: 10000
+- tapOn: "Confirm Wasooli"
+- extendedWaitUntil:
+    visible: "Saved"
+    timeout: 15000
+- tapOn: "Done"

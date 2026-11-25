@@ -1,0 +1,20 @@
+appId: pk.dukaanos.app
+---
+- launchApp
+- tapOn: "Munshi"
+- tapOn: "Settings"
+- extendedWaitUntil:
+    visible: "Simulate Offline"
+    timeout: 10000
+- tapOn: "Simulate Offline"
+- assertVisible: "Simulate Offline: ON"
+- back
+- tapOn: "Type instead"
+- inputText: "Ek kilo cheeni cash"
+- tapOn:
+    id: "Send typed entry"
+- assertVisible: "Pending Sync"
+- tapOn: "Offline ON"
+- extendedWaitUntil:
+    notVisible: "Pending Sync"
+    timeout: 25000

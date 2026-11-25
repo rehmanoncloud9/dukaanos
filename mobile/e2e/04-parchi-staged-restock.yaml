@@ -1,0 +1,18 @@
+appId: pk.dukaanos.app
+---
+- launchApp
+- tapOn: "Maal"
+- extendedWaitUntil:
+    visible: "Scan Parchi"
+    timeout: 15000
+- tapOn: "Scan Parchi"
+- tapOn: "1-tap staged field sample"
+- extendedWaitUntil:
+    visible: "Parchi OCR Review"
+    timeout: 35000
+- assertVisible: "Al-Madina Wholesale"
+- tapOn: "Restock Commit"
+- extendedWaitUntil:
+    visible: "Restocked ✓"
+    timeout: 15000
+- tapOn: "Done"

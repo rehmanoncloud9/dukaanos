@@ -1,0 +1,16 @@
+appId: pk.dukaanos.app
+---
+- launchApp
+- tapOn: "Munshi"
+- tapOn: "Settings"
+- extendedWaitUntil:
+    visible: "Export my data"
+    timeout: 10000
+- tapOn: "Export my data"
+- tapOn: "Delete account"
+- assertVisible: "Permanent Action"
+- inputText: "DELETE"
+- tapOn: "Permanently Delete My Account"
+- extendedWaitUntil:
+    visible: "Try Live Demo Shop"
+    timeout: 20000
