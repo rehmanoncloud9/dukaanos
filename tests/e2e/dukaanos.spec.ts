@@ -21,11 +21,18 @@ test.describe("DukaanOS Web PWA E2E", () => {
   });
 
   test("full kiryana counter flow: sandbox -> Act 1 -> X-Ray Replay -> Offline -> Pulse -> Khata -> Passport -> /verify -> Parchi -> Tier-1 Undo", async ({ page, context }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
+    page.on("response", (r) => {
+      if (r.status() >= 400) errors.push(`HTTP ${r.status()} ${r.url()}`);
+    });
     await page.goto("/");
 
     // 1. Sandbox sign-in
     await page.getByRole("button", { name: /Try Live Demo Shop/i }).click();
-    await expect(page.getByText(/Today cash/i)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/Today cash/i)).toBeVisible({ timeout: 30_000 }).catch((e) => {
+      throw new Error(`${e.message}\nNetwork/Page errors: ${errors.join("; ")}`);
+    });
 
     // 2. Typed Act-1 utterance -> Tier-2 Review Sheet -> 3-Ali chips -> Confirm
     await page.getByRole("button", { name: /Type instead/i }).click();

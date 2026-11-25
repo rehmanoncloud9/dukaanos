@@ -170,7 +170,7 @@ export function Splash() {
         <a href="/verify" className="block pt-2 text-center text-[13px] font-semibold text-ink-2 underline underline-offset-4">
           Verify an SMEConnect Passport →
         </a>
-        <div className="flex items-center justify-center gap-4 pt-1 text-[12px] text-ink-3">
+        <div className="flex items-center justify-center gap-4 pt-1 text-[12px] text-ink-2">
           <a href="/privacy" className="underline underline-offset-4 hover:text-ink-2">Privacy</a>
           <a href="/terms" className="underline underline-offset-4 hover:text-ink-2">Terms</a>
           <a href="/delete-account" className="underline underline-offset-4 hover:text-ink-2">Delete account</a>
