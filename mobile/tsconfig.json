@@ -3,12 +3,15 @@
   "compilerOptions": {
     "strict": true,
     "skipLibCheck": true,
-    "types": ["jest"],
+    "types": [
+      "jest"
+    ],
     "paths": {
       "@domain/*": ["../src/lib/domain/*"],
       "@contracts": ["../src/lib/api/contracts.ts"],
       "@passport": ["../src/lib/crypto/passport.ts"],
       "@/lib/domain/*": ["../src/lib/domain/*"],
+      "@noble/ed25519": ["./node_modules/@noble/ed25519"],
       "@/*": ["./src/*"],
       "@/assets/*": ["./assets/*"]
     }
@@ -22,5 +25,7 @@
     "../src/lib/api/contracts.ts",
     "../src/lib/crypto/passport.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules"
+  ]
 }
