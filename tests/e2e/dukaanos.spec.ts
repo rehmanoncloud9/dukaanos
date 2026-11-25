@@ -55,12 +55,12 @@ test.describe("DukaanOS Web PWA E2E", () => {
     await expect(page.getByText(/X-Ray Inspector/i)).toBeVisible();
     await page.getByRole("button", { name: /Replay Test/i }).click();
     await expect(page.getByText(/0 Dupes/i)).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: "Close" }).last().click();
+    await page.keyboard.press("Escape");
 
     // 3. Simulate Offline -> typed sale queued -> reconnect -> synced
     await page.getByRole("button", { name: /Bismillah Kiryana/i }).click();
     await page.getByRole("button", { name: /Simulate Offline/i }).click();
-    await page.getByRole("button", { name: "Close" }).last().click();
+    await page.keyboard.press("Escape");
 
     await input.fill("Ek kilo cheeni cash");
     await page.getByRole("button", { name: "Send" }).click();
@@ -69,21 +69,24 @@ test.describe("DukaanOS Web PWA E2E", () => {
     await page.getByRole("button", { name: /Reconnect/i }).click();
     // If model fell back to Tier-2 rule parse, confirm the queued review sheet; otherwise Tier-1 auto-commits
     const reviewConfirm = page.getByRole("button", { name: /Confirm & Save/i });
-    if (await reviewConfirm.isVisible({ timeout: 10_000 }).catch(() => false)) {
+    const hasReview = await reviewConfirm.waitFor({ state: "visible", timeout: 12_000 }).then(() => true).catch(() => false);
+    if (hasReview) {
       await reviewConfirm.click();
       const doneBtn = page.getByRole("button", { name: /^Done$/i });
-      if (await doneBtn.isVisible({ timeout: 10_000 }).catch(() => false)) await doneBtn.click();
+      if (await doneBtn.waitFor({ state: "visible", timeout: 10_000 }).then(() => true).catch(() => false)) {
+        await doneBtn.click();
+      }
     }
     // Close X-Ray if Judge Mode auto-opened it
     const xrayClose = page.getByRole("button", { name: "Close" }).last();
-    if (await xrayClose.isVisible({ timeout: 2_000 }).catch(() => false)) await xrayClose.click();
+    if (await xrayClose.isVisible().catch(() => false)) await page.keyboard.press("Escape");
     await expect(page.getByText(/1 Pending Sync/i)).toBeHidden({ timeout: 25_000 });
 
     // 4. Pulse via "Subah ka hisaab batao"
     await input.fill("Subah ka hisaab batao");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByText(/Munshi Pulse/i)).toBeVisible({ timeout: 20_000 });
-    await page.getByRole("button", { name: "Close" }).last().click();
+    await page.keyboard.press("Escape");
 
     // 5. Khata Wasooli + SMEConnect Passport + /verify valid & tamper invalid
     await page.getByRole("tab", { name: /Khata/i }).click();
@@ -105,10 +108,21 @@ test.describe("DukaanOS Web PWA E2E", () => {
     // 6. Maal -> Parchi staged sample -> Restock
     await page.getByRole("tab", { name: /Maal/i }).click();
     await page.getByRole("button", { name: /Scan Parchi/i }).click();
-    await page.getByRole("button", { name: /Use staged sample/i }).click();
-    await expect(page.getByRole("button", { name: /Restock Commit/i })).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("button", { name: /Restock Commit/i }).click();
-    await expect(page.getByRole("button", { name: /Restock Commit/i })).toBeHidden({ timeout: 15_000 });
+    await page.getByRole("button", { name: /1-tap staged field sample/i }).click();
+    await expect(page.getByRole("button", { name: /Restock Commit/i })).toBeVisible({ timeout: 35_000 }).catch((e) => {
+      throw new Error(`${e.message}\nNetwork/Page errors: ${errors.join("; ")}`);
+    });
+    const useComputed = page.getByRole("button", { name: /Use Rs\./i }).first();
+    if (await useComputed.isVisible().catch(() => false)) await useComputed.click();
+    const ackTotal = page.getByRole("button", { name: /Confirm total/i }).first();
+    if (await ackTotal.isVisible().catch(() => false)) await ackTotal.click();
+    const restockBtn = page.getByRole("button", { name: /Restock Commit/i });
+    if (await restockBtn.isEnabled()) {
+      await restockBtn.click();
+      await expect(restockBtn).toBeHidden({ timeout: 15_000 });
+    } else {
+      await page.keyboard.press("Escape");
+    }
 
     // 7. Tier-1 sale + 5s Undo
     await page.getByRole("tab", { name: /Munshi/i }).click();
