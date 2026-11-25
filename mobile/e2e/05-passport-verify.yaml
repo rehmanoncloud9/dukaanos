@@ -1,0 +1,13 @@
+appId: pk.dukaanos.app
+---
+- launchApp
+- tapOn: "Khata"
+- tapOn: "SMEConnect"
+- extendedWaitUntil:
+    visible: "SIG VALID ✓"
+    timeout: 20000
+- assertVisible: "Ed25519 VERIFIED"
+- tapOn: "Tamper test (2x GMV)"
+- assertVisible: "SIG INVALID"
+- tapOn: "Reset token"
+- assertVisible: "SIG VALID ✓"

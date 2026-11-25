@@ -1,0 +1,19 @@
+appId: pk.dukaanos.app
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Munshi"
+    timeout: 15000
+- tapOn: "Type instead"
+- inputText: "Chhote Ali ko dedh pao cheeni, 400 cash, baqi khate mein"
+- tapOn:
+    id: "Send typed entry"
+- extendedWaitUntil:
+    visible: "Review Entry"
+    timeout: 25000
+- assertVisible: "Chhote Ali"
+- tapOn: "Confirm & Save"
+- extendedWaitUntil:
+    visible: "Saved"
+    timeout: 15000
+- tapOn: "Done"

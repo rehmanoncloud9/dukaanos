@@ -1,0 +1,11 @@
+appId: pk.dukaanos.app
+---
+- launchApp:
+    clearState: true
+- assertVisible: "DukaanOS"
+- tapOn: "Try Live Demo Shop"
+- extendedWaitUntil:
+    visible: "Munshi"
+    timeout: 30000
+- assertVisible: "Today cash"
+- assertVisible: "Today udhaar"
