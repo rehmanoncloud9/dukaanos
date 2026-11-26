@@ -2,11 +2,13 @@ import { z } from "zod";
 import { runAgent } from "@/lib/ai/agent";
 import { parseTurn } from "@/lib/ai/munshi";
 import { ApiError, handle, ok, parseJson } from "@/lib/api/http";
-import type { PakPhoneTrace, Pulse, TurnResponse, TurnTrace } from "@/lib/api/contracts";
+import type { PakPhoneTrace, Pulse, ShopState, TurnResponse, TurnTrace } from "@/lib/api/contracts";
 import { loadCatalog, numify } from "@/lib/api/shop";
 import { buildPaymentProposal, buildSaleProposal, settle } from "@/lib/domain/bill";
-import { parseQuantityPhrase, resolveLine } from "@/lib/domain/desi-units";
+import { formatBaseQty, parseQuantityPhrase, resolveLine } from "@/lib/domain/desi-units";
 import { PULSE_REGEX } from "@/lib/domain/fallback-parser";
+import { matchCatalog } from "@/lib/domain/pakphone";
+import { formatRs } from "@/lib/domain/money";
 import { detectWadaUtterance } from "@/lib/domain/wada";
 import { requireShopContext } from "@/lib/server/auth";
 import { enforceRateLimit } from "@/lib/server/ratelimit";
@@ -67,7 +69,19 @@ export const POST = handle(async (req: Request) => {
   }
 
   const { state, catalog } = await loadCatalog(sb, shopId);
-  const turn = await parseTurn({ audio, text, catalog, shopName: state.shop.name, shopId });
+
+  // Build per-shop context for systemPrompt (~120 tokens, zero LLM cost)
+  const topSkus = [...state.products]
+    .sort((a, b) => (b.sold_7d ?? 0) - (a.sold_7d ?? 0))
+    .slice(0, 15)
+    .map((p) => p.name);
+  const topCustomers = [...catalog.customers]
+    .filter((c) => c.balance_paisa > 0)
+    .sort((a, b) => b.balance_paisa - a.balance_paisa)
+    .slice(0, 10)
+    .map((c) => c.name);
+
+  const turn = await parseTurn({ audio, text, catalog, shopName: state.shop.name, shopId, context: { topSkus, topCustomers } });
   const p = turn.parsed;
   const baseTrace = (pakphone: PakPhoneTrace | null): TurnTrace => ({
     transcript: p.transcript,
@@ -114,7 +128,25 @@ export const POST = handle(async (req: Request) => {
       return ok<TurnResponse>({ kind: "reversal", target, trace: baseTrace(null) });
     }
     case "question": {
-      const r = await runAgent({ question: p.question || p.transcript, sb, shopId, shopName: state.shop.name, catalog });
+      let r: Awaited<ReturnType<typeof runAgent>>;
+      try {
+        r = await runAgent({ question: p.question || p.transcript, sb, shopId, shopName: state.shop.name, catalog });
+      } catch (agentErr) {
+        // Deterministic Q&A fallback: answer balance/stock queries without AI
+        const q = (p.question || p.transcript).toLowerCase();
+        const deterministicAnswer = buildLocalPulse(q, catalog, state);
+        return ok<TurnResponse>({
+          kind: "answer",
+          answer: deterministicAnswer,
+          proposal: null,
+          tools: [],
+          trace: {
+            ...baseTrace(null),
+            model: null,
+            degraded_reason: agentErr instanceof Error ? agentErr.message.slice(0, 160) : "agent unavailable",
+          },
+        });
+      }
       return ok<TurnResponse>({
         kind: "answer",
         answer: r.answer,
@@ -210,4 +242,51 @@ async function upgradeWithTrgm(proposal: SaleProposal, sb: SupabaseClient, shopI
     customers: catalog.customers,
     confidence: proposal.confidence,
   });
+}
+
+/**
+ * Deterministic Q&A fallback: when runAgent is unavailable (503/504/timeout),
+ * answer common questions from local catalog data only. Zero LLM tokens.
+ * Returns a plain-language Urdu/English answer string.
+ */
+function buildLocalPulse(question: string, catalog: Catalog, state: ShopState): string {
+  const q = question.toLowerCase();
+
+  // Customer balance lookup
+  if (/balance|udhaar|baqi|khata|kharcha/.test(q)) {
+    const customerWithBalance = catalog.customers
+      .filter((c) => c.balance_paisa > 0)
+      .sort((a, b) => b.balance_paisa - a.balance_paisa);
+    if (customerWithBalance.length === 0) {
+      return "Abhi koi udhaar nahi hai. Sab clear hai.";
+    }
+    const lines = customerWithBalance
+      .slice(0, 5)
+      .map((c) => `${c.name}: ${formatRs(c.balance_paisa)}`);
+    return `Top udhaar:\n${lines.join("\n")}${customerWithBalance.length > 5 ? `\n...aur ${customerWithBalance.length - 5} aur.` : ""}`;
+  }
+
+  // Stock lookup
+  if (/stock|maal|kitna|bacha|inventory/.test(q)) {
+    const lowStock = catalog.products
+      .filter((p) => p.stock_base_units <= (p.reorder_level_base_units ?? p.pack_size_base_units))
+      .sort((a, b) => a.stock_base_units - b.stock_base_units)
+      .slice(0, 5);
+    if (lowStock.length === 0) {
+      return "Tamam items ka stock theek hai.";
+    }
+    const lines = lowStock.map((p) => `${p.name}: ${formatBaseQty(p.stock_base_units, p.base_unit)} bacha hai`);
+    return `Kam stock items:\n${lines.join("\n")}`;
+  }
+
+  // Today summary
+  const galla = state.today;
+  if (galla && /aaj|today|galla|sales|hisaab|haal/.test(q)) {
+    return [
+      `Aaj ka galla: ${formatRs(galla.cash_in_galla_paisa)}.`,
+      `Sales: ${galla.sales_count}, Udhaar: ${formatRs(galla.udhaar_paisa)}.`,
+    ].join(" ");
+  }
+
+  return "AI abhi available nahi hai. Baad mein koshish karein, ya WhatsApp par message karein.";
 }

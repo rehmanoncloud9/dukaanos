@@ -8,6 +8,7 @@ import { downloadCsv, exportKhataCsv, exportMaalCsv } from "@/lib/client/csv-exp
 import { tr, type Lang } from "@/lib/client/i18n";
 import { listReplays, type ReplayClip } from "@/lib/client/queue";
 import { useDukaan } from "@/lib/client/store";
+import { formatRs, rupeesToPaisa } from "@/lib/domain/money";
 import { cx, Pill, PrimaryButton, SecondaryButton, Segmented, Sheet, Spinner, SW } from "./ui";
 
 interface Health {
@@ -25,6 +26,11 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [chain, setChain] = useState<{ ok: boolean; code: string; checked: number; ms: number; first_broken_seq?: number } | null>(null);
+  // Shift Handover — Galla Count
+  const [gallaInput, setGallaInput] = useState("");
+  const gallaActual = rupeesToPaisa(Number(gallaInput || 0));
+  const gallaSystem = state?.today.cash_in_galla_paisa ?? 0;
+  const gallaDiff = gallaActual - gallaSystem;
 
   const act = async (name: string, fn: () => Promise<void>) => {
     setBusy(name);
@@ -82,6 +88,30 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
         </section>
 
         <AppLockSection />
+
+        {/* Shift Handover · Galla Count */}
+        <section>
+          <div className="section-label mb-2">Shift Handover · Galla Count</div>
+          <div className="surface-card p-4 space-y-3">
+            <div className="text-[13px] text-ink-2">Drawer mein giye paison ka hisaab karein aur system se compare karein.</div>
+            <div className="flex gap-2 items-center">
+              <span className="text-[14px] font-semibold shrink-0">Rs.</span>
+              <input
+                inputMode="numeric"
+                value={gallaInput}
+                onChange={(e) => setGallaInput(e.target.value.replace(/[^\d]/g, ""))}
+                placeholder="Actual cash counted"
+                className="num h-11 min-w-0 flex-1 rounded-[12px] border border-black/15 px-3 text-[16px] outline-none"
+              />
+            </div>
+            {gallaInput && (
+              <div className={cx("rounded-[10px] px-3 py-2.5 text-[14px] font-semibold", gallaDiff === 0 ? "bg-cash-bg text-cash-ink" : "bg-udhaar-bg text-udhaar-ink")}>
+                System: {formatRs(gallaSystem)} · Actual: {formatRs(gallaActual)} ·{" "}
+                {gallaDiff === 0 ? "✓ Match" : gallaDiff > 0 ? `+${formatRs(gallaDiff)} extra` : `${formatRs(Math.abs(gallaDiff))} short`}
+              </div>
+            )}
+          </div>
+        </section>
 
         <section>
           <div className="section-label mb-2">Offline sync</div>

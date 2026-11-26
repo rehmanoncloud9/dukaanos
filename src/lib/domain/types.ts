@@ -131,7 +131,9 @@ export type TierReason =
   | "NEGATIVE_STOCK"
   | "UNRESOLVED_NUMBER"
   | "UNVERIFIED_EXTRACTION"
-  | "EXPLICIT_CASH_REQUIRED";
+  | "EXPLICIT_CASH_REQUIRED"
+  | "CREDIT_OVERDUE_30D"
+  | "CREDIT_LIMIT_EXCEEDED";
 
 export interface StockWarning {
   code: "NEGATIVE_STOCK";

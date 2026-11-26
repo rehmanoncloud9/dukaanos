@@ -317,13 +317,13 @@
   {
     "id": "v11-payment-paune-do-hazaar",
     "category": "payment",
-    "utterance": "Tariq mechanic ne paune do hazaar jama karwaye",
+    "utterance": "Tariq Mehmood ne paune do hazaar jama karwaye",
     "test_fallback": true,
     "mock_extraction": {
       "intent": "payment",
-      "transcript": "Tariq mechanic ne paune do hazaar jama karwaye",
-      "transcript_roman": "Tariq mechanic ne paune do hazaar jama karwaye",
-      "customer_mention": "Tariq mechanic",
+      "transcript": "Tariq Mehmood ne paune do hazaar jama karwaye",
+      "transcript_roman": "Tariq Mehmood ne paune do hazaar jama karwaye",
+      "customer_mention": "Tariq Mehmood",
       "items": [],
       "discount_phrase": null,
       "discount_rupees": null,

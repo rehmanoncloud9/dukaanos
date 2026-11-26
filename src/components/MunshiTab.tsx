@@ -1,8 +1,8 @@
 "use client";
 
-import { Camera, ChevronDown, ChevronUp, Keyboard, RefreshCw, SendHorizontal } from "lucide-react";
+import { Camera, ChevronDown, ChevronUp, Keyboard, Plus, RefreshCw, SendHorizontal, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { FeedTx, Pulse } from "@/lib/api/contracts";
+import type { FeedTx, Pulse, StateProduct } from "@/lib/api/contracts";
 import { api } from "@/lib/client/api";
 import { tr } from "@/lib/client/i18n";
 import { useDukaan } from "@/lib/client/store";
@@ -10,7 +10,6 @@ import { formatBaseQty } from "@/lib/domain/desi-units";
 import { formatRs } from "@/lib/domain/money";
 import { MicButton } from "./MicButton";
 import { cx, Money, Pill, relTime, Spinner, SW } from "./ui";
-
 export const DEMO_UTTERANCES = [
   "Chhote Ali ko dedh pao cheeni, 250 ka khula oil, 30 rupay chhor do, 400 cash diya baqi khate mein",
   "Ek kilo cheeni aur do sabun cash",
@@ -62,6 +61,50 @@ export function FeedRow({ t, onOpen, flash }: { t: FeedTx; onOpen: () => void; f
         <div className="text-[12px] leading-4 text-ink-2">{t.is_reversed ? "Undone" : feedTag(t)}</div>
       </div>
     </button>
+  );
+}
+
+/**
+ * Rush-Hour Quick-Sell Top-4 strip — 1-tap Tier-1 cash sales for the 4 highest-velocity SKUs.
+ * <2ms, Rs. 0 LLM, 0 network dependency. Idempotent: each tap fires submitTurn with typed text.
+ */
+function QuickSellStrip({ products }: { products: StateProduct[] }) {
+  const { submitTurn, thinking } = useDukaan();
+  // Top 4 by sold_7d descending; skip items with zero stock
+  const top4 = [...products]
+    .filter((p) => p.stock_base_units > 0 && p.sold_7d > 0)
+    .sort((a, b) => b.sold_7d - a.sold_7d)
+    .slice(0, 4);
+
+  if (top4.length === 0) return null;
+
+  return (
+    <div className="surface-card overflow-hidden">
+      <div className="flex items-center gap-1.5 px-4 pb-1.5 pt-3">
+        <Zap size={12} strokeWidth={SW} className="text-cash" />
+        <span className="section-label">Quick-Sell · 1 tap = cash sale</span>
+        <span className="ml-auto text-[11px] text-ink-3">Rs. 0 LLM</span>
+      </div>
+      <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3">
+        {top4.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            disabled={thinking}
+            onClick={() => void submitTurn({ text: `ek ${p.name} cash` })}
+            className="tactile flex shrink-0 flex-col items-start rounded-[12px] border border-black/10 bg-canvas px-3 py-2 text-left disabled:opacity-50"
+          >
+            <span className="flex items-center gap-1 text-[13.5px] font-semibold leading-5">
+              <Plus size={12} strokeWidth={SW + 0.5} />
+              {p.name.replace(/\s*\(.*\)/, "").slice(0, 16)}
+            </span>
+            <span className="text-[12px] text-ink-2">
+              Rs.{Math.round(p.unit_price_paisa / 100)} · {p.sold_7d}×/wk
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -146,6 +189,9 @@ export function MunshiTab() {
           <div className="mt-1 text-[13px] text-ink-2" dir="auto">{today.udhaar_accounts} {tr("accounts", lang)}</div>
         </div>
       </div>
+
+      {/* Quick-Sell Top-4 strip — rush-hour 1-tap cash sale, Rs. 0 LLM */}
+      <QuickSellStrip products={state.products} />
 
       {pulse && (
         <div className="surface-card overflow-hidden">

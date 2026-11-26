@@ -1,13 +1,14 @@
 "use client";
 
-import { AlertCircle, Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertCircle, Camera, Search } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { StateProduct } from "@/lib/api/contracts";
 import { api, friendlyError } from "@/lib/client/api";
 import { tr } from "@/lib/client/i18n";
 import { useDukaan } from "@/lib/client/store";
 import { formatBaseQty } from "@/lib/domain/desi-units";
 import { formatAmount, rupeesToPaisa } from "@/lib/domain/money";
+import { startContinuousScan, isBarcodeDetectorSupported } from "@/lib/client/barcode";
 import { cx, Pill, PrimaryButton, Segmented, Sheet } from "./ui";
 
 /** "4.2 / 25 kg", "2 / 12 tin", "24 / 12 pcs" */
@@ -29,9 +30,13 @@ export function isLow(p: StateProduct) {
 }
 
 export function MaalTab() {
-  const { state, openSheet, lang } = useDukaan();
+  const { state, openSheet, lang, toast } = useDukaan();
   const [filter, setFilter] = useState<"all" | "low">("all");
   const [query, setQuery] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const scannerRef = useRef<ReturnType<typeof startContinuousScan> | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
   useEffect(() => {
     const h = (e: Event) => {
       const d = (e as CustomEvent<{ tab: string; filter: string }>).detail;
@@ -40,6 +45,47 @@ export function MaalTab() {
     window.addEventListener("dukaan:filter", h);
     return () => window.removeEventListener("dukaan:filter", h);
   }, []);
+
+  const startScan = useCallback(async () => {
+    if (!isBarcodeDetectorSupported()) {
+      // Fallback: open search with camera icon hint
+      toast("Barcode scanner is not supported on this browser — search manually", "warn");
+      return;
+    }
+    if (!state) return;
+    setScanning(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      if (!videoRef.current) { stream.getTracks().forEach((t) => t.stop()); setScanning(false); return; }
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      const stop = startContinuousScan(videoRef.current, state.products, (result) => {
+        stream.getTracks().forEach((t) => t.stop());
+        stop();
+        scannerRef.current = null;
+        setScanning(false);
+        // Look up barcode in catalog (startContinuousScan already matched via aliases)
+        if (result.product) {
+          openSheet({ type: "product", productId: result.product.id });
+        } else {
+          setQuery(result.barcode);
+          toast(`Barcode: ${result.barcode} — no product found, search results shown`, "info");
+        }
+      });
+      scannerRef.current = stop;
+      // Auto-stop after 15 s
+      setTimeout(() => {
+        scannerRef.current?.();
+        scannerRef.current = null;
+        stream.getTracks().forEach((t) => t.stop());
+        setScanning(false);
+      }, 15_000);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Scan failed", "err");
+      setScanning(false);
+    }
+  }, [state, openSheet, toast]);
+
   if (!state) return <div className="surface-card h-[400px] animate-pulse" />;
   const negative = state.products.filter((p) => p.stock_base_units < 0);
   const sorted = state.products.slice().sort((a, b) => Number(isLow(b)) - Number(isLow(a)) || a.name.localeCompare(b.name));
@@ -60,14 +106,26 @@ export function MaalTab() {
           </button>
         </div>
       ))}
-      <Segmented
-        value={filter}
-        onChange={setFilter}
-        options={[
-          { value: "all", label: `${tr("all", lang)} (${state.products.length})` },
-          { value: "low", label: `${tr("lowStock", lang)} (${sorted.filter(isLow).length})` },
-        ]}
-      />
+      <div className="flex gap-2">
+        <Segmented<"all" | "low">
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: "all", label: `${tr("all", lang)} (${state.products.length})` },
+            { value: "low", label: `${tr("lowStock", lang)} (${sorted.filter(isLow).length})` },
+          ]}
+        />
+        {/* Native BarcodeDetector barcode scan button */}
+        <button
+          onClick={() => void startScan()}
+          aria-label="Scan barcode"
+          className={cx("tactile flex h-10 shrink-0 items-center gap-1.5 rounded-[12px] border border-black/15 px-3 text-[13px] font-semibold", scanning ? "bg-maal text-white" : "bg-surface")}
+        >
+          <Camera size={15} strokeWidth={1.75} /> {scanning ? "Scanning…" : "Scan"}
+        </button>
+      </div>
+      {/* Hidden video for barcode camera feed */}
+      {scanning && <video ref={videoRef} muted playsInline className="w-full rounded-[12px] bg-black aspect-video object-cover" />}
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}

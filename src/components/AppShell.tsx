@@ -152,7 +152,9 @@ function Header() {
               setXrayOn(next);
               if (next) openSheet({ type: "xray" });
             }}
-            className={cx("tactile ml-auto h-7 shrink-0 rounded-full border px-2.5 font-mono text-[12.5px] font-semibold", xrayOn ? "border-ink bg-ink text-white" : "border-black/15 bg-white")}
+            className={cx("tactile ml-auto h-7 shrink-0 rounded-full border px-2.5 font-mono text-[12.5px] font-semibold", xrayOn ? "border-ink bg-ink text-white" : "border-black/15 bg-white",
+              // Demo isolation: hide X-Ray pill on live shops unless already active (7I requirement)
+              !xrayOn && !(shop?.is_demo_shop || shop?.is_stage_shop) && "hidden")}
           >
             {"</>"} X-Ray
           </button>

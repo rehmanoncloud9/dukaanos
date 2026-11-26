@@ -158,7 +158,7 @@
                     "bill_date":  "2026-11-24",
                     "lines":  [
                                   {
-                                      "name_raw":  "Dalda Cooking Oil 5L",
+                                      "name_raw":  "Sufi Canola Oil 5L",
                                       "quantity_raw":  "3",
                                       "unit_raw":  "tin",
                                       "rate_raw":  "2,400",
@@ -166,7 +166,7 @@
                                       "confidence":  0.96
                                   },
                                   {
-                                      "name_raw":  "Tapal Danedar (900g)",
+                                      "name_raw":  "Lipton Yellow Label (900g)",
                                       "quantity_raw":  "4",
                                       "unit_raw":  "packs",
                                       "rate_raw":  "1,100",

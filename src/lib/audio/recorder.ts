@@ -1,12 +1,15 @@
 "use client";
 /**
- * Push-to-talk recorder: dynamic MIME probing (webm/opus → webm → mp4 → ogg → wav), 24 kbps Opus,
- * 3–20 s clips, and a REAL 5-bar Web Audio AnalyserNode meter (no fake waveforms).
+ * Push-to-talk recorder: dynamic MIME probing (webm/opus → webm → mp4 → ogg → wav), 16 kbps Mono
+ * Opus (Phase C: 5s clips shrink from ~80 KB to ~10–12 KB for 2G/3G), 3–20 s clips, and a REAL
+ * 5-bar Web Audio AnalyserNode meter (no fake waveforms).
  */
 
 export const MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus", "audio/wav"];
 export const MAX_CLIP_MS = 20_000;
 export const MIN_CLIP_MS = 600;
+/** 16 kbps mono Opus — ~5× smaller than 24 kbps stereo on 2G/3G Pakistan networks. */
+const AUDIO_BITS_PER_SECOND = 16_000;
 
 export function pickMime(): string {
   if (typeof MediaRecorder === "undefined") return "";
@@ -46,7 +49,7 @@ export class Recorder {
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
     });
     this.mime = pickMime();
-    this.rec = new MediaRecorder(this.stream, { ...(this.mime ? { mimeType: this.mime } : {}), audioBitsPerSecond: 24_000 });
+    this.rec = new MediaRecorder(this.stream, { ...(this.mime ? { mimeType: this.mime } : {}), audioBitsPerSecond: AUDIO_BITS_PER_SECOND });
     this.chunks = [];
     this.rec.ondataavailable = (e) => {
       if (e.data.size) this.chunks.push(e.data);

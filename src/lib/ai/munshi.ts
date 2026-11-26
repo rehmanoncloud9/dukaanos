@@ -77,8 +77,8 @@ export const ParsedTurnZ = z.object({
 });
 
 /** Compact and stable extraction instructions; catalog resolution remains deterministic. */
-export function systemPrompt(shopName: string): string {
-  return [
+export function systemPrompt(shopName: string, context?: { topSkus?: string[]; topCustomers?: string[] }): string {
+  const baseLines = [
     `You are the counter clerk for ${shopName}, a Pakistani kiryana shop.`,
     "Return one JSON object matching the schema. Listen to Pakistani Urdu, Roman Urdu, Punjabi, Potohari, English, and mixed speech, including natural pauses and self-corrections.",
     "Transcribe before interpreting. Preserve the speaker's exact meaning and product words. Do not replace unclear words with a plausible product or customer.",
@@ -87,7 +87,15 @@ export function systemPrompt(shopName: string): string {
     "'N rupay chhor do' is a discount. 'N cash diya' is cash received. 'khate mein', 'udhaar', 'likh do', or 'baqi' means credit; cash plus remaining khata means split. 'X ne N jama karwaye' is a payment collection.",
     "Use intent pulse for 'subah ka hisaab' or 'aaj ka haal'; reversal for undo/cancel requests; question for questions. Keep transcript and Roman rendering faithful.",
     "Never perform financial arithmetic, convert units, infer a price, or treat your confidence score as proof. Set confidence lower for any uncertain word or number. Return null for an unclear number.",
-  ].join("\n");
+  ];
+  // Per-shop context grounding (~120 tokens). Injected only when non-empty.
+  if (context?.topSkus && context.topSkus.length > 0) {
+    baseLines.push(`Top products in this shop (for reference only — do not force a match): ${context.topSkus.slice(0, 15).join(", ")}.`);
+  }
+  if (context?.topCustomers && context.topCustomers.length > 0) {
+    baseLines.push(`Frequent customers (for reference only — do not force a match): ${context.topCustomers.slice(0, 10).join(", ")}.`);
+  }
+  return baseLines.join("\n");
 }
 
 export interface TurnInput {
@@ -96,6 +104,8 @@ export interface TurnInput {
   catalog: Catalog;
   shopName: string;
   shopId?: string;
+  /** Optional per-shop context grounding (~120 tokens). Top SKUs and customers. */
+  context?: { topSkus?: string[]; topCustomers?: string[] };
 }
 
 export interface TurnParse {
@@ -210,7 +220,7 @@ export async function parseTurn(input: TurnInput): Promise<TurnParse> {
     const call = await generateContentOnce(env.fastModel(), {
       contents: [{ role: "user", parts }],
       config: {
-        systemInstruction: systemPrompt(input.shopName),
+        systemInstruction: systemPrompt(input.shopName, input.context),
         responseMimeType: "application/json",
         responseJsonSchema: PARSED_TURN_JSON_SCHEMA,
         temperature: 0,

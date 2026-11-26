@@ -80,7 +80,25 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
       setStage("parsing");
       const form = new FormData();
       form.append("image", new File([prepared.blob], "parchi.jpg", { type: "image/jpeg" }));
-      const result = await api<ParchiParseResult & { api_ms: number }>("/api/parchi/parse", { form, timeoutMs: 60_000 });
+      let result: ParchiParseResult & { api_ms: number };
+      try {
+        result = await api<ParchiParseResult & { api_ms: number }>("/api/parchi/parse", { form, timeoutMs: 60_000 });
+      } catch (firstErr) {
+        // Hedged 503 retry: single retry with 800ms ± 200ms jittered backoff (Phase C)
+        const isTransient = firstErr instanceof Error && /503|504|UNAVAILABLE|timeout/i.test(firstErr.message);
+        if (isTransient) {
+          await new Promise((r) => setTimeout(r, 600 + Math.random() * 400));
+          try {
+            const form2 = new FormData();
+            form2.append("image", new File([prepared.blob], "parchi.jpg", { type: "image/jpeg" }));
+            result = await api<ParchiParseResult & { api_ms: number }>("/api/parchi/parse", { form: form2, timeoutMs: 60_000 });
+          } catch {
+            throw firstErr; // propagate original error — UI will show manual fallback
+          }
+        } else {
+          throw firstErr;
+        }
+      }
       setRes(result);
       setLines(result.lines.map(editLine));
       const extracted = result.math_check.extracted_total_paisa;
@@ -259,8 +277,48 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
       {stage === "capture" && (
         <div className="space-y-2.5 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">
           {parseErr && (
-            <div className="rounded-[12px] border border-udhaar/30 bg-udhaar-bg px-3.5 py-2.5 text-[13.5px] font-medium text-udhaar-ink">
-              {parseErr}
+            <div className="space-y-2 rounded-[12px] border border-udhaar/30 bg-udhaar-bg px-3.5 py-2.5">
+              <p className="text-[13.5px] font-medium text-udhaar-ink">{parseErr}</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => img && void run(img.blob)}
+                  className="tactile flex h-9 items-center gap-1.5 rounded-[10px] bg-white/60 px-3 text-[13px] font-semibold text-udhaar-ink"
+                >
+                  Retry OCR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Manual restock fallback: open an empty review with 1 blank line, preserving idempotency_key
+                    const blankResult: ParchiParseResult & { api_ms: number } = {
+                      supplier_name: "Wholesale",
+                      bill_date: null,
+                      legibility: "fair",
+                      lines: [],
+                      math_check: { passed: false, checked: false, extracted_total_paisa: null, computed_total_paisa: null, delta_paisa: null },
+                      manual_review_required: true,
+                      new_sku_count: 0,
+                      mismatch_count: 0,
+                      model: "manual",
+                      latency_ms: 0,
+                      write_tools_bound: 0,
+                      api_ms: 0,
+                    };
+                    setRes(blankResult);
+                    setLines([]);
+                    setStatedTotalPaisa(null);
+                    setStatedTotalText("");
+                    setCash("");
+                    setGrandTotalAcknowledged(false);
+                    setParseErr(null);
+                    setStage("review");
+                  }}
+                  className="tactile flex h-9 items-center gap-1.5 rounded-[10px] bg-maal px-3 text-[13px] font-semibold text-white"
+                >
+                  Enter Lines Manually
+                </button>
+              </div>
             </div>
           )}
           <p className="text-[14px] text-ink-2">Use clear, even light and keep the whole parchi in frame. Upload is resized to a 1280px JPEG; the original stays available for review.</p>

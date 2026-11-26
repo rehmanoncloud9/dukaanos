@@ -1,12 +1,13 @@
 "use client";
 
-import { MessageSquare, Volume2 } from "lucide-react";
+import { MessageSquare, TrendingDown, Volume2 } from "lucide-react";
 import type { Pulse } from "@/lib/api/contracts";
 import { speak } from "@/lib/client/speak";
 import { useDukaan } from "@/lib/client/store";
 import { formatBaseQty } from "@/lib/domain/desi-units";
 import { reminderText, smsLink, waLink, wholesaleListText } from "@/lib/domain/messages";
 import { formatRs } from "@/lib/domain/money";
+import { computeReorderForecast } from "@/lib/domain/forecast";
 import { Money, Pill, Sheet, SW } from "./ui";
 import { PriceMemoryCard } from "./PriceMemory";
 
@@ -26,6 +27,10 @@ export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => vo
     shop,
     pulse.stockout.items.map((s) => ({ name: s.name, suggested_base_units: s.suggested_base_units, base_unit: s.base_unit, pack_size_base_units: s.pack_size_base_units, pack_label: s.pack_size_base_units === 5000 ? "tin" : undefined })),
   );
+
+  // Margin-weighted reorder forecast: pure integer math, Rs. 0 LLM
+  const forecast = state ? computeReorderForecast(state.products, state.today.cash_in_galla_paisa) : null;
+
   return (
     <Sheet
       open
@@ -105,6 +110,39 @@ export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => vo
             </div>
           )}
         </div>
+
+        {/* Margin-weighted reorder optimizer: pure integer math, Rs. 0 LLM */}
+        {forecast && forecast.items.length > 0 && (
+          <div className="surface-card overflow-hidden">
+            <div className="flex items-center justify-between px-4 pb-2 pt-3">
+              <span className="text-[15px] font-semibold">Reorder Priority</span>
+              <Pill tone="amber">
+                <TrendingDown size={11} strokeWidth={SW} className="inline mr-1" />
+                {formatRs(forecast.total_reorder_cost_paisa)} needed
+              </Pill>
+            </div>
+            <div className="px-4 pb-2 text-[12px] text-ink-2">
+              Galla mein: {formatRs(forecast.cash_available_paisa)} · {forecast.affordable_count}/{forecast.items.length} afford kiye ja sakte hain
+            </div>
+            {forecast.items.map((item) => {
+              const canAfford = item.reorder_cost_paisa <= forecast.cash_available_paisa;
+              return (
+                <div key={item.product_id} className="hairline-t flex items-center justify-between px-4 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[14px] font-medium">{item.name}</div>
+                    <div className="text-[12px] text-ink-2">
+                      {item.days_of_stock === 0 ? "Aaj khatam" : `${item.days_of_stock}d mein khatam`} · Daily profit at risk: {formatRs(item.daily_profit_at_risk_paisa)}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`num text-[14px] font-bold ${canAfford ? "text-cash" : "text-udhaar"}`}>{formatRs(item.reorder_cost_paisa)}</div>
+                    <div className="text-[11px] text-ink-2">{canAfford ? "✓ afford" : "✗ short"}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <PriceMemoryCard />
 

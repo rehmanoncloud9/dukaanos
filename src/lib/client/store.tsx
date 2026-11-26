@@ -181,6 +181,16 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       setAuthReady(true);
       return;
     }
+    // Instant <50ms snapshot hydration: show cached state while auth/network settle.
+    // Runs in parallel with auth.getSession() — whichever wins, state is never blank.
+    const savedShop = localStorage.getItem(SHOP_KEY);
+    if (savedShop) {
+      void loadSnapshot<ShopState>(stateSnapshotKey(savedShop)).then((cached) => {
+        if (cached) {
+          setRawState((cur) => cur ?? cached.data);
+        }
+      });
+    }
     const sb = browserSupabase();
     sb.auth.getSession().then(({ data }) => {
       setSession(data.session);

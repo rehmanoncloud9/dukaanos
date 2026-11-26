@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Bill compiler: turns a ParsedTurn (mentions only) + the shop catalog into a
  * deterministic, integer-paisa proposal and decides the safety tier.
  * The LLM never does arithmetic — every number below is computed here (and
@@ -283,6 +283,13 @@ export function settle(input: SettlementInput): SaleProposal {
   if (credit > 0) reasons.push("UDHAAR");
   if (credit < 0) reasons.push("OVERPAYMENT_TO_KHATA");
   if (credit !== 0 && !hasCustomer) reasons.push("UDHAAR_REQUIRES_CUSTOMER");
+  // Credit Anomaly Guard: force Tier-2 on overdue or over-limit udhaar
+  if (credit > 0 && selected) {
+    const daysOverdue = (selected as { days_overdue?: number | null }).days_overdue ?? 0;
+    const creditLimit = (selected as { credit_limit_paisa?: number | null }).credit_limit_paisa ?? null;
+    if (daysOverdue >= 30) reasons.push("CREDIT_OVERDUE_30D" as TierReason);
+    if (creditLimit !== null && newBalance !== null && newBalance > creditLimit) reasons.push("CREDIT_LIMIT_EXCEEDED" as TierReason);
+  }
   if (discount > 0) reasons.push("DISCOUNT");
   if (customer.mention && customer.ambiguous) reasons.push("AMBIGUOUS_CUSTOMER");
   if (lines.some((l) => l.kind === "new_sku")) reasons.push("NEW_SKU");

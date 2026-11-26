@@ -1,27 +1,61 @@
 "use client";
 
 import { Mic, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MIN_CLIP_MS, Recorder } from "@/lib/audio/recorder";
 import { cx, Spinner, SW } from "./ui";
+
+/** Browser SpeechRecognition typed stub (varies across browsers) */
+interface SpeechRecognitionInstance extends EventTarget {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((e: Event) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+}
+
+function getSpeechRecognition(): (new () => SpeechRecognitionInstance) | null {
+  if (typeof window === "undefined") return null;
+  return (window as unknown as Record<string, unknown>).SpeechRecognition as (new () => SpeechRecognitionInstance)
+    ?? (window as unknown as Record<string, unknown>).webkitSpeechRecognition as (new () => SpeechRecognitionInstance)
+    ?? null;
+}
 
 /**
  * 66px Hold-to-Talk mic. Hold → record (turns #047857 with a REAL 5-bar AnalyserNode meter),
  * slide left to cancel, release to send. Auto-stops at 20 s.
+ *
+ * Offline assist: when navigator.onLine is false OR Recorder is unsupported, captures
+ * a live transcript via browser SpeechRecognition (ur-PK) so the caller can pass it to
+ * tryLocalTurn for instant bill generation without waiting for reconnect.
  */
-export function MicButton({ onClip, onDenied, busy }: { onClip: (blob: Blob, mime: string) => void; onDenied: (msg: string) => void; busy?: boolean }) {
+export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
+  onClip: (blob: Blob, mime: string) => void;
+  onDenied: (msg: string) => void;
+  /** Called with a live transcript when offline SpeechRecognition captures audio */
+  onOfflineTranscript?: (transcript: string) => void;
+  busy?: boolean;
+}) {
   const rec = useRef<Recorder | null>(null);
+  const srRef = useRef<SpeechRecognitionInstance | null>(null);
   const startX = useRef(0);
   const [recording, setRecording] = useState(false);
   const [toggleMode, setToggleMode] = useState(false);
   const [levels, setLevels] = useState([0, 0, 0, 0, 0]);
   const [cancelling, setCancelling] = useState(false);
   const [secs, setSecs] = useState(0);
+  const [offlineTranscript, setOfflineTranscript] = useState("");
   const tick = useRef<ReturnType<typeof setInterval> | null>(null);
   // getUserMedia can take seconds (first-time permission prompt). If the finger lifts before the
   // recorder has actually started, remember that and tear the stream down the moment start resolves.
   const starting = useRef(false);
   const releasedEarly = useRef(false);
+
+  // Cleanup speech recognition on unmount
+  useEffect(() => () => { srRef.current?.stop(); }, []);
 
   const finish = async (cancel: boolean) => {
     if (starting.current) {
@@ -53,11 +87,53 @@ export function MicButton({ onClip, onDenied, busy }: { onClip: (blob: Blob, mim
     }
   };
 
+  /**
+   * Offline SpeechRecognition assist (ur-PK):
+   * When offline, capture a live transcript via browser SpeechRecognition
+   * and pass it to onOfflineTranscript for instant tryLocalTurn.
+   */
+  const beginOfflineRecognition = () => {
+    const SR = getSpeechRecognition();
+    if (!SR) {
+      onDenied("Offline mode: type your order below");
+      return;
+    }
+    const sr = new SR();
+    srRef.current = sr;
+    sr.lang = "ur-PK";
+    sr.continuous = false;
+    sr.interimResults = false;
+    setRecording(true);
+    setSecs(0);
+    tick.current = setInterval(() => setSecs((s) => s + 1), 1000);
+    sr.onresult = (e: Event) => {
+      const ev = e as unknown as { results: { [key: number]: { [key: number]: { transcript: string } } } };
+      const transcript = (ev.results[0]?.[0]?.transcript) ?? "";
+      setOfflineTranscript(transcript);
+      if (transcript && onOfflineTranscript) onOfflineTranscript(transcript);
+    };
+    sr.onerror = () => onDenied("Voice recognition error — type below");
+    sr.onend = () => {
+      if (tick.current) clearInterval(tick.current);
+      setRecording(false);
+      srRef.current = null;
+    };
+    sr.start();
+    navigator.vibrate?.(15);
+  };
+
   const beginRecording = async (isToggle: boolean) => {
     if (busy || rec.current) return;
-    if (!Recorder.supported()) {
-      onDenied("Is browser mein mic nahi — neeche type karein");
-      return;
+    // Offline assist: use SpeechRecognition when offline or Recorder unsupported
+    if (!Recorder.supported() || (typeof navigator !== "undefined" && !navigator.onLine)) {
+      if (!navigator.onLine && onOfflineTranscript) {
+        beginOfflineRecognition();
+        return;
+      }
+      if (!Recorder.supported()) {
+        onDenied("Is browser mein mic nahi — neeche type karein");
+        return;
+      }
     }
     const r = new Recorder();
     rec.current = r;
@@ -114,6 +190,11 @@ export function MicButton({ onClip, onDenied, busy }: { onClip: (blob: Blob, mim
             : toggleMode
               ? `0:${String(secs).padStart(2, "0")} · Press Space/Enter to stop`
               : `0:${String(secs).padStart(2, "0")} · ← slide to cancel`}
+        </div>
+      )}
+      {offlineTranscript && !recording && (
+        <div className="absolute -top-11 max-w-[260px] truncate rounded-full bg-amber-400/90 px-3 py-1 text-[12px] font-semibold text-white">
+          {offlineTranscript}
         </div>
       )}
       <button

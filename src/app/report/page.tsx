@@ -68,6 +68,8 @@ export default function ReportPage() {
       <section className="mt-6 grid grid-cols-4 gap-3">
         {[
           ["Bharosa Index", `${bharosa.score}/100`],
+          ["Verified Trust", `${bharosa.verified_trust}/60`],
+          ["Self-Reported", `${bharosa.self_reported}/40`],
           ["30-day GMV", formatRs(sum.gmv_paisa)],
           ["Sales", String(sum.sales_count)],
           ["Cash share", `${(p.payload.cash_bp / 100).toFixed(1)}%`],
@@ -81,6 +83,33 @@ export default function ReportPage() {
             <div className="num mt-1 text-[17px] font-bold">{v}</div>
           </div>
         ))}
+      </section>
+
+      <section className="mt-6">
+        <h2 className="text-[13px] font-semibold uppercase tracking-[0.06em] text-ink-2">Bharosa Trust Index · Phase C Split</h2>
+        <div className="mt-2 grid grid-cols-2 gap-3">
+          <div className="rounded-[12px] border border-black/10 p-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-2">Verified Trust (0–60)</div>
+            <div className="num mt-1 text-[20px] font-bold">{bharosa.verified_trust}/60</div>
+            <table className="mt-2 w-full text-[12px]">
+              <tbody>
+                <tr><td className="py-0.5 text-ink-2">Chain integrity</td><td className="num text-right font-semibold">{bharosa.breakdown.chain}/20</td></tr>
+                <tr><td className="py-0.5 text-ink-2">Customer attestations</td><td className="num text-right font-semibold">{bharosa.breakdown.attestations}/25</td></tr>
+                <tr><td className="py-0.5 text-ink-2">Wholesale-backed</td><td className="num text-right font-semibold">{bharosa.breakdown.wholesale}/15</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="rounded-[12px] border border-black/10 p-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-2">Self-Reported Activity (0–40)</div>
+            <div className="num mt-1 text-[20px] font-bold">{bharosa.self_reported}/40</div>
+            <table className="mt-2 w-full text-[12px]">
+              <tbody>
+                <tr><td className="py-0.5 text-ink-2">Trading consistency</td><td className="num text-right font-semibold">{bharosa.breakdown.consistency}/20</td></tr>
+                <tr><td className="py-0.5 text-ink-2">Credit recovery</td><td className="num text-right font-semibold">{bharosa.breakdown.recovery}/20</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       <section className="mt-6">
@@ -127,7 +156,7 @@ export default function ReportPage() {
       </section>
 
       <footer className="mt-8 border-t border-black/10 pt-4 text-[11.5px] leading-[16px] text-ink-2">
-        {p.disclaimer} Verify at {p.verify_url.split("#")[0]} by scanning the QR. Owner-consented export; zero FBR linkage; zero CNIC collected.
+        {p.disclaimer} Verify at {p.verify_url.split("#")[0]} by scanning the QR. Private Merchant Khata · Owner-Consented Sharing Only · Zero FBR linkage · Zero CNIC collected.
       </footer>
     </main>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ImageDown, MessageSquare, Plus, Trash2, Volume2 } from "lucide-react";
+import { Check, ImageDown, MessageSquare, Mic, Plus, Trash2, Volume2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { CommitResponse, FeedTx, PromiseProposal, TurnTrace } from "@/lib/api/contracts";
 import { api, ClientApiError, friendlyError, newKey } from "@/lib/client/api";
@@ -14,6 +14,7 @@ import { formatRs, rupeesToPaisa } from "@/lib/domain/money";
 import { quickWadaOptions, wadaLabel } from "@/lib/domain/wada";
 import { dequeue } from "@/lib/client/queue";
 import type { CustomerRow, PaymentProposal, ProposalLine, SaleProposal } from "@/lib/domain/types";
+import { quickSuggest } from "@/lib/domain/cooccurrence";
 import { feedSummary } from "./MunshiTab";
 import { cx, Money, Pill, PrimaryButton, SecondaryButton, Sheet, SW } from "./ui";
 
@@ -30,6 +31,8 @@ const REASON_LABEL: Record<string, string> = {
   UNRESOLVED_NUMBER: "Number needs correction",
   UNVERIFIED_EXTRACTION: "Review extraction",
   EXPLICIT_CASH_REQUIRED: "Confirm cash received",
+  CREDIT_OVERDUE_30D: "Udhaar 30+ din overdue",
+  CREDIT_LIMIT_EXCEEDED: "Credit limit exceeded",
 };
 
 /* ───────────────────────────── customer chips ───────────────────────────── */

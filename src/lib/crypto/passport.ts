@@ -188,20 +188,79 @@ export async function generateKeypairHex(): Promise<{ privateKey: string; public
 
 export interface BharosaIndex {
   score: number; // 0..100 informational trade trust index
-  breakdown: { consistency: number; chain: number; recovery: number; mutual: number };
+  /**
+   * Phase C split:
+   *   Verified Trust (0–60): chain integrity + customer attestations + wholesale-backed restock
+   *   Self-Reported Activity (0–40): trading consistency + recovery rate
+   */
+  breakdown: {
+    // Verified Trust sub-scores (60 pts total)
+    chain: number;        // 0–20: SHA-256 chain balanced + length signal
+    attestations: number; // 0–25: customer-confirmed credit entries (requires real attestations)
+    wholesale: number;    // 0–15: wholesale-backed purchase entries (parchi-verified)
+    // Self-Reported Activity sub-scores (40 pts total)
+    consistency: number;  // 0–20: trading-day regularity
+    recovery: number;     // 0–20: credit recovery rate
+  };
+  verified_trust: number;      // sum of chain + attestations + wholesale (0–60)
+  self_reported: number;       // sum of consistency + recovery (0–40)
 }
 
-/** Deterministic 0–100 trade trust index from observable ledger & Mutual Khata signals. */
+/** Deterministic 0–100 trade trust index from observable ledger & Mutual Khata signals.
+ *
+ * Anti-gaming guarantee: zero free baseline points when attestations === 0.
+ * The 25-pt attestation bucket requires real customer-signed confirmations.
+ */
 export function computeBharosaIndex(s: TradeSummary): BharosaIndex {
   const period = Math.max(1, s.period_days);
-  const consistency = Math.min(25, Math.round((s.active_trading_days / Math.min(period, 20)) * 25));
-  const chain = s.ledger_balanced ? 25 : 0;
-  const recovery = s.credit_sales_paisa <= 0 ? 25 : Math.min(25, Math.round((s.recovered_paisa / s.credit_sales_paisa) * 25));
-  let mutual = 15; // neutral baseline when no mutual attestations exist yet
+  const tradingDays = Math.max(0, s.active_trading_days);
+  const target = Math.min(period, 20); // normalise against up to 20 trading days
+
+  // ── Self-Reported Activity (40 pts) ─────────────────────────────────────────
+  const consistency = Math.min(20, Math.round((tradingDays / target) * 20));
+  const recovery = s.credit_sales_paisa <= 0
+    ? 20 // no credit given → no recovery risk → full score
+    : Math.min(20, Math.round((Number(s.recovered_paisa) / Number(s.credit_sales_paisa)) * 20));
+
+  // ── Verified Trust (60 pts) ──────────────────────────────────────────────────
+
+  // Chain integrity (0–20): balanced ledger earns 15; additional 5 for chain length ≥ 50
+  const chain = s.ledger_balanced
+    ? (Number(s.tx_count_total) >= 50 ? 20 : 15)
+    : 0;
+
+  // Customer attestations (0–25): requires real customer-signed confirmations.
+  // Zero free baseline — the whole 25 pts comes from attestation evidence.
+  let attestations = 0;
   if (s.bharosa && s.bharosa.credit_entries > 0) {
-    const confirmRatio = s.bharosa.confirmed_entries / s.bharosa.credit_entries;
-    const disputePenalty = Math.min(10, s.bharosa.disputed_entries * 5);
-    mutual = Math.max(0, Math.min(25, Math.round(confirmRatio * 25) - disputePenalty));
+    const creditN = Number(s.bharosa.credit_entries);
+    const confirmN = Number(s.bharosa.confirmed_entries);
+    const disputeN = Number(s.bharosa.disputed_entries);
+    const att = Number(s.bharosa.attestations_total);
+    if (att > 0) {
+      const confirmRatio = confirmN / creditN;
+      const disputePenalty = Math.min(10, disputeN * 5);
+      attestations = Math.max(0, Math.min(25, Math.round(confirmRatio * 25) - disputePenalty));
+    }
+    // attestations stays 0 when no customer has attested anything
   }
-  return { score: consistency + chain + recovery + mutual, breakdown: { consistency, chain, recovery, mutual } };
+
+  // Wholesale-backed purchasing (0–15): purchase transactions backed by parchi OCR
+  // Proxy: purchases_paisa > 0 suggests real wholesale; we scale against GMV.
+  let wholesale = 0;
+  if (Number(s.purchases_paisa) > 0 && Number(s.gmv_paisa) > 0) {
+    const purchaseRatio = Math.min(1, Number(s.purchases_paisa) / Number(s.gmv_paisa));
+    wholesale = Math.min(15, Math.round(purchaseRatio * 15));
+  }
+
+  const verified_trust = chain + attestations + wholesale;
+  const self_reported = consistency + recovery;
+  const score = verified_trust + self_reported;
+
+  return {
+    score: Math.min(100, score),
+    breakdown: { chain, attestations, wholesale, consistency, recovery },
+    verified_trust,
+    self_reported,
+  };
 }

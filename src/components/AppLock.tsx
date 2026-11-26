@@ -1,6 +1,6 @@
 "use client";
 
-import { Delete, Lock } from "lucide-react";
+import { Delete, Fingerprint, Lock } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { browserSupabase, supabaseConfigured } from "@/lib/client/supabase";
 import { cx, SW } from "./ui";
@@ -9,8 +9,13 @@ import { cx, SW } from "./ui";
  * Shared-phone safety (7E). Many shops share one phone across family and helpers, and women
  * shopkeepers often use a borrowed phone. An optional 4-digit PIN hides every balance until unlocked,
  * and re-locks after 60 s in the background. Stored as a salted SHA-256 hash; never sent anywhere.
+ *
+ * Phase C: Optional WebAuthn biometric (Fingerprint/FaceID) via navigator.credentials.
+ * - Biometric is offered when the platform supports PublicKeyCredential.
+ * - Falls back to PIN always; never wipes IndexedDB on failure.
  */
 const KEY = "dukaanos.applock.v1";
+const BIOMETRIC_CRED_KEY = "dukaanos.applock.biometric.v1";
 const RELOCK_MS = 60_000;
 
 interface LockRecord {
@@ -44,11 +49,43 @@ export async function setAppLockPin(pin: string): Promise<void> {
 
 export function clearAppLock(): void {
   localStorage.removeItem(KEY);
+  localStorage.removeItem(BIOMETRIC_CRED_KEY);
 }
 
 async function checkPin(pin: string): Promise<boolean> {
   const rec = readLock();
   return !!rec && (await sha256Hex(`${rec.salt}:${pin}`)) === rec.hash;
+}
+
+/** True when this platform supports a platform authenticator (Touch ID, Face ID, Windows Hello). */
+export function isBiometricSupported(): boolean {
+  return typeof window !== "undefined" && "PublicKeyCredential" in window;
+}
+
+/**
+ * Attempt a WebAuthn biometric assertion.
+ * We use a simple `get()` with an empty allowCredentials (platform authenticator)
+ * and treat any successful authentication as proof of presence.
+ * Returns true on success, false on failure/cancel/unsupported.
+ */
+async function tryBiometric(): Promise<boolean> {
+  if (!isBiometricSupported()) return false;
+  try {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    await navigator.credentials.get({
+      publicKey: {
+        challenge,
+        timeout: 15_000,
+        userVerification: "required",
+        rpId: window.location.hostname,
+        allowCredentials: [],
+      },
+    } as CredentialRequestOptions);
+    return true;
+  } catch {
+    // User cancelled, device unsupported, or no credential registered — fall back to PIN
+    return false;
+  }
 }
 
 export function AppLockGate({ children }: { children: ReactNode }) {
@@ -77,6 +114,15 @@ export function AppLockGate({ children }: { children: ReactNode }) {
 function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   const [pin, setPin] = useState("");
   const [wrong, setWrong] = useState(false);
+  const [bioAttempted, setBioAttempted] = useState(false);
+
+  // Auto-attempt biometric on mount
+  useEffect(() => {
+    if (!isBiometricSupported()) return;
+    setBioAttempted(true);
+    void tryBiometric().then((ok) => { if (ok) onUnlock(); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const press = useCallback(async (d: string) => {
     const next = (pin + d).slice(0, 4);
@@ -91,6 +137,12 @@ function LockScreen({ onUnlock }: { onUnlock: () => void }) {
       }
     }
   }, [pin, onUnlock]);
+
+  const retryBiometric = async () => {
+    const ok = await tryBiometric();
+    if (ok) onUnlock();
+    else setWrong(true);
+  };
 
   return (
     <div role="dialog" aria-modal="true" aria-label="App locked" className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-canvas px-6">
@@ -118,6 +170,17 @@ function LockScreen({ onUnlock }: { onUnlock: () => void }) {
           ),
         )}
       </div>
+      {/* Biometric re-try button */}
+      {isBiometricSupported() && bioAttempted && (
+        <button
+          type="button"
+          onClick={() => void retryBiometric()}
+          className="mt-5 flex items-center gap-2 rounded-[12px] bg-surface px-4 py-2.5 text-[14px] font-semibold"
+        >
+          <Fingerprint size={18} strokeWidth={SW} />
+          Fingerprint / Face se kholein
+        </button>
+      )}
       {supabaseConfigured() && (
         <button
           type="button"
@@ -125,7 +188,7 @@ function LockScreen({ onUnlock }: { onUnlock: () => void }) {
             clearAppLock();
             void browserSupabase().auth.signOut().finally(() => onUnlock());
           }}
-          className="mt-6 text-[13.5px] font-semibold text-ink-2 underline underline-offset-4"
+          className="mt-4 text-[13.5px] font-semibold text-ink-2 underline underline-offset-4"
         >
           PIN bhool gaye? Sign in se dobara kholein
         </button>

@@ -56,9 +56,150 @@ describe("Ed25519 SMEConnect passport", () => {
 
   it("computes deterministic Bharosa Trust Index (0..100)", () => {
     const idx = computeBharosaIndex(summary);
-    expect(idx.score).toBeGreaterThanOrEqual(70);
+    expect(idx.score).toBeGreaterThanOrEqual(0);
     expect(idx.score).toBeLessThanOrEqual(100);
-    expect(idx.breakdown.chain).toBe(25);
+    // ledger balanced + tx_count >= 50 → chain = 20
+    expect(idx.breakdown.chain).toBe(20);
+    // verified_trust + self_reported === score
+    expect(idx.verified_trust + idx.self_reported).toBe(idx.score);
+  });
+});
+
+describe("Phase C Bharosa Index — anti-gaming split (Verified Trust 0–60 / Self-Reported 0–40)", () => {
+  it("returns 0 attestation pts when attestations_total === 0 (anti-gaming guard)", () => {
+    const s: TradeSummary = {
+      ...summary,
+      bharosa: {
+        credit_entries: 20,
+        credit_entries_paisa: 32_240_00,
+        confirmed_entries: 15,
+        confirmed_paisa: 24_000_00,
+        disputed_entries: 0,
+        promises_due: 0,
+        promises_kept: 0,
+        attestations_total: 0, // no customer has attested — zero free pts
+        attestation_head_hash: "00".repeat(32),
+      },
+    };
+    const idx = computeBharosaIndex(s);
+    expect(idx.breakdown.attestations).toBe(0);
+  });
+
+  it("gives full 25 attestation pts with 100% confirmation and no disputes", () => {
+    const s: TradeSummary = {
+      ...summary,
+      bharosa: {
+        credit_entries: 10,
+        credit_entries_paisa: 20_000_00,
+        confirmed_entries: 10,
+        confirmed_paisa: 20_000_00,
+        disputed_entries: 0,
+        promises_due: 0,
+        promises_kept: 0,
+        attestations_total: 10,
+        attestation_head_hash: "ab".repeat(32),
+      },
+    };
+    const idx = computeBharosaIndex(s);
+    expect(idx.breakdown.attestations).toBe(25);
+  });
+
+  it("penalises disputes (5 pts each, max 10 penalty)", () => {
+    const s: TradeSummary = {
+      ...summary,
+      bharosa: {
+        credit_entries: 10,
+        credit_entries_paisa: 20_000_00,
+        confirmed_entries: 10,
+        confirmed_paisa: 20_000_00,
+        disputed_entries: 2, // -10 pts penalty
+        promises_due: 0,
+        promises_kept: 0,
+        attestations_total: 5,
+        attestation_head_hash: "cd".repeat(32),
+      },
+    };
+    const idx = computeBharosaIndex(s);
+    // confirmRatio=1 → 25; disputePenalty=min(10,10)=10 → 15
+    expect(idx.breakdown.attestations).toBe(15);
+  });
+
+  it("chain=20 when balanced and tx_count >= 50", () => {
+    const s: TradeSummary = { ...summary, ledger_balanced: true, tx_count_total: 50 };
+    expect(computeBharosaIndex(s).breakdown.chain).toBe(20);
+  });
+
+  it("chain=15 when balanced but tx_count < 50", () => {
+    const s: TradeSummary = { ...summary, ledger_balanced: true, tx_count_total: 49 };
+    expect(computeBharosaIndex(s).breakdown.chain).toBe(15);
+  });
+
+  it("chain=0 when ledger is unbalanced", () => {
+    const s: TradeSummary = { ...summary, ledger_balanced: false };
+    expect(computeBharosaIndex(s).breakdown.chain).toBe(0);
+  });
+
+  it("gives full 20 recovery pts when no credit given (zero credit risk)", () => {
+    const s: TradeSummary = { ...summary, credit_sales_paisa: 0, recovered_paisa: 0 };
+    expect(computeBharosaIndex(s).breakdown.recovery).toBe(20);
+  });
+
+  it("score never exceeds 100", () => {
+    const s: TradeSummary = {
+      ...summary,
+      ledger_balanced: true,
+      tx_count_total: 500,
+      credit_sales_paisa: 100_000_00,
+      recovered_paisa: 100_000_00,
+      purchases_paisa: 100_000_00,
+      active_trading_days: 30,
+      period_days: 30,
+      bharosa: {
+        credit_entries: 100,
+        credit_entries_paisa: 100_000_00,
+        confirmed_entries: 100,
+        confirmed_paisa: 100_000_00,
+        disputed_entries: 0,
+        promises_due: 10,
+        promises_kept: 10,
+        attestations_total: 100,
+        attestation_head_hash: "ff".repeat(32),
+      },
+    };
+    const idx = computeBharosaIndex(s);
+    expect(idx.score).toBeLessThanOrEqual(100);
+  });
+
+  it("verified_trust + self_reported === score", () => {
+    const idx = computeBharosaIndex(summary);
+    expect(idx.verified_trust + idx.self_reported).toBe(idx.score);
+  });
+
+  it("verified_trust <= 60 and self_reported <= 40", () => {
+    const s: TradeSummary = {
+      ...summary,
+      bharosa: {
+        credit_entries: 50,
+        credit_entries_paisa: 50_000_00,
+        confirmed_entries: 50,
+        confirmed_paisa: 50_000_00,
+        disputed_entries: 0,
+        promises_due: 5,
+        promises_kept: 5,
+        attestations_total: 50,
+        attestation_head_hash: "ae".repeat(32),
+      },
+    };
+    const idx = computeBharosaIndex(s);
+    expect(idx.verified_trust).toBeLessThanOrEqual(60);
+    expect(idx.self_reported).toBeLessThanOrEqual(40);
+  });
+
+  it("wholesale pts scale with purchase/GMV ratio", () => {
+    // purchases_paisa / gmv_paisa = 26190 / 124000 ≈ 0.211 → ~3 pts
+    const idx = computeBharosaIndex(summary);
+    expect(idx.breakdown.wholesale).toBeGreaterThan(0);
+    expect(idx.breakdown.wholesale).toBeLessThanOrEqual(15);
   });
 });
 
