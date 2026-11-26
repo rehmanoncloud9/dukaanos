@@ -80,38 +80,43 @@ function QuickSellStrip({ products }: { products: StateProduct[] }) {
 
   return (
     <div className="surface-card overflow-hidden">
-      <div className="flex items-center gap-1.5 px-4 pb-1.5 pt-3">
+      <div className="flex items-center gap-1.5 px-4 pb-1.5 pt-2.5">
         <Zap size={12} strokeWidth={SW} className="text-cash" />
-        <span className="section-label">Quick-Sell · 1 tap = cash sale</span>
-        <span className="ml-auto text-[11px] text-ink-3">Rs. 0 LLM</span>
+        <span className="section-label">Quick-Sell</span>
       </div>
       <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3">
-        {top4.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            disabled={thinking}
-            onClick={() => void submitTurn({ text: `ek ${p.name} cash` })}
-            className="tactile flex shrink-0 flex-col items-start rounded-[12px] border border-black/10 bg-canvas px-3 py-2 text-left disabled:opacity-50"
-          >
-            <span className="flex items-center gap-1 text-[13.5px] font-semibold leading-5">
-              <Plus size={12} strokeWidth={SW + 0.5} />
-              {p.name.replace(/\s*\(.*\)/, "").slice(0, 16)}
-            </span>
-            <span className="text-[12px] text-ink-2">
-              Rs.{Math.round(p.unit_price_paisa / 100)} · {p.sold_7d}×/wk
-            </span>
-          </button>
-        ))}
+        {top4.map((p) => {
+          const soldLabel =
+            p.pack_size_base_units > 1 && p.base_unit !== "pcs" && p.pack_size_base_units !== 1000
+              ? `${Math.round(p.sold_7d / p.pack_size_base_units)}/wk`
+              : `${formatBaseQty(p.sold_7d, p.base_unit)}/wk`;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              disabled={thinking}
+              onClick={() => void submitTurn({ text: `ek ${p.name} cash` })}
+              className="tactile flex shrink-0 flex-col items-start rounded-[12px] border border-black/10 bg-canvas px-3 py-2 text-left disabled:opacity-50"
+            >
+              <span className="flex items-center gap-1 text-[13.5px] font-semibold leading-5">
+                <Plus size={12} strokeWidth={SW + 0.5} />
+                {p.name.replace(/\s*\(.*\)/, "").slice(0, 16)}
+              </span>
+              <span className="num text-[12px] text-ink-2">
+                {formatRs(p.unit_price_paisa)} · {soldLabel}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 }
 
 export function MunshiTab() {
-  const { state, openSheet, submitTurn, thinking, toast, highlightTx, refresh, lang } = useDukaan();
+  const { state, shop, openSheet, submitTurn, thinking, toast, highlightTx, refresh, lang } = useDukaan();
   const [pulse, setPulse] = useState<Pulse | null>(null);
-  const [stripOpen, setStripOpen] = useState(true);
+  const [stripOpen, setStripOpen] = useState(false);
   const [typing, setTypingState] = useState(() =>
     typeof window !== "undefined" && sessionStorage.getItem("dukaanos.typing") === "1",
   );
@@ -172,7 +177,7 @@ export function MunshiTab() {
   };
 
   return (
-    <div className="space-y-2.5">
+    <div className={cx("space-y-2.5", typing ? "pb-44" : "pb-24")}>
       <div className="grid grid-cols-2 gap-2.5">
         <div className="surface-card p-3.5">
           <div className={cx("section-label flex items-center gap-1.5", lang === "ur" && "urdu-ui")} dir="auto">
@@ -279,16 +284,18 @@ export function MunshiTab() {
       </div>
 
       {/* Dock */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-[68px] z-30 mx-auto max-w-[430px] px-4 pb-safe">
+      <div className="pointer-events-none fixed inset-x-0 bottom-[60px] z-30 mx-auto max-w-[430px] bg-gradient-to-t from-canvas via-canvas/95 to-transparent px-4 pb-2 pt-5 pb-safe">
         {typing && (
           <div className="pointer-events-auto mb-3 rounded-[16px] border border-black/10 bg-surface p-2 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
-            <div className="no-scrollbar mb-2 flex gap-1.5 overflow-x-auto">
-              {DEMO_UTTERANCES.map((u) => (
-                <button key={u} onClick={() => setText(u)} className="tactile h-7 shrink-0 rounded-full bg-surface-sunken px-2.5 text-[12px] text-ink-2">
-                  {u.length > 34 ? u.slice(0, 32) + "…" : u}
-                </button>
-              ))}
-            </div>
+            {(shop?.is_demo_shop || shop?.is_stage_shop) && (
+              <div className="no-scrollbar mb-2 flex gap-1.5 overflow-x-auto">
+                {DEMO_UTTERANCES.map((u) => (
+                  <button key={u} onClick={() => setText(u)} className="tactile h-7 shrink-0 rounded-full bg-surface-sunken px-2.5 text-[12px] text-ink-2">
+                    {u.length > 34 ? u.slice(0, 32) + "…" : u}
+                  </button>
+                ))}
+              </div>
+            )}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -321,6 +328,7 @@ export function MunshiTab() {
           <MicButton
             busy={thinking}
             onClip={(blob, mime) => void submitTurn({ blob, mime })}
+            onOfflineTranscript={(t) => void submitTurn({ text: t })}
             onDenied={(m) => {
               toast(m, "warn");
               setTyping(true);

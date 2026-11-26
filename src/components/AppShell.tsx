@@ -132,8 +132,9 @@ function Header() {
       {tab === "munshi" && (
         <>
           {titleButton(name)}
-          <span className={cx("inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-surface-sunken px-2 text-[11.5px] font-semibold text-ink-2", lang === "ur" && "urdu-ui")} dir="auto">
-            <Lock size={11} strokeWidth={SW} /> {tr("zeroFbr", lang)}
+          <span title={tr("zeroFbr", lang)} className={cx("inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-surface-sunken px-2 text-[11px] font-semibold text-ink-2", lang === "ur" && "urdu-ui")} dir="auto">
+            <Lock size={10} strokeWidth={SW} />
+            <span className="hidden min-[400px]:inline">{tr("zeroFbr", lang)}</span>
           </span>
           {reviewCount > 0 && (
             <button
