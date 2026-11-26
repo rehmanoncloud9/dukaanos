@@ -5,9 +5,11 @@ import { Download, FileAudio, LogOut, Play, RefreshCw, ShieldAlert, ShieldCheck,
 import { useEffect, useRef, useState } from "react";
 import { api, friendlyError } from "@/lib/client/api";
 import { downloadCsv, exportKhataCsv, exportMaalCsv } from "@/lib/client/csv-export";
+import { parseCustomerCsv } from "@/lib/client/csv-import";
 import { tr, type Lang } from "@/lib/client/i18n";
 import { listReplays, type ReplayClip } from "@/lib/client/queue";
 import { useDukaan } from "@/lib/client/store";
+import { eodSummaryText, waLink } from "@/lib/domain/messages";
 import { formatRs, rupeesToPaisa } from "@/lib/domain/money";
 import { cx, Pill, PrimaryButton, SecondaryButton, Segmented, Sheet, Spinner, SW } from "./ui";
 
@@ -28,6 +30,8 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
   const [chain, setChain] = useState<{ ok: boolean; code: string; checked: number; ms: number; first_broken_seq?: number } | null>(null);
   // Shift Handover — Galla Count
   const [gallaInput, setGallaInput] = useState("");
+  const [raastId, setRaastId] = useState("");
+  const csvRef = useRef<HTMLInputElement>(null);
   const gallaActual = rupeesToPaisa(Number(gallaInput || 0));
   const gallaSystem = state?.today.cash_in_galla_paisa ?? 0;
   const gallaDiff = gallaActual - gallaSystem;
@@ -110,7 +114,51 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
                 {gallaDiff === 0 ? "✓ Match" : gallaDiff > 0 ? `+${formatRs(gallaDiff)} extra` : `${formatRs(Math.abs(gallaDiff))} short`}
               </div>
             )}
+            {state && (
+              <button
+                type="button"
+                onClick={() => {
+                  const text = eodSummaryText({
+                    shop: state.shop.name,
+                    cash_sales_paisa: state.today.cash_sales_paisa,
+                    udhaar_paisa: state.today.udhaar_paisa,
+                    wasooli_paisa: state.today.wasooli_paisa,
+                    cash_in_galla_paisa: state.today.cash_in_galla_paisa,
+                    sales_count: state.today.sales_count,
+                  });
+                  window.open(waLink(null, text), "_blank", "noopener,noreferrer");
+                }}
+                className="tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-cash-bg text-[13.5px] font-semibold text-cash-ink"
+              >
+                Share Aaj Ka Hisaab (WhatsApp)
+              </button>
+            )}
           </div>
+        </section>
+
+        {/* Raast / Wallet ID for Mutual Khata */}
+        <section>
+          <div className="section-label mb-2">Raast / EasyPaisa / JazzCash ID</div>
+          <form
+            className="surface-card flex gap-2 p-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void act("raast", async () => {
+                await api("/api/khata/raast", { json: { raast_id: raastId.trim() || null } });
+                toast(raastId.trim() ? "Raast ID saved — Mutual Khata par dikhega" : "Raast ID cleared", "ok");
+              });
+            }}
+          >
+            <input
+              value={raastId}
+              onChange={(e) => setRaastId(e.target.value)}
+              placeholder="03xx-xxxxxxx ya IBAN"
+              className="h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[14.5px] outline-none"
+            />
+            <button type="submit" disabled={busy === "raast"} className="tactile h-11 shrink-0 rounded-[12px] bg-ink px-4 text-[14px] font-semibold text-white disabled:opacity-50">
+              {busy === "raast" ? <Spinner /> : "Save"}
+            </button>
+          </form>
         </section>
 
         <section>
@@ -262,6 +310,35 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
                 </button>
               </div>
             )}
+            <input
+              ref={csvRef}
+              type="file"
+              accept=".csv,text/csv"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (!f) return;
+                void act("import", async () => {
+                  const list = parseCustomerCsv(await f.text());
+                  if (list.length === 0) throw new Error("CSV mein koi customer nahi mila");
+                  let added = 0;
+                  for (const c of list.slice(0, 100)) {
+                    await api("/api/shop/customer", { json: { name: c.name, phone: c.phone ?? undefined } });
+                    added++;
+                  }
+                  await refresh();
+                  toast(`${added} customers import ho gaye`, "ok");
+                });
+              }}
+            />
+            <button
+              onClick={() => csvRef.current?.click()}
+              disabled={busy === "import"}
+              className="tactile flex h-10 w-full items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[13px] font-semibold"
+            >
+              {busy === "import" ? <Spinner /> : <Upload size={13} strokeWidth={SW} />} Import Customers CSV (Udhaar Book / Excel)
+            </button>
             <div className="grid grid-cols-3 gap-2">
               <a href="/privacy" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
                 {tr("privacy", lang)}

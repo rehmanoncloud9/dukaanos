@@ -53,6 +53,7 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
   // recorder has actually started, remember that and tear the stream down the moment start resolves.
   const starting = useRef(false);
   const releasedEarly = useRef(false);
+  const startedAt = useRef(0);
 
   // Cleanup speech recognition on unmount
   useEffect(() => () => { srRef.current?.stop(); }, []);
@@ -61,6 +62,11 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
     if (starting.current) {
       releasedEarly.current = true;
       setCancelling(false);
+      return;
+    }
+    // Quick tap (< 450ms) without cancelling switches into hands-free Tap-to-Talk mode
+    if (!cancel && !toggleMode && Date.now() - startedAt.current < 450) {
+      setToggleMode(true);
       return;
     }
     const r = rec.current;
@@ -144,15 +150,18 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
       starting.current = false;
       if (releasedEarly.current) {
         releasedEarly.current = false;
-        r.cancel();
-        rec.current = null;
-        setLevels([0, 0, 0, 0, 0]);
-        onDenied("Mic dabaa kar rakhein aur bolein (hold to talk)");
+        setRecording(true);
+        setToggleMode(true);
+        setSecs(0);
+        startedAt.current = Date.now();
+        tick.current = setInterval(() => setSecs((s) => s + 1), 1000);
+        navigator.vibrate?.(15);
         return;
       }
       setRecording(true);
       setToggleMode(isToggle);
       setSecs(0);
+      startedAt.current = Date.now();
       tick.current = setInterval(() => setSecs((s) => s + 1), 1000);
       navigator.vibrate?.(15);
     } catch {
@@ -164,7 +173,12 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
   };
 
   const start = async (e: React.PointerEvent) => {
-    if (busy || rec.current) return;
+    if (busy) return;
+    if (recording && toggleMode) {
+      void finish(false);
+      return;
+    }
+    if (rec.current) return;
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
     await beginRecording(false);
@@ -188,7 +202,7 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
           {cancelling
             ? "Release to cancel"
             : toggleMode
-              ? `0:${String(secs).padStart(2, "0")} · Press Space/Enter to stop`
+              ? `0:${String(secs).padStart(2, "0")} · Tap mic or Space to stop`
               : `0:${String(secs).padStart(2, "0")} · ← slide to cancel`}
         </div>
       )}

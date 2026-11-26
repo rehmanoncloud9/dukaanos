@@ -70,6 +70,24 @@ export function receiptText(opts: {
   return parts.filter(Boolean).join("\n");
 }
 
+export function eodSummaryText(opts: {
+  shop: string;
+  cash_sales_paisa: number;
+  udhaar_paisa: number;
+  wasooli_paisa: number;
+  cash_in_galla_paisa: number;
+  sales_count: number;
+}): string {
+  return [
+    `${opts.shop} — Aaj Ka Hisaab (${new Date().toLocaleDateString("en-PK", { day: "numeric", month: "short", timeZone: "Asia/Karachi" })})`,
+    `Sales: ${opts.sales_count}`,
+    `Cash sales: ${formatRs(opts.cash_sales_paisa)}`,
+    `Udhaar diya: ${formatRs(opts.udhaar_paisa)}`,
+    `Wasooli mili: ${formatRs(opts.wasooli_paisa)}`,
+    `Galla mein cash: ${formatRs(opts.cash_in_galla_paisa)}`,
+  ].join("\n");
+}
+
 export function paymentReceiptText(opts: { shop: string; customer: string; amount_paisa: number; new_balance_paisa: number; entry_hash?: string | null }): string {
   return [
     `${opts.shop} — Wasooli / وصولی`,

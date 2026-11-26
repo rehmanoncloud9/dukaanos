@@ -134,11 +134,11 @@ export function MunshiTab() {
   const head = state?.chain_head?.seq;
 
   useEffect(() => {
-    if (!state) return;
+    if (!head) return;
     api<Pulse>("/api/shop/pulse").then(setPulse).catch(() => undefined);
     setExtraFeed([]);
     setNextSeq(null);
-  }, [state, head]);
+  }, [head]);
 
   if (!state) return <SkeletonMunshi />;
   const today = state.today;

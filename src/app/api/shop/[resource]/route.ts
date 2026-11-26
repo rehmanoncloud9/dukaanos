@@ -3,7 +3,7 @@ import { ApiError, handle, ok, parseJson } from "@/lib/api/http";
 import { loadState, numify } from "@/lib/api/shop";
 import { requireShopContext } from "@/lib/server/auth";
 import { enforceRateLimit } from "@/lib/server/ratelimit";
-import { rpc } from "@/lib/supabase/server";
+import { adminClient, rpc } from "@/lib/supabase/server";
 
 export const maxDuration = 60;
 
@@ -74,6 +74,14 @@ const UpdateCustomer = z.object({ customer_id: z.string().uuid(), phone: z.strin
 const CreditLimit = z.object({ customer_id: z.string().uuid(), credit_limit_paisa: z.number().int().min(0).nullable() });
 const Price = z.object({ product_id: z.string().uuid(), unit_price_paisa: z.number().int().min(0) });
 const Alias = z.object({ product_id: z.string().uuid(), alias: z.string().trim().min(1).max(60) });
+const AddProduct = z.object({
+  name: z.string().trim().min(1).max(80),
+  sku_code: z.string().trim().max(40).optional(),
+  base_unit: z.enum(["g", "ml", "pcs"]).default("pcs"),
+  pack_size_base_units: z.number().int().positive().max(100_000).default(1),
+  unit_price_paisa: z.number().int().min(0).max(100_000_000),
+  cost_price_paisa: z.number().int().min(0).max(100_000_000).optional(),
+});
 
 /** Non-financial shop admin (still RPC-only, still membership-checked in Postgres). */
 export const POST = handle(async (req: Request, ctx: Ctx) => {
@@ -106,6 +114,27 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
       const b = await parseJson(req, Alias);
       await rpc(sb, "add_alias", { p_shop_id: shopId, p_product_id: b.product_id, p_alias: b.alias });
       return ok({ ok: true });
+    }
+    case "product": {
+      const b = await parseJson(req, AddProduct);
+      const sku = b.sku_code?.trim() || `SKU-${Date.now().toString(36).toUpperCase()}`;
+      const { data, error } = await adminClient()
+        .from("products")
+        .insert({
+          shop_id: shopId,
+          name: b.name,
+          sku_code: sku,
+          aliases: [b.name.toLowerCase(), ...(b.sku_code ? [b.sku_code] : [])],
+          base_unit: b.base_unit,
+          pack_size_base_units: b.pack_size_base_units,
+          unit_price_paisa: b.unit_price_paisa,
+          cost_price_paisa: b.cost_price_paisa ?? Math.round(b.unit_price_paisa * 0.85),
+          stock_base_units: 0,
+        })
+        .select("id, name, sku_code")
+        .single();
+      if (error) throw new ApiError("DB_ERROR", error.message);
+      return ok(data);
     }
     default:
       throw new ApiError("BAD_REQUEST", `Unknown resource "${resource}"`, undefined, 404);

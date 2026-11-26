@@ -181,20 +181,17 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       setAuthReady(true);
       return;
     }
-    // Instant <50ms snapshot hydration: show cached state while auth/network settle.
-    // Runs in parallel with auth.getSession() — whichever wins, state is never blank.
-    const savedShop = localStorage.getItem(SHOP_KEY);
-    if (savedShop) {
-      void loadSnapshot<ShopState>(stateSnapshotKey(savedShop)).then((cached) => {
-        if (cached) {
-          setRawState((cur) => cur ?? cached.data);
-        }
-      });
-    }
     const sb = browserSupabase();
     sb.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setAuthReady(true);
+      // Instant <50ms snapshot hydration only when an active session exists.
+      const savedShop = data.session ? localStorage.getItem(SHOP_KEY) : null;
+      if (savedShop) {
+        void loadSnapshot<ShopState>(stateSnapshotKey(savedShop)).then((cached) => {
+          if (cached) setRawState((cur) => cur ?? cached.data);
+        });
+      }
     });
     const { data: sub } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => sub.subscription.unsubscribe();
@@ -537,8 +534,10 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
 
   const postTurn = useCallback(async (input: { blob?: Blob; mime?: string; text?: string }) => {
     if (input.blob) {
+      const cleanMime = (input.mime ?? input.blob.type ?? "audio/webm").split(";")[0].trim() || "audio/webm";
+      const ext = cleanMime.split("/")[1] || "webm";
       const form = new FormData();
-      form.append("audio", new File([input.blob], `clip.${(input.mime ?? "audio/webm").split("/")[1]}`, { type: input.mime ?? input.blob.type }));
+      form.append("audio", new File([input.blob], `clip.${ext}`, { type: cleanMime }));
       if (input.text) form.append("text", input.text);
       return api<TurnResponse>("/api/munshi/turn", { form, timeoutMs: 60_000 });
     }
@@ -678,13 +677,23 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     };
   }, [flush]);
 
+  const headSeqRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    headSeqRef.current = rawState?.chain_head?.seq;
+  }, [rawState?.chain_head?.seq]);
+
+  const flushRef = useRef(flush);
+  useEffect(() => {
+    flushRef.current = flush;
+  }, [flush]);
+
   useEffect(() => {
     if (!shopId) return;
     void refresh();
-    void updatePending().then(() => flush());
+    void updatePending().then(() => flushRef.current());
     const onVisible = () => {
       if (document.visibilityState !== "visible" || isOffline()) return;
-      const headSeq = rawState?.chain_head?.seq;
+      const headSeq = headSeqRef.current;
       if (typeof headSeq === "number") {
         void api<{ items: Array<{ seq: number }> }>("/api/shop/feed?limit=1")
           .then((r) => {
@@ -697,7 +706,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [shopId, rawState?.chain_head?.seq, refresh, updatePending, flush]);
+  }, [shopId, refresh, updatePending]);
 
   useEffect(() => {
     if (!undo) return;

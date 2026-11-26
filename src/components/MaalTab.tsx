@@ -30,10 +30,11 @@ export function isLow(p: StateProduct) {
 }
 
 export function MaalTab() {
-  const { state, openSheet, lang, toast } = useDukaan();
+  const { state, openSheet, refresh, lang, toast } = useDukaan();
   const [filter, setFilter] = useState<"all" | "low">("all");
   const [query, setQuery] = useState("");
   const [scanning, setScanning] = useState(false);
+  const [newSku, setNewSku] = useState<string | null>(null);
   const scannerRef = useRef<ReturnType<typeof startContinuousScan> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -68,8 +69,8 @@ export function MaalTab() {
         if (result.product) {
           openSheet({ type: "product", productId: result.product.id });
         } else {
-          setQuery(result.barcode);
-          toast(`Barcode: ${result.barcode} — no product found, search results shown`, "info");
+          setNewSku(result.barcode);
+          toast(`New barcode ${result.barcode} — 5s mein add karein`, "info");
         }
       });
       scannerRef.current = stop;
@@ -174,7 +175,58 @@ export function MaalTab() {
           );
         })}
       </div>
+      {newSku !== null && <NewProductSheet initialSku={newSku} onClose={() => setNewSku(null)} onSaved={() => { setNewSku(null); void refresh(); }} />}
     </div>
+  );
+}
+
+function NewProductSheet({ initialSku, onClose, onSaved }: { initialSku: string; onClose: () => void; onSaved: () => void }) {
+  const { toast } = useDukaan();
+  const [name, setName] = useState("");
+  const [sku, setSku] = useState(initialSku);
+  const [price, setPrice] = useState("");
+  const [unit, setUnit] = useState<"pcs" | "g" | "ml">("pcs");
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api("/api/shop/product", {
+        json: {
+          name: name.trim(),
+          sku_code: sku.trim() || undefined,
+          base_unit: unit,
+          pack_size_base_units: unit === "pcs" ? 1 : 1000,
+          unit_price_paisa: rupeesToPaisa(Number(price || 0)),
+        },
+      });
+      toast(`${name.trim()} Maal mein add ho gaya`, "ok");
+      onSaved();
+    } catch (e) {
+      toast(friendlyError(e), "err");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet open onClose={onClose} title="Naya item add karein">
+      <div className="space-y-2.5 px-5 pb-[max(16px,env(safe-area-inset-bottom))]">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Item ka naam (e.g. Tapal 95g)" className="h-12 w-full rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
+        <input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="Barcode / SKU (optional)" className="num h-11 w-full rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
+        <div className="flex gap-2">
+          <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ""))} placeholder="Sell price (Rs.)" className="num h-12 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
+          <select value={unit} onChange={(e) => setUnit(e.target.value as "pcs" | "g" | "ml")} className="h-12 rounded-[12px] bg-canvas px-3 text-[15px] outline-none">
+            <option value="pcs">per pc</option>
+            <option value="g">per kg</option>
+            <option value="ml">per L</option>
+          </select>
+        </div>
+        <PrimaryButton className="w-full" busy={busy} disabled={!name.trim() || Number(price) <= 0} onClick={() => void save()}>
+          Save to Maal
+        </PrimaryButton>
+      </div>
+    </Sheet>
   );
 }
 
