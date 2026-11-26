@@ -133,7 +133,7 @@ export function friendlyError(e: unknown): string {
     case "AI_REJECTED":
       return "Awaaz process nahi ho saki — neeche type kar dein (Settings → health check)";
     case "AI_NOT_CONFIGURED":
-      return "AI set up nahi — typed entry chal rahi hai (GEMINI_API_KEY missing)";
+      return "AI set up nahi — typed entry chal rahi hai (AI key missing on server)";
     case "RATE_LIMITED": {
       const sec = typeof details?.retry_after_s === "number" ? details.retry_after_s : typeof details?.retryAfter === "number" ? details.retryAfter : null;
       return sec ? `Bohat tez requests — ${sec}s baad dobara try karein` : "Thori der baad dobara try karein (rate limited)";
