@@ -2,7 +2,7 @@
 
 import type { Session } from "@supabase/supabase-js";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { CommitResponse, FeedTx, Pulse, ShopState, TurnResponse, TurnTrace } from "@/lib/api/contracts";
+import type { CommitResponse, FeedTx, PromiseProposal, Pulse, ShopState, TurnResponse, TurnTrace } from "@/lib/api/contracts";
 import { summarizeLines, toCommitInput } from "@/lib/domain/bill";
 import { formatBaseQty } from "@/lib/domain/desi-units";
 import { formatRs } from "@/lib/domain/money";
@@ -11,6 +11,7 @@ import { api, ClientApiError, friendlyError, isOffline, newKey, onOfflineChange,
 import { LANG_KEY, type Lang } from "./i18n";
 import { dequeue, enqueue, flushQueue, listQueue, pendingCount, saveReplay, type FlushOutcome, type QueuedTurn } from "./queue";
 import { browserSupabase, supabaseConfigured } from "./supabase";
+import { loadSnapshot, saveSnapshot, SHOPS_SNAPSHOT, stateSnapshotKey } from "./offline-cache";
 
 export type Tab = "munshi" | "khata" | "maal";
 
@@ -27,6 +28,7 @@ export type Sheet =
   | { type: "customer"; customerId: string }
   | { type: "product"; productId: string }
   | { type: "settings" }
+  | { type: "promise"; proposal: PromiseProposal; key: string; trace: TurnTrace | null }
   | { type: "replays" }
   | { type: "receipt"; commit: CommitResponse; proposal: SaleProposal | null; customerPhone: string | null };
 
@@ -182,7 +184,16 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   }, [configured]);
 
   const reloadShops = useCallback(async () => {
-    const list = await api<MyShop[]>("/api/system/shops", { shop: false });
+    let list: MyShop[];
+    try {
+      list = await api<MyShop[]>("/api/system/shops", { shop: false });
+      void saveSnapshot(SHOPS_SNAPSHOT, list);
+    } catch (e) {
+      // Cold boot during load-shedding: fall back to the last known shop list instead of spinning.
+      const cached = e instanceof ClientApiError && e.network ? await loadSnapshot<MyShop[]>(SHOPS_SNAPSHOT) : null;
+      if (!cached) throw e;
+      list = cached.data;
+    }
     setShops(list);
     const saved = localStorage.getItem(SHOP_KEY);
     const pick = list.find((s) => s.id === saved) ?? list[0] ?? null;
@@ -237,12 +248,19 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   /* ── state ─────────────────────────────────────────── */
   const refresh = useCallback(async () => {
     if (!shopRef.current) return;
+    const shop = shopRef.current;
     try {
       const s = await api<ShopState>("/api/shop/state");
       setState(s);
       setStateError(null);
+      void saveSnapshot(stateSnapshotKey(shop), s);
     } catch (e) {
-      if (e instanceof ClientApiError && e.network) return; // offline: keep last truthful snapshot
+      if (e instanceof ClientApiError && e.network) {
+        // offline: keep the in-memory snapshot, or restore the last persisted one on a cold boot
+        const cached = await loadSnapshot<ShopState>(stateSnapshotKey(shop));
+        if (cached) setState((cur) => cur ?? cached.data);
+        return;
+      }
       setStateError(friendlyError(e));
     }
   }, []);
@@ -385,6 +403,12 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       case "answer":
         if (!opts?.deferSheet) setSheet({ type: "answer", answer: res.answer, proposal: res.proposal, trace: res.trace, tools: res.tools });
         return "done";
+      case "promise":
+        if (opts?.deferSheet) {
+          return { status: "review", patch: { review_kind: "promise", proposal: res.proposal, trace: res.trace } };
+        }
+        setSheet({ type: "promise", proposal: res.proposal, key, trace: res.trace });
+        return "review";
       case "purchase":
         if (!opts?.deferSheet) setSheet({ type: "parchi" });
         return "done";
@@ -448,6 +472,10 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     }
     if (target.review_kind === "payment" && target.proposal) {
       setSheet({ type: "payment", proposal: target.proposal as PaymentProposal, key: target.idempotency_key, trace: target.trace ?? null });
+      return;
+    }
+    if (target.review_kind === "promise" && target.proposal) {
+      setSheet({ type: "promise", proposal: target.proposal as PromiseProposal, key: target.idempotency_key, trace: target.trace ?? null });
       return;
     }
     if (target.review_kind === "reversal") {

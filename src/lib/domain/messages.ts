@@ -100,3 +100,66 @@ export function wholesaleListText(shop: string, items: ReorderItem[]): string {
   });
   return [`Assalam-o-Alaikum! ${shop} ka wholesale order:`, ...rows, "Meharbani farma kar aaj bhijwa dein. Shukriya."].join("\n");
 }
+
+/**
+ * Mutual Khata message: SELF-CONTAINED (entry + balance are in the text itself, because many
+ * customers are on WhatsApp-only bundles that may not open web links). The signed link is a bonus
+ * that lets them tap "Haan, sahi hai" / "Ghalat hai" or give a wada (promise) date.
+ */
+export function mutualKhataText(opts: {
+  name: string;
+  shop: string;
+  balance_paisa: number;
+  url: string;
+  entry?: { summary: string | null; credit_paisa: number } | null;
+  raast_id?: string | null;
+}): string {
+  const lines: string[] = [`Assalam-o-Alaikum ${opts.name} sahib!`];
+  if (opts.entry && opts.entry.credit_paisa > 0) {
+    lines.push(`${opts.shop}: aaj ${opts.entry.summary ? `${opts.entry.summary} — ` : ""}${formatRs(opts.entry.credit_paisa)} udhaar likha gaya.`);
+  }
+  lines.push(`Aap ka kul baqaya: ${formatRs(opts.balance_paisa)}.`);
+  if (opts.raast_id) lines.push(`Raast se ada karein: ${opts.raast_id}`);
+  lines.push(`Sahi hai? Yahan tasdeeq karein ya wada ki tareekh dein: ${opts.url}`);
+  lines.push(`السلام علیکم! آپ کا بقایا ${formatRs(opts.balance_paisa)} ہے۔ تصدیق کے لیے لنک کھولیں۔`);
+  return lines.join("\n");
+}
+
+/**
+ * Script for the Urdu voice-note reminder (Wasooli without asking). Spoken Roman Urdu — Gemini TTS
+ * auto-detects language and has no Urdu-script voice — with rupees as plain digits so the voice
+ * reads "pandrah sau bees rupay", not "Rs dot". Dignified: no shaming words, always "suhoolat se".
+ */
+export function voiceReminderScript(opts: { name: string; shop: string; balance_paisa: number; promise_label?: string | null }): string {
+  const rupees = Math.round(opts.balance_paisa / 100);
+  const wada = opts.promise_label ? ` Aap ne ${opts.promise_label} ka wada kiya tha.` : "";
+  return `Assalam-o-Alaikum ${opts.name} sahib. Yeh ${opts.shop} ki taraf se yaad-dihani hai. Aap ka baqaya ${rupees} rupay hai.${wada} Jab suhoolat ho, ada kar dijiye. Bohat shukriya.`;
+}
+
+export interface RemindCandidate {
+  id: string;
+  name: string;
+  balance_paisa: number;
+  days_overdue: number | null;
+  promise_date: string | null;
+  promise_state: "open" | "kept" | "broken" | null;
+}
+
+/**
+ * "Aaj kisko yaad dilana hai" — deterministic ranking: broken wada first, then wada due today or
+ * earlier, then the longest overdue; customers with an open future wada are left alone (respect).
+ */
+export function rankReminders(list: RemindCandidate[], todayIso: string, limit = 3): Array<RemindCandidate & { reason: "wada_broken" | "wada_due" | "overdue" }> {
+  const scored = list
+    .filter((c) => c.balance_paisa > 0)
+    .map((c) => {
+      if (c.promise_state === "broken") return { c, reason: "wada_broken" as const, score: 3_000_000 + (c.days_overdue ?? 0) };
+      if (c.promise_state === "open" && c.promise_date && c.promise_date <= todayIso) return { c, reason: "wada_due" as const, score: 2_000_000 + (c.days_overdue ?? 0) };
+      if (c.promise_state === "open") return null; // waiting on a future promise — don't nag
+      if ((c.days_overdue ?? 0) > 7) return { c, reason: "overdue" as const, score: (c.days_overdue ?? 0) * 1000 + Math.min(999, Math.floor(c.balance_paisa / 10000)) };
+      return null;
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+    .sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit).map((x) => ({ ...x.c, reason: x.reason }));
+}

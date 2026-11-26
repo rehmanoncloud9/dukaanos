@@ -2,7 +2,7 @@
 
 import { Check, ImageDown, MessageSquare, Plus, Trash2, Volume2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { CommitResponse, FeedTx, TurnTrace } from "@/lib/api/contracts";
+import type { CommitResponse, FeedTx, PromiseProposal, TurnTrace } from "@/lib/api/contracts";
 import { api, ClientApiError, friendlyError, newKey } from "@/lib/client/api";
 import { renderReceiptPng, shareOrDownload } from "@/lib/client/canvas";
 import { speak } from "@/lib/client/speak";
@@ -11,6 +11,8 @@ import { recalcCatalogLine, recalcNewSkuLine, resettle, setLineQty } from "@/lib
 import { describeQty, formatBaseQty, formatUnitPrice, parseQuantityPhrase, type BaseUnit } from "@/lib/domain/desi-units";
 import { paymentReceiptText, receiptText, smsLink, waLink } from "@/lib/domain/messages";
 import { formatRs, rupeesToPaisa } from "@/lib/domain/money";
+import { quickWadaOptions, wadaLabel } from "@/lib/domain/wada";
+import { dequeue } from "@/lib/client/queue";
 import type { CustomerRow, PaymentProposal, ProposalLine, SaleProposal } from "@/lib/domain/types";
 import { feedSummary } from "./MunshiTab";
 import { cx, Money, Pill, PrimaryButton, SecondaryButton, Sheet, SW } from "./ui";
@@ -604,6 +606,72 @@ export function ReceiptSheet({ commit, proposal, customerPhone, onClose }: { com
         </SecondaryButton>
         <PrimaryButton className="flex-1" onClick={onClose}>
           Done
+        </PrimaryButton>
+      </div>
+    </Sheet>
+  );
+}
+
+/* ───────────────────────────── wada (promise-to-pay) ───────────────────────────── */
+
+/** Shopkeeper confirms a spoken wada: customer chip + date chip → hash-chained promise attestation. */
+export function PromiseSheet({ proposal, idemKey, trace, onClose }: { proposal: PromiseProposal; idemKey: string; trace: TurnTrace | null; onClose: () => void }) {
+  const { state, toast } = useDukaan();
+  const customers = state?.customers ?? [];
+  const [selected, setSelected] = useState<string | null>(proposal.customer.selected_id ?? null);
+  const [date, setDate] = useState(proposal.promise_date);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const chips = proposal.customer.candidates.length
+    ? proposal.customer.candidates.map((c) => customers.find((x) => x.id === c.id)!).filter(Boolean)
+    : customers.filter((c) => c.balance_paisa > 0 || c.id === selected);
+  const dates = [{ label: "Suna gaya", date: proposal.promise_date }, ...quickWadaOptions()].filter((o, i, all) => all.findIndex((x) => x.date === o.date) === i);
+  const cust = customers.find((c) => c.id === selected) ?? null;
+
+  const save = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await api("/api/khata/promise", { json: { customer_id: selected, promise_date: date, idempotency_key: idemKey } });
+      await dequeue(idemKey).catch(() => undefined);
+      toast(`Wada mehfooz · ${cust?.name ?? ""} · ${wadaLabel(date)}`, "ok");
+      onClose();
+    } catch (e) {
+      setErr(friendlyError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet open onClose={onClose} title="Wada · Promise to pay">
+      {trace?.transcript && <div className="mx-5 mb-3 rounded-[12px] bg-canvas px-3.5 py-2.5 text-[15px]" dir="auto">“{trace.transcript}”</div>}
+      <div className="px-5">
+        <div className="section-label mb-2">Customer</div>
+        <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-1">
+          {chips.map((c) => (
+            <button key={c.id} onClick={() => setSelected(c.id)} className={cx("tactile flex h-12 shrink-0 flex-col justify-center rounded-[12px] border px-3.5 text-left", selected === c.id ? "border-ink bg-ink text-white" : "border-black/15")}>
+              <span className="text-[15px] font-semibold leading-5">{c.name}</span>
+              <span className={cx("text-[12px]", selected === c.id ? "text-white/70" : "text-ink-2")}>Khata {formatRs(c.balance_paisa)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="section-label mb-2 mt-4">Kab tak?</div>
+        <div className="grid grid-cols-2 gap-2">
+          {dates.map((o) => (
+            <button key={o.date} onClick={() => setDate(o.date)} className={cx("tactile min-h-12 rounded-[12px] border px-3 py-1.5 text-left", date === o.date ? "border-ink bg-ink text-white" : "border-black/15")}>
+              <span className="block text-[14px] font-semibold">{wadaLabel(o.date)}</span>
+              <span className={cx("text-[12px]", date === o.date ? "text-white/70" : "text-ink-2")}>{o.label}</span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-3 text-[12.5px] leading-[18px] text-ink-2">Dukaandar ka darj kiya wada alag dikhta hai — gahak ki apni tasdeeq sirf unke link se hoti hai.</p>
+        {err && <div className="mt-3 rounded-[12px] bg-udhaar-bg px-3 py-2 text-[14px] text-udhaar-ink">{err}</div>}
+      </div>
+      <div className="sticky bottom-0 mt-4 flex gap-3 bg-surface px-5 pb-[max(16px,env(safe-area-inset-bottom))] pt-3">
+        <SecondaryButton onClick={onClose} className="w-[92px]">Cancel</SecondaryButton>
+        <PrimaryButton onClick={save} busy={busy} disabled={!selected} className="flex-1">
+          Wada save karein
         </PrimaryButton>
       </div>
     </Sheet>

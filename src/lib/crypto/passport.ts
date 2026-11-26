@@ -24,11 +24,28 @@ export interface TradeSummary {
   ledger_balanced: boolean;
   tx_count_total: number;
   head_entry_hash: string;
+  /** Mutual Khata: what CUSTOMERS attested (two-party evidence). Absent before migration 20261126101. */
+  bharosa?: {
+    credit_entries: number;
+    credit_entries_paisa: number;
+    confirmed_entries: number;
+    confirmed_paisa: number;
+    disputed_entries: number;
+    promises_due: number;
+    promises_kept: number;
+    attestations_total: number;
+    attestation_head_hash: string;
+  } | null;
 }
 
 /** Compact, signed claim. Keys are short to keep the QR scannable on a projector. */
 export interface PassportPayload {
-  v: 1;
+  v: 1 | 2; // 2 = carries Mutual Khata (customer-attested) metrics
+  vr_bp?: number; // verified receivables: customer-confirmed credit paisa / credit paisa (bp)
+  dr_bp?: number; // dispute rate: disputed / credit entries (bp)
+  pk_bp?: number; // promise-kept rate (bp); absent when no wada fell due
+  att?: number; // customer attestations in the chain
+  ah?: string; // attestation-chain head hash (first 16 hex)
   iss: "DukaanOS";
   sid: string; // shop id (first 8)
   n: string; // shop name
@@ -88,8 +105,21 @@ export function toPayload(s: TradeSummary, now = new Date()): PassportPayload {
   const gmv = Number(s.gmv_paisa);
   const credit = Number(s.credit_sales_paisa);
   const recovered = Number(s.recovered_paisa);
+  const b = s.bharosa;
+  const bharosa: Partial<PassportPayload> = {};
+  if (b) {
+    const creditPaisa = Number(b.credit_entries_paisa);
+    const creditN = Number(b.credit_entries);
+    const due = Number(b.promises_due);
+    bharosa.vr_bp = creditPaisa > 0 ? Math.min(10000, Math.round((Number(b.confirmed_paisa) * 10000) / creditPaisa)) : 0;
+    bharosa.dr_bp = creditN > 0 ? Math.round((Number(b.disputed_entries) * 10000) / creditN) : 0;
+    if (due > 0) bharosa.pk_bp = Math.round((Number(b.promises_kept) * 10000) / due);
+    bharosa.att = Number(b.attestations_total);
+    bharosa.ah = String(b.attestation_head_hash).slice(0, 16);
+  }
   return {
-    v: 1,
+    ...bharosa,
+    v: b ? 2 : 1,
     iss: "DukaanOS",
     sid: s.shop_id.slice(0, 8),
     n: s.shop_name,

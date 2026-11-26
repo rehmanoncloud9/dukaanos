@@ -22,11 +22,14 @@ export const GET = handle(async (req: Request) => {
   const priv = env.ed25519PrivateKey();
   if (!priv) throw new ApiError("SERVER_MISCONFIGURED", "ED25519_PRIVATE_KEY missing — run npm run setup");
 
-  const [summary, chain] = await Promise.all([
+  const [summary, chain, attestChain] = await Promise.all([
     rpc<TradeSummary>(sb, "get_trade_summary", { p_shop_id: shopId, p_days: days }).then(numify),
     rpc<{ ok: boolean; code: string; checked: number }>(sb, "verify_ledger_chain", { p_shop_id: shopId }),
+    rpc<{ ok: boolean; code: string; checked: number; reason?: string }>(sb, "verify_attestation_chain", { p_shop_id: shopId }),
   ]);
   if (!chain.ok) throw new ApiError("CHAIN_BROKEN", "Ledger hash chain failed verification — passport not issued", chain);
+  // Mutual Khata: customer attestations are signed into the passport only if their own chain verifies.
+  if (!attestChain.ok) throw new ApiError("CHAIN_BROKEN", "Customer attestation chain failed verification — passport not issued", attestChain);
 
   const payload = toPayload(summary);
   const signed = await signPassport(payload, priv);

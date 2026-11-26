@@ -58,6 +58,12 @@ export const GET = handle(async (req: Request, ctx: Ctx) => {
       });
       return ok({ ...numify(data), api_ms: Date.now() - t0 });
     }
+    case "price-memory": {
+      // 7F Supplier Price Memory — wholesale rises from parchi history (pure SQL, Rs. 0 LLM)
+      const min = Math.max(1, Math.min(5000, Number(url.searchParams.get("min_bp") ?? 300) || 300));
+      const items = numify(await rpc<unknown[]>(sb, "get_price_memory", { p_shop_id: shopId, p_min_change_bp: min }));
+      return ok({ items, api_ms: Date.now() - t0 });
+    }
     default:
       throw new ApiError("BAD_REQUEST", `Unknown resource "${resource}"`, undefined, 404);
   }

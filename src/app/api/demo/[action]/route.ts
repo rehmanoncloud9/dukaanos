@@ -11,13 +11,23 @@ export const maxDuration = 60;
 
 type Ctx = { params: Promise<{ action: string }> };
 
-function secretOk(given: string | undefined): boolean {
-  const want = env.demoResetSecret();
+/** Constant-time compare that returns false (never throws) on length mismatch. */
+function safeEqual(given: string | undefined | null, want: string | undefined | null): boolean {
   if (!want || !given) return false;
   const a = Buffer.from(given);
   const b = Buffer.from(want);
   return a.length === b.length && timingSafeEqual(a, b);
 }
+
+function secretOk(given: string | undefined): boolean {
+  return safeEqual(given, env.demoResetSecret());
+}
+
+/**
+ * Judges at the venue share one NAT'd Wi-Fi IP, so the per-IP ceiling is sized for a room,
+ * not a person. Turnstile (when configured) is the per-human gate.
+ */
+const SANDBOX_PER_IP_PER_HOUR = 60;
 
 /** Owner of an isolated sandbox may reset/tamper their own sandbox; the stage shop needs DEMO_RESET_SECRET. */
 async function authorize(req: Request, shopId: string, secret?: string) {
@@ -39,7 +49,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
   if (action === "sandbox") {
     // Flow 1(a): 1-tap "Try Live Demo Shop" → fresh isolated judge account + seeded shop.
     const ip = getClientIp(req);
-    await enforceRateLimit(`sandbox:${ip}`, 10, "1 hour");
+    await enforceRateLimit(`sandbox:${ip}`, SANDBOX_PER_IP_PER_HOUR, "1 hour");
     let turnstileToken: string | undefined;
     try {
       const raw = await req.json();
@@ -78,7 +88,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
   if (action === "purge") {
     const expected = env.cronSecret();
     const auth = req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
-    if (!expected || !auth || !timingSafeEqual(Buffer.from(auth), Buffer.from(expected))) {
+    if (!safeEqual(auth, expected)) {
       throw new ApiError("FORBIDDEN", "Valid CRON_SECRET required");
     }
     const res = await rpc(admin, "purge_stale_sandboxes", { p_older_than: "72 hours" });

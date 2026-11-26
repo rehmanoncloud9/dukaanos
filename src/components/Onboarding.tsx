@@ -45,6 +45,7 @@ export function Splash() {
   const [siteKey, setSiteKey] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | undefined>(undefined);
   const turnstileRef = useRef<HTMLDivElement | null>(null);
+  const widgetId = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     api<{ turnstile_site_key: string | null }>("/api/app-config", { auth: false, shop: false })
@@ -56,7 +57,7 @@ export function Splash() {
     if (!siteKey || !turnstileRef.current) return;
     const renderWidget = () => {
       if (!window.turnstile || !turnstileRef.current || turnstileRef.current.childElementCount > 0) return;
-      window.turnstile.render(turnstileRef.current, {
+      widgetId.current = window.turnstile.render(turnstileRef.current, {
         sitekey: siteKey,
         theme: "light",
         callback: (token) => setTurnstileToken(token),
@@ -87,6 +88,11 @@ export function Splash() {
       await fn();
     } catch (e) {
       toast(e instanceof Error ? e.message : "Sign-in failed", "err");
+      // Turnstile tokens are single-use: after a failed attempt, issue a fresh challenge.
+      if (name === "sandbox" && siteKey && window.turnstile) {
+        setTurnstileToken(undefined);
+        window.turnstile.reset(widgetId.current);
+      }
     } finally {
       setBusy(null);
     }

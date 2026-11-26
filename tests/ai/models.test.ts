@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GenerateContentResponse } from "@google/genai";
 import { ApiError } from "@/lib/api/http";
-import { parseModelJson, tokenUsage } from "@/lib/ai/models";
+import { classifyAiError, parseModelJson, tokenUsage } from "@/lib/ai/models";
 
 function response(value: Record<string, unknown>): GenerateContentResponse {
   return value as unknown as GenerateContentResponse;
@@ -30,5 +30,18 @@ describe("Gemini response accounting and JSON boundary", () => {
       expect((error as ApiError).message).toBe("Model returned non-JSON output");
       expect((error as ApiError).message).not.toContain("private transcript");
     }
+  });
+});
+
+describe("AI error classification (retryable vs permanent)", () => {
+  it("queues only transient failures; permanent provider rejections surface immediately", () => {
+    expect(classifyAiError("The operation was aborted")).toBe("AI_TIMEOUT");
+    expect(classifyAiError("[429 Too Many Requests] RESOURCE_EXHAUSTED")).toBe("RATE_LIMITED");
+    expect(classifyAiError("[400 Bad Request] INVALID_ARGUMENT: Unsupported MIME type: audio/webm")).toBe("AI_REJECTED");
+    expect(classifyAiError("[400] API key not valid. Please pass a valid API key.")).toBe("AI_REJECTED");
+    expect(classifyAiError("[404 Not Found] models/gemini-x is not found")).toBe("AI_REJECTED");
+    expect(classifyAiError("[403 Forbidden] PERMISSION_DENIED")).toBe("AI_REJECTED");
+    expect(classifyAiError("[503 Service Unavailable] The model is overloaded")).toBe("AI_UNAVAILABLE");
+    expect(classifyAiError("fetch failed")).toBe("AI_UNAVAILABLE");
   });
 });

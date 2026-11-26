@@ -7,6 +7,7 @@ import { loadCatalog, numify } from "@/lib/api/shop";
 import { buildPaymentProposal, buildSaleProposal, settle } from "@/lib/domain/bill";
 import { parseQuantityPhrase, resolveLine } from "@/lib/domain/desi-units";
 import { PULSE_REGEX } from "@/lib/domain/fallback-parser";
+import { detectWadaUtterance } from "@/lib/domain/wada";
 import { requireShopContext } from "@/lib/server/auth";
 import { enforceRateLimit } from "@/lib/server/ratelimit";
 import { AUDIO_MIME_TYPES, audioContentMatches, readMultipartLimited } from "@/lib/server/media-validation";
@@ -80,6 +81,14 @@ export const POST = handle(async (req: Request) => {
     degraded_reason: turn.degraded_reason,
     intent: p.intent,
   });
+
+  // Mutual Khata wada: a promise word + a resolvable date overrides the model's intent. The date
+  // is computed by deterministic TS (wada.ts), never by the LLM; nothing is written until confirmed.
+  const wadaDate = detectWadaUtterance((p as { transcript_roman?: string }).transcript_roman) ?? detectWadaUtterance(p.transcript) ?? detectWadaUtterance(text);
+  if (wadaDate && p.intent !== "pulse" && p.intent !== "reversal") {
+    const block = buildPaymentProposal(p, catalog.customers).customer;
+    return ok<TurnResponse>({ kind: "promise", proposal: { customer: block, promise_date: wadaDate }, trace: { ...baseTrace(null), intent: "promise" } });
+  }
 
   switch (p.intent) {
     case "pulse": {
