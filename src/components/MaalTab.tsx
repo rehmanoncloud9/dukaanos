@@ -95,7 +95,7 @@ export function MaalTab() {
   const list = q ? filtered.filter((p) => p.name.toLowerCase().includes(q) || (p.aliases ?? []).some((a) => a.toLowerCase().includes(q))) : filtered;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 pb-24">
       {negative.map((p) => (
         <div key={p.id} className="flex items-center gap-2.5 rounded-[14px] bg-udhaar-bg px-3.5 py-2.5">
           <AlertCircle size={16} strokeWidth={1.75} className="shrink-0 text-udhaar-ink" />
@@ -124,24 +124,25 @@ export function MaalTab() {
         >
           <Camera size={15} strokeWidth={1.75} /> {scanning ? "Scanning…" : "Scan"}
         </button>
+        <button
+          type="button"
+          onClick={() => setNewSku("")}
+          className="tactile flex h-10 shrink-0 items-center rounded-[12px] bg-ink px-3 text-[13px] font-semibold text-white"
+        >
+          + Add
+        </button>
       </div>
       {/* Hidden video for barcode camera feed */}
       {scanning && <video ref={videoRef} muted playsInline className="w-full rounded-[12px] bg-black aspect-video object-cover" />}
-      <input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search maal / alias (e.g. cheeni, oil)..."
-        dir="auto"
-        className="h-11 w-full rounded-[12px] bg-surface px-3.5 text-[15px] shadow-[0_0_0_1px_rgba(12,18,16,0.08)] outline-none placeholder:text-ink-3"
-      />
       <div className="relative">
         <Search size={16} strokeWidth={1.75} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-3" />
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search product or alias…"
+          placeholder="Search product or alias (e.g. cheeni, oil)…"
           aria-label="Search products"
+          dir="auto"
           className="h-11 w-full rounded-[12px] border border-black/10 bg-surface pl-10 pr-3 text-[15px] outline-none focus:border-ink"
         />
       </div>

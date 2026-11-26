@@ -21,7 +21,7 @@ export function pulseSpeech(p: Pulse): string {
 }
 
 export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => void }) {
-  const { state } = useDukaan();
+  const { state, xrayOn } = useDukaan();
   const shop = state?.shop.name ?? "DukaanOS";
   const list = wholesaleListText(
     shop,
@@ -37,9 +37,15 @@ export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => vo
       onClose={onClose}
       title="Munshi Pulse"
       right={
-        <Pill tone="cash" mono className="h-6">
-          SQL {pulse.sql_ms}ms · Rs. 0 LLM
-        </Pill>
+        xrayOn ? (
+          <Pill tone="cash" mono className="h-6">
+            SQL {pulse.sql_ms}ms · Rs. 0 LLM
+          </Pill>
+        ) : (
+          <Pill tone="cash" className="h-6">
+            Live Hisaab
+          </Pill>
+        )
       }
     >
       <div className="space-y-3 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">

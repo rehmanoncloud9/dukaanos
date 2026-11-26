@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ExternalLink, Link2, Printer, ShieldCheck, UserPlus, Volume2 } from "lucide-react";
+import { Check, ExternalLink, Link2, Printer, Search, ShieldCheck, UserPlus, Volume2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "react-qr-code";
 import type { StateCustomer } from "@/lib/api/contracts";
@@ -43,7 +43,7 @@ function useBharosa(): Record<string, BharosaItem> {
       }
     };
     void pull();
-    const t = setInterval(pull, 3000);
+    const t = setInterval(pull, 15_000);
     return () => {
       alive = false;
       clearInterval(t);
@@ -55,6 +55,7 @@ function useBharosa(): Record<string, BharosaItem> {
 export function KhataTab() {
   const { state, openSheet, lang } = useDukaan();
   const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
   const bharosa = useBharosa();
 
@@ -72,16 +73,18 @@ export function KhataTab() {
   const active = customers.filter((c) => c.balance_paisa > 0);
   const overdue = active.filter((c) => (c.days_overdue ?? 0) > 15);
   const withWada = customers.filter((c) => bharosa[c.id]?.promise_date && bharosa[c.id]?.promise_state !== "kept" && c.balance_paisa > 0);
-  const list = (filter === "overdue" ? overdue : filter === "wada" ? withWada : filter === "settled" ? customers.filter((c) => c.balance_paisa <= 0) : customers)
+  const baseList = (filter === "overdue" ? overdue : filter === "wada" ? withWada : filter === "settled" ? customers.filter((c) => c.balance_paisa <= 0) : customers)
     .slice()
     .sort((a, b) => (filter === "wada" ? String(bharosa[a.id]?.promise_date).localeCompare(String(bharosa[b.id]?.promise_date)) : b.balance_paisa - a.balance_paisa));
+  const q = query.trim().toLowerCase();
+  const list = q ? baseList.filter((c) => c.name.toLowerCase().includes(q) || (c.phone ?? "").includes(q) || (c.role_tag ?? "").toLowerCase().includes(q)) : baseList;
   const verified = Object.values(bharosa).reduce((s, b) => s + b.confirmed, 0);
   const unverified = Object.values(bharosa).reduce((s, b) => s + b.pending, 0);
 
   if (!state) return <div className="surface-card h-[400px] animate-pulse" />;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 pb-24">
       <div className="surface-card p-4">
         <div className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("totalReceivable", lang)}</div>
         <Money paisa={receivable} className="mt-1 block text-[34px] font-bold leading-[38px] tracking-[-0.03em] text-udhaar" />
@@ -109,6 +112,19 @@ export function KhataTab() {
           { value: "settled", label: tr("settled", lang) },
         ]}
       />
+
+      <div className="relative">
+        <Search size={16} strokeWidth={1.75} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-3" />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search customer or phone…"
+          aria-label="Search customers"
+          dir="auto"
+          className="h-11 w-full rounded-[12px] border border-black/10 bg-surface pl-10 pr-3 text-[15px] outline-none focus:border-ink"
+        />
+      </div>
 
       <div className="surface-card overflow-hidden">
         {list.length === 0 && <div className="px-4 py-6 text-center text-[14px] text-ink-2">Koi account nahi</div>}
