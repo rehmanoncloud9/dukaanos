@@ -7,7 +7,6 @@ import { loadCatalog, numify } from "@/lib/api/shop";
 import { buildPaymentProposal, buildSaleProposal, settle } from "@/lib/domain/bill";
 import { formatBaseQty, parseQuantityPhrase, resolveLine } from "@/lib/domain/desi-units";
 import { PULSE_REGEX } from "@/lib/domain/fallback-parser";
-import { matchCatalog } from "@/lib/domain/pakphone";
 import { formatRs } from "@/lib/domain/money";
 import { detectWadaUtterance } from "@/lib/domain/wada";
 import { requireShopContext } from "@/lib/server/auth";
@@ -71,8 +70,9 @@ export const POST = handle(async (req: Request) => {
   const { state, catalog } = await loadCatalog(sb, shopId);
 
   // Build per-shop context for systemPrompt (~120 tokens, zero LLM cost)
-  const topSkus = [...state.products]
-    .sort((a, b) => (b.sold_7d ?? 0) - (a.sold_7d ?? 0))
+  const productList = Array.isArray(state?.products) ? state.products : catalog.products;
+  const topSkus = [...productList]
+    .sort((a, b) => ((b as { sold_7d?: number }).sold_7d ?? 0) - ((a as { sold_7d?: number }).sold_7d ?? 0))
     .slice(0, 15)
     .map((p) => p.name);
   const topCustomers = [...catalog.customers]

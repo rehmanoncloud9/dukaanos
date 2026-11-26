@@ -136,12 +136,10 @@ export function computeReorderForecast(
 
   let totalCost = 0;
   let affordableCount = 0;
-  let runningCash = cashInGallaPaisa;
   for (const item of topItems) {
     totalCost += item.reorder_cost_paisa;
-    if (item.reorder_cost_paisa <= runningCash) {
+    if (item.reorder_cost_paisa <= cashInGallaPaisa) {
       affordableCount++;
-      // Don't subtract cash here — shopkeeper decides individually
     }
   }
 
@@ -149,8 +147,8 @@ export function computeReorderForecast(
     items: topItems,
     total_reorder_cost_paisa: totalCost,
     cash_available_paisa: cashInGallaPaisa,
-    affordable_count: topItems.filter((i) => i.reorder_cost_paisa <= cashInGallaPaisa).length,
-    unaffordable_count: topItems.filter((i) => i.reorder_cost_paisa > cashInGallaPaisa).length,
+    affordable_count: affordableCount,
+    unaffordable_count: topItems.length - affordableCount,
   };
 }
 
