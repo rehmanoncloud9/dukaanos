@@ -12,6 +12,7 @@ import { LANG_KEY, type Lang } from "./i18n";
 import { dequeue, enqueue, flushQueue, listQueue, pendingCount, saveReplay, type FlushOutcome, type QueuedTurn } from "./queue";
 import { browserSupabase, supabaseConfigured } from "./supabase";
 import { loadSnapshot, saveSnapshot, SHOPS_SNAPSHOT, stateSnapshotKey } from "./offline-cache";
+import { tryLocalTurn } from "./local-turn";
 
 export type Tab = "munshi" | "khata" | "maal";
 
@@ -438,8 +439,22 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       toast(`${why} · saved to IndexedDB (Pending Sync)`, "warn");
     };
     if (isOffline()) {
+      if (input.text && !input.blob) {
+        const local = tryLocalTurn(input.text, state, { offline: true });
+        if (local) {
+          await handleTurn(local, key);
+          return;
+        }
+      }
       await queueIt("Offline");
       return;
+    }
+    if (input.text && !input.blob) {
+      const fast = tryLocalTurn(input.text, state, { offline: false });
+      if (fast) {
+        await handleTurn(fast, key);
+        return;
+      }
     }
     setThinking(true);
     try {
@@ -458,7 +473,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     } finally {
       setThinking(false);
     }
-  }, [postTurn, handleTurn, toast, updatePending]);
+  }, [postTurn, handleTurn, toast, updatePending, state]);
 
   const openQueuedReview = useCallback(async (key?: string) => {
     const shop = shopRef.current;
