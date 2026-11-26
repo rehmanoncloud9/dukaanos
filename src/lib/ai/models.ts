@@ -7,7 +7,7 @@ import { estimateCostPkrMicros } from "./pricing";
 let client: GoogleGenAI | null = null;
 
 export function genai(): GoogleGenAI {
-  if (!env.geminiKey()) throw new ApiError("AI_UNAVAILABLE", "GEMINI_API_KEY is not configured");
+  if (!env.geminiKey()) throw new ApiError("AI_NOT_CONFIGURED", "GEMINI_API_KEY is not configured");
   client ??= new GoogleGenAI({ apiKey: env.geminiKey() });
   return client;
 }
@@ -63,13 +63,32 @@ function reportedModel(response: GenerateContentResponse, requested: string): st
   return typeof value === "string" && value.trim() ? value.replace(/^models\//, "").slice(0, 120) : requested;
 }
 
+export type AiErrorCode = "AI_TIMEOUT" | "RATE_LIMITED" | "AI_REJECTED" | "AI_UNAVAILABLE";
+
+/**
+ * Classify a provider failure. Only timeouts, 429s and 5xx/network faults are worth retrying
+ * (the client queues those). A 400/401/403/404 — bad key, unknown model, unsupported audio —
+ * fails identically on every retry, so it surfaces as AI_REJECTED instead of "Pending Sync".
+ */
+export function classifyAiError(message: string): AiErrorCode {
+  if (/abort|timeout|deadline/i.test(message)) return "AI_TIMEOUT";
+  if (/\b429\b|RESOURCE_EXHAUSTED/i.test(message)) return "RATE_LIMITED";
+  if (/\b(400|401|403|404)\b|INVALID_ARGUMENT|PERMISSION_DENIED|NOT_FOUND|UNAUTHENTICATED|API key not valid|unsupported mime|mime type/i.test(message)) return "AI_REJECTED";
+  return "AI_UNAVAILABLE";
+}
+
+const AI_ERROR_MESSAGES: Record<AiErrorCode, string> = {
+  AI_TIMEOUT: "AI request timed out",
+  RATE_LIMITED: "AI provider rate limit reached",
+  AI_REJECTED: "AI provider rejected the request (key, model or audio format)",
+  AI_UNAVAILABLE: "AI request failed",
+};
+
 function apiError(error: unknown, attempts: ModelCallResult["attempts"]): ApiError {
+  if (error instanceof ApiError) return error; // e.g. AI_NOT_CONFIGURED from genai()
   const message = error instanceof Error ? error.message : String(error);
-  const timedOut = /abort|timeout|deadline/i.test(message);
-  const limited = /429|RESOURCE_EXHAUSTED/i.test(message);
-  const code = timedOut ? "AI_TIMEOUT" : limited ? "RATE_LIMITED" : "AI_UNAVAILABLE";
-  const safeMessage = timedOut ? "AI request timed out" : limited ? "AI provider rate limit reached" : "AI request failed";
-  return new ApiError(code, safeMessage, { attempts });
+  const code = classifyAiError(message);
+  return new ApiError(code, AI_ERROR_MESSAGES[code], { attempts });
 }
 
 /**

@@ -5,7 +5,7 @@
  * so a retry can never double-post (the RPC dedupes on (shop_id, idempotency_key)).
  */
 import { createStore, del, entries, get, set } from "idb-keyval";
-import type { FeedTx, TurnTrace } from "@/lib/api/contracts";
+import type { FeedTx, PromiseProposal, TurnTrace } from "@/lib/api/contracts";
 import type { PaymentProposal, SaleProposal } from "@/lib/domain/types";
 
 export interface QueuedTurn {
@@ -19,8 +19,8 @@ export interface QueuedTurn {
   attempts: number;
   status: "pending" | "review" | "failed";
   last_error?: string;
-  review_kind?: "sale" | "payment" | "reversal";
-  proposal?: SaleProposal | PaymentProposal;
+  review_kind?: "sale" | "payment" | "reversal" | "promise";
+  proposal?: SaleProposal | PaymentProposal | PromiseProposal;
   target?: FeedTx | null;
   trace?: TurnTrace | null;
 }
@@ -54,6 +54,14 @@ export async function reviewCount(shopId?: string): Promise<number> {
   return (await listQueue(shopId)).filter((q) => q.status === "review").length;
 }
 
+/** Errors that will fail identically on every retry (bad key, unknown model, unsupported audio). */
+export const PERMANENT_ERROR_CODES = ["AI_REJECTED", "AI_NOT_CONFIGURED", "AUDIO_TOO_LARGE", "UNSUPPORTED_MEDIA", "BAD_REQUEST"];
+
+export function isPermanentFailure(e: unknown): boolean {
+  const code = e && typeof e === "object" && "code" in e ? (e as { code: unknown }).code : null;
+  return typeof code === "string" && PERMANENT_ERROR_CODES.includes(code);
+}
+
 export type FlushOutcome =
   | "done"
   | "review"
@@ -76,9 +84,11 @@ export async function flushQueue(shopId: string, process: (q: QueuedTurn) => Pro
       }
     } catch (e) {
       const attempts = q.attempts + 1;
-      await updateQueued(q.idempotency_key, { attempts, last_error: e instanceof Error ? e.message : String(e), status: attempts >= 5 ? "failed" : "pending" });
+      const permanent = isPermanentFailure(e);
+      await updateQueued(q.idempotency_key, { attempts, last_error: e instanceof Error ? e.message : String(e), status: permanent || attempts >= 5 ? "failed" : "pending" });
       out.failed++;
-      break; // keep order: stop on first failure, retry on next reconnect
+      if (permanent) continue; // a rejected clip must not block the rest of the queue
+      break; // keep order: stop on first transient failure, retry on next reconnect
     }
   }
   return out;

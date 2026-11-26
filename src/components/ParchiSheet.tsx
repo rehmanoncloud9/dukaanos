@@ -12,6 +12,7 @@ import { parseQuantityPhrase, quantityToBaseUnits, requiresExplicitPackSize, typ
 import { formatAmount, formatJournal, formatRs, mulDiv } from "@/lib/domain/money";
 import { parseRupeeAmount } from "@/lib/domain/urdu-numbers";
 import { cx, Money, Pill, PrimaryButton, SecondaryButton, Sheet, Spinner, SW } from "./ui";
+import { PriceMemoryCard } from "./PriceMemory";
 
 type Stage = "capture" | "parsing" | "review" | "done";
 type AmountChoice = "computed" | "written" | "agreed" | null;
@@ -370,9 +371,11 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
             <div className="mt-2 flex flex-wrap gap-1.5"><Pill tone="cash" mono>Δ = 0 ✓</Pill><Pill mono>#{done.seq} {done.entry_hash.slice(0, 10)}…</Pill>{done.math_check && <Pill tone={done.math_check.passed ? "cash" : "amber"} mono>{done.math_check.passed ? "MATH OK" : "MATH_MISMATCH reviewed"}</Pill>}</div>
             <div className="mt-3 rounded-[10px] bg-canvas p-2.5 font-mono text-[11.5px]">{done.journal.map((entry, index) => <div key={index} className="flex justify-between"><span>{entry.side} {entry.account_code} {entry.account_name}</span><span>{formatJournal(entry.amount_paisa)}</span></div>)}</div>
           </div>
+          <PriceMemoryCard />
           <div className="flex gap-3"><SecondaryButton className="flex-1" onClick={() => openSheet({ type: "xray", txId: done.transaction_id })}>{"</>"} X-Ray</SecondaryButton><PrimaryButton className="flex-1" onClick={onClose}>Done</PrimaryButton></div>
         </div>
       )}
     </Sheet>
   );
 }
+

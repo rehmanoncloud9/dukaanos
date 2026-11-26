@@ -11,7 +11,8 @@ import { MaalTab, ProductSheet } from "./MaalTab";
 import { MunshiTab } from "./MunshiTab";
 import { CreateShop, Loading, SetupNeeded, Splash } from "./Onboarding";
 import { PulseSheet } from "./PulseSheet";
-import { AnswerSheet, PaymentSheet, ReceiptSheet, ReversalSheet, SaleReviewSheet } from "./ReviewSheets";
+import { AnswerSheet, PaymentSheet, PromiseSheet, ReceiptSheet, ReversalSheet, SaleReviewSheet } from "./ReviewSheets";
+import { AppLockGate } from "./AppLock";
 import { ReplaysSheet, SettingsSheet } from "./SettingsSheet";
 import { cx, SW } from "./ui";
 
@@ -22,7 +23,9 @@ const PassportSheet = dynamic(() => import("./KhataTab").then((m) => m.PassportS
 export function DukaanApp() {
   return (
     <DukaanProvider>
-      <Gate />
+      <AppLockGate>
+        <Gate />
+      </AppLockGate>
     </DukaanProvider>
   );
 }
@@ -195,7 +198,7 @@ function OfflineBanner() {
     <div className="mb-3 flex items-center gap-2 rounded-[12px] bg-amber-bg px-3 py-2 text-[13.5px] font-medium text-amber-ink">
       <WifiOff size={15} strokeWidth={SW} />
       <span className="flex-1">
-        {online ? "Online" : "Offline"} · {pending} Pending Sync (IndexedDB)
+        {online ? `Online · ${pending} Pending Sync (IndexedDB)` : `Net/bijli gayi? Sab mehfooz hai · ${pending} Pending Sync`}
       </span>
       <button
         onClick={() => (simulatedOffline ? setSimulatedOffline(false) : void flush())}
@@ -306,6 +309,8 @@ function SheetRouter() {
       return <CustomerSheet customerId={sheet.customerId} onClose={closeSheet} />;
     case "product":
       return <ProductSheet productId={sheet.productId} onClose={closeSheet} />;
+    case "promise":
+      return <PromiseSheet key={sheet.key} proposal={sheet.proposal} idemKey={sheet.key} trace={sheet.trace} onClose={closeSheet} />;
     case "settings":
       return <SettingsSheet onClose={closeSheet} />;
     case "replays":

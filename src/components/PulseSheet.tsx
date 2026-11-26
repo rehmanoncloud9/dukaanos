@@ -8,6 +8,7 @@ import { formatBaseQty } from "@/lib/domain/desi-units";
 import { reminderText, smsLink, waLink, wholesaleListText } from "@/lib/domain/messages";
 import { formatRs } from "@/lib/domain/money";
 import { Money, Pill, Sheet, SW } from "./ui";
+import { PriceMemoryCard } from "./PriceMemory";
 
 export function pulseSpeech(p: Pulse): string {
   return [
@@ -104,6 +105,8 @@ export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => vo
             </div>
           )}
         </div>
+
+        <PriceMemoryCard />
 
         <button onClick={() => void speak(pulseSpeech(pulse))} className="tactile flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[15px] font-semibold">
           <Volume2 size={16} strokeWidth={SW} /> Suniye (Urdu readout)

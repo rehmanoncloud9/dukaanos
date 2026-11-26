@@ -75,6 +75,19 @@ export default function VerifyPage() {
                   <Metric label="Trading days" value={String(p.td)} />
                   <Metric label="Ledger" value={p.lb ? "Balanced" : "Unbalanced"} />
                 </div>
+                {p.v === 2 && (
+                  <div className="rounded-[12px] border border-pass-emerald/30 bg-pass-elevated p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-pass-emerald">Bharosa · customer-attested</div>
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      <Metric label="Verified udhaar" value={`${((p.vr_bp ?? 0) / 100).toFixed(0)}%`} />
+                      <Metric label="Disputed" value={`${((p.dr_bp ?? 0) / 100).toFixed(1)}%`} />
+                      <Metric label="Wada kept" value={p.pk_bp === undefined ? "—" : `${(p.pk_bp / 100).toFixed(0)}%`} />
+                    </div>
+                    <p className={`mt-2 text-[12px] leading-[17px] ${res.valid ? "text-pass-muted" : ""}`}>
+                      Share of credit sales the borrowers themselves confirmed via a signed link · {p.att ?? 0} attestations · chain {p.ah}…
+                    </p>
+                  </div>
+                )}
                 <div className="break-all rounded-[10px] bg-black/20 p-2.5 font-mono text-[11px]">
                   SHA-256 head (#{p.txn}): {p.h}
                 </div>

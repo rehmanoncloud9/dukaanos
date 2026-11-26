@@ -18,8 +18,17 @@ export function MicButton({ onClip, onDenied, busy }: { onClip: (blob: Blob, mim
   const [cancelling, setCancelling] = useState(false);
   const [secs, setSecs] = useState(0);
   const tick = useRef<ReturnType<typeof setInterval> | null>(null);
+  // getUserMedia can take seconds (first-time permission prompt). If the finger lifts before the
+  // recorder has actually started, remember that and tear the stream down the moment start resolves.
+  const starting = useRef(false);
+  const releasedEarly = useRef(false);
 
   const finish = async (cancel: boolean) => {
+    if (starting.current) {
+      releasedEarly.current = true;
+      setCancelling(false);
+      return;
+    }
     const r = rec.current;
     rec.current = null;
     if (tick.current) clearInterval(tick.current);
@@ -52,14 +61,27 @@ export function MicButton({ onClip, onDenied, busy }: { onClip: (blob: Blob, mim
     }
     const r = new Recorder();
     rec.current = r;
+    starting.current = true;
+    releasedEarly.current = false;
     try {
       await r.start(setLevels, () => void finish(false));
+      starting.current = false;
+      if (releasedEarly.current) {
+        releasedEarly.current = false;
+        r.cancel();
+        rec.current = null;
+        setLevels([0, 0, 0, 0, 0]);
+        onDenied("Mic dabaa kar rakhein aur bolein (hold to talk)");
+        return;
+      }
       setRecording(true);
       setToggleMode(isToggle);
       setSecs(0);
       tick.current = setInterval(() => setSecs((s) => s + 1), 1000);
       navigator.vibrate?.(15);
     } catch {
+      starting.current = false;
+      releasedEarly.current = false;
       rec.current = null;
       onDenied("Mic permission denied — typed input is open below");
     }

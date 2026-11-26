@@ -138,7 +138,14 @@ export type TurnResponse =
   | { kind: "pulse"; pulse: Pulse; trace: TurnTrace }
   | { kind: "answer"; answer: string; proposal: SaleProposal | PaymentProposal | null; tools: Array<{ name: string; ms: number }>; trace: TurnTrace }
   | { kind: "purchase"; trace: TurnTrace }
+  | { kind: "promise"; proposal: PromiseProposal; trace: TurnTrace }
   | { kind: "unknown"; trace: TurnTrace };
+
+/** Mutual Khata wada spoken by the shopkeeper ("Ali ne Jumme ka wada kiya"); date resolved deterministically. */
+export interface PromiseProposal {
+  customer: SaleProposal["customer"];
+  promise_date: string; // YYYY-MM-DD (PKT)
+}
 
 export interface ApiErrorBody {
   error: { code: string; message: string; details?: unknown };

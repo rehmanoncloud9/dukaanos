@@ -1,24 +1,62 @@
 "use client";
 
-import { ExternalLink, Printer, UserPlus } from "lucide-react";
+import { Check, ExternalLink, Link2, Printer, ShieldCheck, UserPlus, Volume2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "react-qr-code";
 import type { StateCustomer } from "@/lib/api/contracts";
-import { api, friendlyError } from "@/lib/client/api";
+import { api, friendlyError, newKey } from "@/lib/client/api";
+import { isoDate, pktToday, wadaLabel } from "@/lib/domain/wada";
 import { tr } from "@/lib/client/i18n";
 import { useDukaan } from "@/lib/client/store";
 import { verifyPassport, type PassportPayload, type TradeSummary } from "@/lib/crypto/passport";
-import { reminderText, smsLink, waLink } from "@/lib/domain/messages";
+import { rankReminders, reminderText, smsLink, voiceReminderScript, waLink } from "@/lib/domain/messages";
+import { sendVoiceNote } from "@/lib/client/voice-note";
 import { formatRs, formatRsCompact } from "@/lib/domain/money";
 import { FeedRow } from "./MunshiTab";
 import { cx, Money, PrimaryButton, Segmented, Sheet, shortDate, Spinner } from "./ui";
 
-type Filter = "all" | "overdue" | "settled";
+type Filter = "all" | "overdue" | "wada" | "settled";
+
+/** Per-customer Mutual Khata status from get_bharosa_overview. */
+export interface BharosaItem {
+  customer_id: string;
+  confirmed: number;
+  disputed: number;
+  pending: number;
+  promise_date: string | null;
+  promise_state: "open" | "kept" | "broken" | null;
+  paid_claim_paisa: number;
+}
+
+/** Polls the customer-attestation overview every 3 s while the Khata tab is visible (live on the projector). */
+function useBharosa(): Record<string, BharosaItem> {
+  const [map, setMap] = useState<Record<string, BharosaItem>>({});
+  useEffect(() => {
+    let alive = true;
+    const pull = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const items = await api<BharosaItem[]>("/api/khata/overview");
+        if (alive) setMap(Object.fromEntries(items.map((i) => [i.customer_id, i])));
+      } catch {
+        /* offline or not migrated yet: badges simply stay hidden */
+      }
+    };
+    void pull();
+    const t = setInterval(pull, 3000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
+  return map;
+}
 
 export function KhataTab() {
   const { state, openSheet, lang } = useDukaan();
   const [filter, setFilter] = useState<Filter>("all");
   const [adding, setAdding] = useState(false);
+  const bharosa = useBharosa();
 
   useEffect(() => {
     const h = (e: Event) => {
@@ -33,7 +71,12 @@ export function KhataTab() {
   const receivable = customers.reduce((s, c) => s + Math.max(0, c.balance_paisa), 0);
   const active = customers.filter((c) => c.balance_paisa > 0);
   const overdue = active.filter((c) => (c.days_overdue ?? 0) > 15);
-  const list = (filter === "overdue" ? overdue : filter === "settled" ? customers.filter((c) => c.balance_paisa <= 0) : customers).slice().sort((a, b) => b.balance_paisa - a.balance_paisa);
+  const withWada = customers.filter((c) => bharosa[c.id]?.promise_date && bharosa[c.id]?.promise_state !== "kept" && c.balance_paisa > 0);
+  const list = (filter === "overdue" ? overdue : filter === "wada" ? withWada : filter === "settled" ? customers.filter((c) => c.balance_paisa <= 0) : customers)
+    .slice()
+    .sort((a, b) => (filter === "wada" ? String(bharosa[a.id]?.promise_date).localeCompare(String(bharosa[b.id]?.promise_date)) : b.balance_paisa - a.balance_paisa));
+  const verified = Object.values(bharosa).reduce((s, b) => s + b.confirmed, 0);
+  const unverified = Object.values(bharosa).reduce((s, b) => s + b.pending, 0);
 
   if (!state) return <div className="surface-card h-[400px] animate-pulse" />;
 
@@ -46,7 +89,15 @@ export function KhataTab() {
           <span className="text-ink-2" dir="auto">{active.length} {tr("activeAccounts", lang)}</span>
           <span className="font-semibold text-udhaar" dir="auto">{overdue.length} {tr("overdue", lang)}</span>
         </div>
+        {verified + unverified > 0 && (
+          <div className="mt-2 flex items-center gap-1.5 text-[13px] text-ink-2">
+            <ShieldCheck size={14} strokeWidth={1.75} className="text-cash" />
+            <span><b className="text-cash-ink">{verified}</b> gahak-tasdeeq shuda · {unverified} baqi</span>
+          </div>
+        )}
       </div>
+
+      <RemindToday customers={customers} bharosa={bharosa} shop={state.shop.name} />
 
       <Segmented<Filter>
         value={filter}
@@ -54,6 +105,7 @@ export function KhataTab() {
         options={[
           { value: "all", label: tr("all", lang) },
           { value: "overdue", label: tr("overdueFilter", lang) },
+          { value: "wada", label: "Wada" },
           { value: "settled", label: tr("settled", lang) },
         ]}
       />
@@ -61,7 +113,7 @@ export function KhataTab() {
       <div className="surface-card overflow-hidden">
         {list.length === 0 && <div className="px-4 py-6 text-center text-[14px] text-ink-2">Koi account nahi</div>}
         {list.map((c) => (
-          <DebtorRow key={c.id} c={c} shop={state.shop.name} onOpen={() => openSheet({ type: "customer", customerId: c.id })} onWasooli={() => openSheet({ type: "wasooli", customerId: c.id })} />
+          <DebtorRow key={c.id} c={c} b={bharosa[c.id]} shop={state.shop.name} onOpen={() => openSheet({ type: "customer", customerId: c.id })} onWasooli={() => openSheet({ type: "wasooli", customerId: c.id })} />
         ))}
       </div>
 
@@ -73,9 +125,121 @@ export function KhataTab() {
   );
 }
 
-function DebtorRow({ c, shop, onOpen, onWasooli }: { c: StateCustomer; shop: string; onOpen: () => void; onWasooli: () => void }) {
+/** Today's PKT date as YYYY-MM-DD. */
+function todayPkt(): string {
+  return isoDate(pktToday());
+}
+
+/** Voice-note reminder: TTS audio → share sheet; falls back to the text reminder if TTS is unavailable. */
+function useVoiceReminder() {
+  const { toast } = useDukaan();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const run = async (c: StateCustomer, shop: string, b?: BharosaItem) => {
+    setBusyId(c.id);
+    const script = voiceReminderScript({
+      name: c.name, shop, balance_paisa: c.balance_paisa,
+      promise_label: b?.promise_date && b.promise_state !== "kept" ? wadaLabel(b.promise_date).split(",")[0] : null,
+    });
+    try {
+      const how = await sendVoiceNote(script, c.name, reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue }));
+      toast(how === "shared" ? "Awaaz wali yaad-dihani bhej di" : "Voice note download ho gaya — WhatsApp par bhejein", "ok");
+    } catch {
+      toast("Awaaz abhi nahi bani — text yaad-dihani khul rahi hai", "warn");
+      window.location.href = waLink(c.phone, reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue }));
+    } finally {
+      setBusyId(null);
+    }
+  };
+  return { busyId, run };
+}
+
+/** "Aaj kisko yaad dilana hai" — the app does the asking so the shopkeeper doesn't have to. */
+function RemindToday({ customers, bharosa, shop }: { customers: StateCustomer[]; bharosa: Record<string, BharosaItem>; shop: string }) {
+  const { busyId, run } = useVoiceReminder();
+  const ranked = rankReminders(
+    customers.map((c) => ({
+      id: c.id, name: c.name, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue ?? null,
+      promise_date: bharosa[c.id]?.promise_date ?? null, promise_state: bharosa[c.id]?.promise_state ?? null,
+    })),
+    todayPkt(),
+  );
+  if (ranked.length === 0) return null;
+  const why = { wada_broken: "Wada toota", wada_due: "Aaj wada hai", overdue: "din se baqaya" } as const;
+  return (
+    <div className="surface-card overflow-hidden">
+      <div className="flex items-center justify-between px-4 pt-3.5">
+        <div className="section-label">Aaj kisko yaad dilana hai</div>
+        <span className="text-[12px] text-ink-2">Munshi poochega, aap nahi</span>
+      </div>
+      {ranked.map((r) => {
+        const c = customers.find((x) => x.id === r.id)!;
+        return (
+          <div key={r.id} className="hairline-b flex items-center gap-3 px-4 py-3 last:border-b-0">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[15px] font-semibold">{r.name}</div>
+              <div className={cx("text-[13px]", r.reason === "overdue" ? "text-ink-2" : "font-semibold text-udhaar")}>
+                {r.reason === "overdue" ? `${r.days_overdue} ${why.overdue}` : why[r.reason]} · {formatRs(r.balance_paisa)}
+              </div>
+            </div>
+            <button onClick={() => void run(c, shop, bharosa[c.id])} disabled={busyId !== null}
+              className="tactile flex h-12 shrink-0 items-center gap-1.5 rounded-[14px] bg-ink px-3.5 text-[14px] font-semibold text-white disabled:opacity-60">
+              {busyId === c.id ? <Spinner className="h-4 w-4" /> : <Volume2 size={16} strokeWidth={1.75} />} Awaaz bhejein
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Badges: what the CUSTOMER said (confirmed / disputed / wada / payment claimed). */
+function BharosaBadges({ b }: { b?: BharosaItem }) {
+  if (!b) return null;
+  return (
+    <>
+      {b.confirmed > 0 && b.disputed === 0 && (
+        <span className="inline-flex items-center gap-1 rounded-[6px] bg-cash-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-cash-ink">
+          <Check size={11} strokeWidth={1.75} /> Tasdeeq shuda
+        </span>
+      )}
+      {b.disputed > 0 && <span className="rounded-[6px] bg-udhaar-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-udhaar-ink">Ikhtilaf ({b.disputed})</span>}
+      {b.promise_date && b.promise_state === "open" && (
+        <span className="rounded-[6px] bg-[#FEF3C7] px-1.5 py-0.5 text-[11.5px] font-semibold text-[#92400E]">Wada · {wadaLabel(b.promise_date)}</span>
+      )}
+      {b.promise_state === "broken" && <span className="rounded-[6px] bg-udhaar-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-udhaar-ink">Wada toota</span>}
+    </>
+  );
+}
+
+function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: BharosaItem; shop: string; onOpen: () => void; onWasooli: () => void }) {
+  const { toast, confirmPayment } = useDukaan();
+  const [sending, setSending] = useState<"wa" | "sms" | null>(null);
+  const voice = useVoiceReminder();
   const msg = reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue });
   const od = (c.days_overdue ?? 0) > 15;
+
+  /** Mutual Khata: signed link + self-contained text; falls back to the plain reminder when offline. */
+  const send = async (via: "wa" | "sms") => {
+    setSending(via);
+    try {
+      const r = await api<{ wa: string; sms: string }>("/api/khata/link", { json: { customer_id: c.id } });
+      window.location.href = via === "wa" ? r.wa : r.sms;
+    } catch {
+      window.location.href = via === "wa" ? waLink(c.phone, msg) : smsLink(c.phone, msg);
+    } finally {
+      setSending(null);
+    }
+  };
+
+  const acceptClaim = async () => {
+    if (!b?.paid_claim_paisa) return;
+    try {
+      await confirmPayment(c.id, b.paid_claim_paisa, newKey("claim"));
+      toast(`Wasooli ${formatRs(b.paid_claim_paisa)} — gahak ki khabar tasdeeq`, "ok");
+    } catch (e) {
+      toast(friendlyError(e), "err");
+    }
+  };
   return (
     <div className="hairline-b px-4 py-3.5 last:border-b-0">
       <button onClick={onOpen} className="flex w-full items-start gap-3 text-left">
@@ -84,22 +248,36 @@ function DebtorRow({ c, shop, onOpen, onWasooli }: { c: StateCustomer; shop: str
             <span className="truncate text-[16px] font-semibold">{c.name}</span>
             {od && <span className="rounded-[6px] bg-udhaar-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-udhaar-ink">{c.days_overdue}d overdue</span>}
           </div>
+          <div className="mt-1 flex flex-wrap gap-1.5 empty:hidden">
+            <BharosaBadges b={b} />
+          </div>
           <div className="text-[13px] text-ink-2">
             {c.role_tag ?? "Customer"} · Last paid {shortDate(c.last_paid_at)}
           </div>
         </div>
         <Money paisa={c.balance_paisa} className={cx("text-[18px] font-bold", c.balance_paisa > 0 ? "text-udhaar" : "text-cash")} />
       </button>
-      <div className="mt-2.5 flex gap-2">
+      {b && b.paid_claim_paisa > 0 && (
+        <div className="mt-2.5 flex items-center justify-between gap-2 rounded-[12px] bg-cash-bg px-3 py-2">
+          <span className="text-[13px] font-semibold text-cash-ink">Gahak: &quot;{formatRs(b.paid_claim_paisa)} Raast se bhej diya&quot;</span>
+          <button onClick={() => void acceptClaim()} className="tactile h-9 shrink-0 rounded-full bg-cash px-3 text-[13px] font-semibold text-white">Mil gaya</button>
+        </div>
+      )}
+      <div className="mt-2.5 flex flex-wrap gap-2">
         <button onClick={onWasooli} className="tactile h-9 rounded-full border border-cash/30 bg-cash-bg px-3.5 text-[13.5px] font-semibold text-cash-ink">
           Wasooli
         </button>
-        <a href={waLink(c.phone, msg)} target="_blank" rel="noreferrer" className="tactile flex h-9 items-center rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
-          WhatsApp
-        </a>
-        <a href={smsLink(c.phone, msg)} className="tactile flex h-9 items-center rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
-          SMS (2G)
-        </a>
+        <button onClick={() => void send("wa")} disabled={sending !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
+          {sending === "wa" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />} WhatsApp
+        </button>
+        <button onClick={() => void send("sms")} disabled={sending !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
+          {sending === "sms" ? <Spinner className="h-3.5 w-3.5" /> : null} SMS (2G)
+        </button>
+        {c.balance_paisa > 0 && (
+          <button onClick={() => void voice.run(c, shop, b)} disabled={voice.busyId !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
+            {voice.busyId === c.id ? <Spinner className="h-3.5 w-3.5" /> : <Volume2 size={14} strokeWidth={1.75} />} Awaaz
+          </button>
+        )}
       </div>
     </div>
   );
@@ -298,6 +476,15 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
                     <div className="num mt-0.5 text-[17px] font-bold text-pass-emerald">{(pl!.rec_bp / 100).toFixed(1)}%</div>
                   </div>
                 </div>
+                {pl!.v === 2 && (
+                  <div className="mt-3 flex items-center justify-between rounded-[12px] border border-pass-emerald/30 bg-pass-elevated px-3 py-2.5">
+                    <div>
+                      <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-pass-muted">Gahak-tasdeeq udhaar</div>
+                      <div className="text-[12px] text-pass-muted">{pl!.att ?? 0} attestations · {((pl!.dr_bp ?? 0) / 100).toFixed(1)}% disputed</div>
+                    </div>
+                    <div className="num text-[22px] font-bold text-pass-emerald">{((pl!.vr_bp ?? 0) / 100).toFixed(0)}%</div>
+                  </div>
+                )}
                 <div className="mt-3 flex items-center justify-between border-t border-white/10 py-3 font-mono text-[11.5px]">
                   <span className="text-pass-muted">
                     SHA-256 {pl!.h.slice(0, 4)}…{pl!.h.slice(-4)} · {pl!.txn} links

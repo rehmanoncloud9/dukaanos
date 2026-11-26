@@ -69,6 +69,20 @@ describe("POST /api/munshi/turn", () => {
     });
   });
 
+  it("turns a spoken wada into a promise proposal with a deterministic date (no write)", async () => {
+    mockModelTurn({ intent: "payment", transcript: "Chhote Ali ne kal dene ka wada kiya", transcript_roman: "Chhote Ali ne kal dene ka wada kiya", customer_mention: "Chhote Ali", items: [] });
+    const req = new Request("http://localhost:3000/api/munshi/turn", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "Chhote Ali ne kal dene ka wada kiya" }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.kind).toBe("promise");
+    expect(json.proposal.promise_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(json.proposal.customer.candidates.length).toBeGreaterThan(0);
+    expect(vi.mocked(rpc)).not.toHaveBeenCalled();
+  });
+
   it("handles valid WebM audio upload and passes shopId for quota accounting", async () => {
     mockModelTurn();
     const form = new FormData();

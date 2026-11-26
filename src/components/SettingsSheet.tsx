@@ -1,5 +1,6 @@
 "use client";
 
+import { clearAppLock, isAppLockEnabled, setAppLockPin } from "./AppLock";
 import { Download, FileAudio, LogOut, Play, RefreshCw, ShieldAlert, ShieldCheck, Trash2, Upload, UserX, WifiOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, friendlyError } from "@/lib/client/api";
@@ -78,6 +79,8 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
           </div>
           <div className="mt-1.5 text-[12px] text-ink-2">{session?.user.email}</div>
         </section>
+
+        <AppLockSection />
 
         <section>
           <div className="section-label mb-2">Offline sync</div>
@@ -268,5 +271,35 @@ export function ReplaysSheet({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </Sheet>
+  );
+}
+
+/** 7E — optional 4-digit PIN for shared phones (stored as a salted hash on this device only). */
+function AppLockSection() {
+  const { toast } = useDukaan();
+  const [enabled, setEnabled] = useState(false);
+  const [pin, setPin] = useState("");
+  useEffect(() => setEnabled(isAppLockEnabled()), []);
+  return (
+    <section>
+      <div className="section-label mb-2">App lock · shared phone</div>
+      <div className="surface-card p-4">
+        {enabled ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[14px]">PIN laga hua hai — 1 minute baad app khud lock ho jati hai.</span>
+            <button onClick={() => { clearAppLock(); setEnabled(false); toast("App lock hata diya", "info"); }} className="tactile h-11 shrink-0 rounded-[12px] bg-surface-sunken px-3 text-[14px] font-semibold">Hata dein</button>
+          </div>
+        ) : (
+          <form className="flex gap-2" onSubmit={(e) => {
+            e.preventDefault();
+            void setAppLockPin(pin).then(() => { setEnabled(true); setPin(""); toast("PIN set — balances ab chhupe rahenge", "ok"); }).catch((err: unknown) => toast(err instanceof Error ? err.message : "PIN set nahi hua", "err"));
+          }}>
+            <input inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="4-digit PIN" aria-label="New 4-digit PIN"
+              className="num h-11 min-w-0 flex-1 rounded-[12px] border border-black/15 px-3 text-[15px] tracking-[0.3em]" />
+            <button type="submit" disabled={pin.length !== 4} className="tactile h-11 shrink-0 rounded-[12px] bg-ink px-4 text-[14px] font-semibold text-white disabled:opacity-40">PIN lagayein</button>
+          </form>
+        )}
+      </div>
+    </section>
   );
 }

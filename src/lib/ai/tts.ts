@@ -26,7 +26,9 @@ function pcmToWav(pcm: Buffer, sampleRate = 24000, channels = 1, bits = 16): Buf
 
 export async function synthesizeUrdu(text: string, shopId: string): Promise<{ wav: Buffer; model: string; latency_ms: number }> {
   const call = await generateContentOnce(env.ttsModel(), {
-    contents: [{ role: "user", parts: [{ text: `Parhiye, narm aur saaf Urdu lehje mein: ${text}` }] }],
+    // 3.8 TTS treats `text` as a verbatim transcript — an inline "read this softly" prefix gets spoken
+    // aloud, so only the words to say go here (tone comes from the voice choice).
+    contents: [{ role: "user", parts: [{ text }] }],
     config: {
       responseModalities: ["AUDIO"],
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } },
