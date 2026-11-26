@@ -185,3 +185,23 @@ export async function generateKeypairHex(): Promise<{ privateKey: string; public
   const pk = await ed.getPublicKeyAsync(sk);
   return { privateKey: bytesToHex(sk), publicKey: bytesToHex(pk) };
 }
+
+export interface BharosaIndex {
+  score: number; // 0..100 informational trade trust index
+  breakdown: { consistency: number; chain: number; recovery: number; mutual: number };
+}
+
+/** Deterministic 0–100 trade trust index from observable ledger & Mutual Khata signals. */
+export function computeBharosaIndex(s: TradeSummary): BharosaIndex {
+  const period = Math.max(1, s.period_days);
+  const consistency = Math.min(25, Math.round((s.active_trading_days / Math.min(period, 20)) * 25));
+  const chain = s.ledger_balanced ? 25 : 0;
+  const recovery = s.credit_sales_paisa <= 0 ? 25 : Math.min(25, Math.round((s.recovered_paisa / s.credit_sales_paisa) * 25));
+  let mutual = 15; // neutral baseline when no mutual attestations exist yet
+  if (s.bharosa && s.bharosa.credit_entries > 0) {
+    const confirmRatio = s.bharosa.confirmed_entries / s.bharosa.credit_entries;
+    const disputePenalty = Math.min(10, s.bharosa.disputed_entries * 5);
+    mutual = Math.max(0, Math.min(25, Math.round(confirmRatio * 25) - disputePenalty));
+  }
+  return { score: consistency + chain + recovery + mutual, breakdown: { consistency, chain, recovery, mutual } };
+}

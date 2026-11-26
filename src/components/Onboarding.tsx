@@ -36,9 +36,10 @@ export function TrustBadge() {
 
 /** Flow 1 — zero CNIC, zero tax fields. */
 export function Splash() {
-  const { signInSandbox, signInPassword, signInMagic, signInPhoneOtp, verifyPhoneOtp, toast } = useDukaan();
+  const { signInSandbox, signInPassword, signInMagic, verifyEmailOtp, signInPhoneOtp, verifyPhoneOtp, toast } = useDukaan();
   const [mode, setMode] = useState<"none" | "stage" | "magic" | "phone">("none");
   const [email, setEmail] = useState("stage@dukaanos.pk");
+  const [emailOtp, setEmailOtp] = useState("");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSentTo, setOtpSentTo] = useState<string | null>(null);
@@ -180,19 +181,42 @@ export function Splash() {
             onSubmit={(e) => {
               e.preventDefault();
               void run("magic", async () => {
-                await signInMagic(email);
-                setSent(true);
+                if (!sent) {
+                  await signInMagic(email);
+                  setSent(true);
+                  toast("Verification code & link bhej diya — inbox check karein", "ok");
+                } else {
+                  await verifyEmailOtp(email, emailOtp);
+                }
               });
             }}
           >
             {sent ? (
-              <p className="p-2 text-[14px] text-cash-ink">Link bhej diya — {email} check karein.</p>
+              <>
+                <p className="text-[13px] text-cash-ink">Code bhej diya — {email} check karein (ya magic link click karein).</p>
+                <input
+                  value={emailOtp}
+                  onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  inputMode="numeric"
+                  placeholder="6-digit verification code"
+                  className="num h-11 w-full rounded-[12px] bg-canvas px-3 text-[16px] tracking-[0.25em] outline-none"
+                />
+                <PrimaryButton type="submit" className="w-full" busy={busy === "magic"} disabled={emailOtp.length < 6}>
+                  Verify & Open Shop
+                </PrimaryButton>
+                <button type="button" onClick={() => { setSent(false); setEmailOtp(""); }} className="block w-full py-1 text-center text-[12.5px] font-semibold text-ink-2 underline underline-offset-4">
+                  Change email / resend code
+                </button>
+              </>
             ) : (
               <>
                 <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="aap@email.com" className="h-11 w-full rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
-                <PrimaryButton type="submit" className="w-full" busy={busy === "magic"}>
-                  Send magic link
+                <PrimaryButton type="submit" className="w-full" busy={busy === "magic"} disabled={!email.includes("@")}>
+                  Send verification code
                 </PrimaryButton>
+                <button type="button" onClick={() => setMode("phone")} className="block w-full py-1 text-center text-[12.5px] font-semibold text-ink-2 underline underline-offset-4">
+                  Use phone SMS (requires paid SMS gateway)
+                </button>
               </>
             )}
           </form>
@@ -204,12 +228,13 @@ export function Splash() {
             <SecondaryButton
               className="flex items-center justify-center gap-2"
               onClick={() => {
-                setOtpSentTo(null);
-                setOtp("");
-                setMode("phone");
+                setEmail("");
+                setSent(false);
+                setEmailOtp("");
+                setMode("magic");
               }}
             >
-              <Phone size={16} strokeWidth={SW} /> New shop
+              <Mail size={16} strokeWidth={SW} /> New shop
             </SecondaryButton>
           </div>
         )}

@@ -579,6 +579,15 @@ export function ReceiptSheet({ commit, proposal, customerPhone, onClose }: { com
         <button
           className="tactile flex h-12 items-center justify-center gap-2 rounded-[14px] bg-surface-sunken text-[15px] font-semibold"
           onClick={async () => {
+            let khataUrl: string | null = null;
+            if (commit.customer?.id) {
+              try {
+                const k = await api<{ url: string }>("/api/khata/link", { json: { customer_id: commit.customer.id } });
+                khataUrl = k.url;
+              } catch {
+                /* offline fallback: omit link */
+              }
+            }
             const png = await renderReceiptPng({
               shop,
               city: state?.shop.city,
@@ -592,6 +601,7 @@ export function ReceiptSheet({ commit, proposal, customerPhone, onClose }: { com
               entry_hash: commit.entry_hash,
               seq: commit.seq,
               created_at: commit.created_at,
+              khata_url: khataUrl,
             });
             const how = await shareOrDownload(png, `raseed-${commit.seq}.png`, text);
             toast(`Receipt PNG ${how} (${Math.round(png.size / 1024)} KB)`, "ok");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { b64urlDecode, b64urlEncode, canonicalJson, generateKeypairHex, signPassport, toPayload, verifyPassport, type TradeSummary } from "@/lib/crypto/passport";
+import { b64urlDecode, b64urlEncode, canonicalJson, computeBharosaIndex, generateKeypairHex, signPassport, toPayload, verifyPassport, type TradeSummary } from "@/lib/crypto/passport";
 
 const summary: TradeSummary = {
   shop_id: "0f6a3b6e-1111-4222-8333-444455556666",
@@ -52,6 +52,13 @@ describe("Ed25519 SMEConnect passport", () => {
     const s = await signPassport(toPayload(summary), a.privateKey);
     expect((await verifyPassport(s.token, b.publicKey)).valid).toBe(false);
     expect((await verifyPassport("garbage", a.publicKey)).reason).toBe("MALFORMED");
+  });
+
+  it("computes deterministic Bharosa Trust Index (0..100)", () => {
+    const idx = computeBharosaIndex(summary);
+    expect(idx.score).toBeGreaterThanOrEqual(70);
+    expect(idx.score).toBeLessThanOrEqual(100);
+    expect(idx.breakdown.chain).toBe(25);
   });
 });
 

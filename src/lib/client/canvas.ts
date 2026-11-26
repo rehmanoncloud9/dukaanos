@@ -22,6 +22,7 @@ export interface ReceiptData {
   entry_hash: string;
   seq: number;
   created_at: string;
+  khata_url?: string | null;
 }
 
 export async function renderReceiptPng(d: ReceiptData): Promise<Blob> {
@@ -115,6 +116,11 @@ export async function renderReceiptPng(d: ReceiptData): Promise<Blob> {
   x.font = `600 20px ${sans}`;
   x.fillStyle = "#047857";
   x.fillText("Verified by DukaanOS · Sirf Aap Ka Record — Zero FBR Linkage", 48, H - 72);
+  if (d.khata_url) {
+    x.font = `500 15px ${mono}`;
+    x.fillStyle = "#52525B";
+    x.fillText(`Mutual Khata: ${d.khata_url}`, 48, H - 38);
+  }
   x.textAlign = "right";
   x.direction = "rtl";
   x.fillStyle = "#0A0A0A";

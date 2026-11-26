@@ -114,6 +114,7 @@ interface Store {
   signInSandbox: (turnstileToken?: string) => Promise<void>;
   signInPassword: (email: string, password: string) => Promise<void>;
   signInMagic: (email: string) => Promise<void>;
+  verifyEmailOtp: (email: string, token: string) => Promise<void>;
   signInPhoneOtp: (phone: string) => Promise<string>;
   verifyPhoneOtp: (phone: string, token: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -713,7 +714,12 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInMagic = useCallback(async (email: string) => {
-    const { error } = await browserSupabase().auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } });
+    const { error } = await browserSupabase().auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: window.location.origin } });
+    if (error) throw new Error(error.message);
+  }, []);
+
+  const verifyEmailOtp = useCallback(async (email: string, token: string) => {
+    const { error } = await browserSupabase().auth.verifyOtp({ email: email.trim(), token: token.trim(), type: "email" });
     if (error) throw new Error(error.message);
   }, []);
 
@@ -762,7 +768,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     tab, setTab, sheet, openSheet, closeSheet, xrayOn, setXrayOn, lang, setLang, online, simulatedOffline, setSimulatedOffline,
     pending, reviewCount, queue, flush, openQueuedReview, discardQueued, thinking, submitTurn, confirmSale, confirmPayment, reverse, commitPurchase,
     lastCommit, replayTest, undo, doUndo, dismissUndo: () => setUndo(null), toasts, toast, highlightTx,
-    signInSandbox, signInPassword, signInMagic, signInPhoneOtp, verifyPhoneOtp, signOut, createShop, reloadShops,
+    signInSandbox, signInPassword, signInMagic, verifyEmailOtp, signInPhoneOtp, verifyPhoneOtp, signOut, createShop, reloadShops,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

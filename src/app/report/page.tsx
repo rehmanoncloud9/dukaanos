@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import QRCode from "react-qr-code";
 import type { ShopState } from "@/lib/api/contracts";
 import { api, friendlyError, setApiShop } from "@/lib/client/api";
-import type { PassportPayload, TradeSummary } from "@/lib/crypto/passport";
+import { computeBharosaIndex, type PassportPayload, type TradeSummary } from "@/lib/crypto/passport";
 import { formatBaseQty } from "@/lib/domain/desi-units";
 import { formatRs } from "@/lib/domain/money";
 
@@ -43,6 +43,7 @@ export default function ReportPage() {
   if (err) return <main className="mx-auto max-w-[800px] p-8 text-[15px]">{err}</main>;
   if (!p || !s) return <main className="mx-auto max-w-[800px] p-8 text-[15px] text-ink-2">Preparing signed report…</main>;
   const sum = p.summary;
+  const bharosa = computeBharosaIndex(sum);
   const debtors = s.customers.filter((c) => c.balance_paisa > 0);
   return (
     <main className="mx-auto max-w-[800px] bg-white p-8 text-ink print:p-0">
@@ -66,6 +67,7 @@ export default function ReportPage() {
 
       <section className="mt-6 grid grid-cols-4 gap-3">
         {[
+          ["Bharosa Index", `${bharosa.score}/100`],
           ["30-day GMV", formatRs(sum.gmv_paisa)],
           ["Sales", String(sum.sales_count)],
           ["Cash share", `${(p.payload.cash_bp / 100).toFixed(1)}%`],
@@ -73,7 +75,6 @@ export default function ReportPage() {
           ["Cash sales", formatRs(sum.cash_sales_paisa)],
           ["Credit sales", formatRs(sum.credit_sales_paisa)],
           ["Recovered", formatRs(sum.recovered_paisa)],
-          ["Wholesale purchases", formatRs(sum.purchases_paisa)],
         ].map(([k, v]) => (
           <div key={k} className="rounded-[12px] border border-black/10 p-3">
             <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-2">{k}</div>
