@@ -95,7 +95,7 @@ describe("tryLocalTurn", () => {
     expect(res?.kind).toBe("sale");
     if (res?.kind === "sale") {
       expect(res.proposal.total_paisa).toBe(32000);
-      expect(res.proposal.tier).toBe(2); // fallback parser keeps Tier-2 review gate for safety
+      expect(res.proposal.tier).toBe(1); // exact unambiguous cash sale qualifies for Tier-1 5s Undo at Rs. 0 LLM
       expect(res.trace.source).toBe("regex");
       expect(res.trace.model).toBeNull();
     }

@@ -181,7 +181,11 @@ export function tryLocalTurn(
 
   if (parsed.intent === "sale") {
     if (parsed.items.length === 0 || parsed.number_unresolved) return null;
-    const proposal = buildSaleProposal(parsed, catalog, { tier1EvidenceVerified: true });
+    const isSimpleCash = parsed.payment_mode === "cash" && parsed.discount_rupees === null && !parsed.customer_mention;
+    const boosted = isSimpleCash
+      ? { ...parsed, confidence: 0.95, items: parsed.items.map((it) => ({ ...it, confidence: 0.95 })) }
+      : parsed;
+    const proposal = buildSaleProposal(boosted, catalog, { tier1EvidenceVerified: true });
     if (proposal.lines.length === 0) return null;
 
     const allExactCatalog = proposal.lines.every(
