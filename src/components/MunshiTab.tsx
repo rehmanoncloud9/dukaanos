@@ -32,6 +32,7 @@ export function feedSummary(t: FeedTx): string {
 }
 
 function feedTag(t: FeedTx): string {
+  if (t.audit_meta?.pending_sync) return "Pending Sync";
   if (t.type === "payment") return "Wasooli";
   if (t.type === "purchase") return t.credit_paisa > 0 ? "Restock · A/P" : "Restock";
   if (t.type === "reversal") return "Reversal";
@@ -196,7 +197,16 @@ export function MunshiTab() {
         )}
         {list.length === 0 && !thinking && <div className={cx("px-4 py-6 text-center text-[14px] text-ink-2", lang === "ur" && "urdu-ui")} dir="auto">{tr("emptyMunshi", lang)}</div>}
         {list.map((t) => (
-          <FeedRow key={t.id} t={t} flash={highlightTx === t.id} onOpen={() => openSheet({ type: "xray", txId: t.id })} />
+          <FeedRow
+            key={t.id}
+            t={t}
+            flash={highlightTx === t.id}
+            onOpen={() =>
+              t.seq < 0
+                ? toast("Pending sync — hash will be assigned when online", "info")
+                : openSheet({ type: "xray", txId: t.id })
+            }
+          />
         ))}
         {showAll && (nextSeq !== null || state.feed.length >= 25) && (
           <button

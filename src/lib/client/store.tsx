@@ -9,7 +9,7 @@ import { formatRs } from "@/lib/domain/money";
 import type { PaymentProposal, SaleProposal } from "@/lib/domain/types";
 import { api, ClientApiError, friendlyError, isOffline, newKey, onOfflineChange, registerAuthHandlers, setApiShop, setSimulateOffline as setSimOffline, isSimulatedOffline } from "./api";
 import { LANG_KEY, type Lang } from "./i18n";
-import { dequeue, enqueue, flushQueue, listQueue, pendingCount, saveReplay, type FlushOutcome, type QueuedTurn } from "./queue";
+import { applyOptimisticOverlay, dequeue, enqueue, enqueueCommit, flushCommits, flushQueue, listCommits, listQueue, pendingCount, saveReplay, type FlushOutcome, type OptimisticDelta, type QueuedCommit, type QueuedTurn } from "./queue";
 import { browserSupabase, supabaseConfigured } from "./supabase";
 import { loadSnapshot, saveSnapshot, SHOPS_SNAPSHOT, stateSnapshotKey } from "./offline-cache";
 import { tryLocalTurn } from "./local-turn";
@@ -134,7 +134,9 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [shops, setShops] = useState<MyShop[] | null>(null);
   const [shopId, setShopIdState] = useState<string | null>(null);
-  const [state, setState] = useState<ShopState | null>(null);
+  const [rawState, setRawState] = useState<ShopState | null>(null);
+  const [commits, setCommits] = useState<QueuedCommit[]>([]);
+  const state = useMemo(() => applyOptimisticOverlay(rawState, commits), [rawState, commits]);
   const [stateError, setStateError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("munshi");
   const [sheet, setSheet] = useState<Sheet | null>(null);
@@ -212,7 +214,8 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     if (!userId) {
       setShops(null);
       setShopIdState(null);
-      setState(null);
+      setRawState(null);
+      setCommits([]);
       return;
     }
     reloadShops().catch((e) => setStateError(friendlyError(e)));
@@ -230,7 +233,8 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
         setApiShop(null);
         shopRef.current = null;
         setShopIdState(null);
-        setState(null);
+        setRawState(null);
+        setCommits([]);
         void reloadShops().catch(() => undefined);
       },
     });
@@ -242,7 +246,8 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     setApiShop(id);
     shopRef.current = id;
     setShopIdState(id);
-    setState(null);
+    setRawState(null);
+    setCommits([]);
     setLastCommit(null);
   }, []);
 
@@ -252,14 +257,14 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     const shop = shopRef.current;
     try {
       const s = await api<ShopState>("/api/shop/state");
-      setState(s);
+      setRawState(s);
       setStateError(null);
       void saveSnapshot(stateSnapshotKey(shop), s);
     } catch (e) {
       if (e instanceof ClientApiError && e.network) {
         // offline: keep the in-memory snapshot, or restore the last persisted one on a cold boot
         const cached = await loadSnapshot<ShopState>(stateSnapshotKey(shop));
-        if (cached) setState((cur) => cur ?? cached.data);
+        if (cached) setRawState((cur) => cur ?? cached.data);
         return;
       }
       setStateError(friendlyError(e));
@@ -268,9 +273,10 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
 
   const updatePending = useCallback(async () => {
     if (!shopRef.current) return;
-    const q = await listQueue(shopRef.current);
+    const [q, c] = await Promise.all([listQueue(shopRef.current), listCommits(shopRef.current)]);
     setQueue(q);
-    setPending(await pendingCount(shopRef.current));
+    setCommits(c);
+    setPending((await pendingCount(shopRef.current)) + c.filter((x) => x.status === "pending").length);
   }, []);
 
   /* ── commits ─────────────────────────────────────────── */
@@ -301,17 +307,82 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     }
   }, [toast]);
 
+  const commitOrQueue = useCallback(async (
+    endpoint: string,
+    payload: Record<string, unknown>,
+    idempotencyKey: string,
+    optimistic: OptimisticDelta,
+  ): Promise<{ res: CommitResponse; queued: boolean }> => {
+    const shop = shopRef.current;
+    const makeOfflineResponse = (): CommitResponse => ({
+      status: "COMMITTED",
+      http: 202,
+      deduplicated: false,
+      duplicate_rows: 0,
+      rows_for_key: 1,
+      type: optimistic.type,
+      transaction_id: idempotencyKey,
+      seq: -1,
+      prev_hash: "pending",
+      entry_hash: "pending",
+      created_at: new Date().toISOString(),
+      rls_shop_id: shop ?? "",
+      totals: { total_paisa: optimistic.total_paisa, cash_paid_paisa: optimistic.cash_paid_paisa, credit_paisa: optimistic.credit_paisa },
+      journal: [],
+      delta: 0,
+      warnings: [],
+      rpc_ms: 0,
+    });
+
+    if (isOffline() && shop) {
+      await enqueueCommit({ idempotency_key: idempotencyKey, shop_id: shop, endpoint, payload, optimistic });
+      await updatePending();
+      toast("Saved offline · Pending Sync", "warn");
+      return { res: makeOfflineResponse(), queued: true };
+    }
+    try {
+      const res = await api<CommitResponse>(endpoint, { json: payload });
+      return { res, queued: false };
+    } catch (e) {
+      if (shop && e instanceof ClientApiError && e.network) {
+        await enqueueCommit({ idempotency_key: idempotencyKey, shop_id: shop, endpoint, payload, optimistic });
+        await updatePending();
+        toast("Network down · saved offline (Pending Sync)", "warn");
+        return { res: makeOfflineResponse(), queued: true };
+      }
+      throw e;
+    }
+  }, [toast, updatePending]);
+
   const confirmSale = useCallback(async (p: SaleProposal, key: string, trace: TurnTrace | null, opts?: { auto?: boolean }) => {
     const base = toCommitInput(p, key, {});
     const replayPayload = { ...base };
     const payload = { ...base, audit_meta: auditMeta(trace, { tier: p.tier, tier_reasons: p.tier_reasons, channel: opts?.auto ? "tier1-auto" : "tier2-confirm", replay_payload: replayPayload }) };
-    const res = await api<CommitResponse>("/api/transactions/commit", { json: payload });
+    const selectedCust = p.customer.candidates.find((c) => c.id === p.customer.selected_id) ?? null;
+    const { res, queued } = await commitOrQueue("/api/transactions/commit", payload, key, {
+      type: "sale",
+      customer_id: p.customer.selected_id,
+      customer_name: selectedCust?.name ?? p.customer.mention,
+      total_paisa: p.total_paisa,
+      cash_paid_paisa: p.cash_paid_paisa,
+      credit_paisa: p.credit_paisa,
+      discount_paisa: p.discount_paisa,
+      lines: p.lines.map((l) => ({
+        product_id: l.product_id,
+        name: l.name,
+        qty_base_units: l.qty_base_units,
+        base_unit: l.base_unit,
+        line_total_paisa: l.line_total_paisa,
+        value_first: l.value_first,
+      })),
+      label: summarizeLines(p.lines),
+    });
     await dequeue(key).catch(() => undefined);
-    recordCommit(res, "/api/transactions/commit", payload, trace, p, summarizeLines(p.lines));
+    if (!queued) recordCommit(res, "/api/transactions/commit", payload, trace, p, summarizeLines(p.lines));
     navigator.vibrate?.(12);
-    void refresh();
+    if (!queued) void refresh();
     void updatePending();
-    if (opts?.auto) {
+    if (opts?.auto && !queued) {
       setUndo({
         id: newKey("u"),
         message: `Cash ${formatRs(res.totals.total_paisa ?? p.total_paisa)} saved (${summarizeLines(p.lines)})`,
@@ -321,36 +392,67 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     }
     negativeStockToast(res);
     return res;
-  }, [recordCommit, refresh, updatePending, negativeStockToast]);
+  }, [commitOrQueue, recordCommit, refresh, updatePending, negativeStockToast]);
 
   const confirmPayment = useCallback(async (customerId: string, amountPaisa: number, key: string, trace?: TurnTrace | null) => {
     const base = { idempotency_key: key, customer_id: customerId, amount_paisa: amountPaisa };
     const payload = { ...base, audit_meta: auditMeta(trace ?? null, { channel: "wasooli", replay_payload: base }) };
-    const res = await api<CommitResponse>("/api/transactions/payment", { json: payload });
+    const custName = rawState?.customers.find((c) => c.id === customerId)?.name ?? null;
+    const { res, queued } = await commitOrQueue("/api/transactions/payment", payload, key, {
+      type: "payment",
+      customer_id: customerId,
+      customer_name: custName,
+      total_paisa: amountPaisa,
+      cash_paid_paisa: amountPaisa,
+      credit_paisa: 0,
+      label: `Wasooli ${formatRs(amountPaisa)}`,
+    });
     await dequeue(key).catch(() => undefined);
-    recordCommit(res, "/api/transactions/payment", payload, trace ?? null, null, `Wasooli ${formatRs(amountPaisa)}`);
+    if (!queued) recordCommit(res, "/api/transactions/payment", payload, trace ?? null, null, `Wasooli ${formatRs(amountPaisa)}`);
     navigator.vibrate?.(12);
-    void refresh();
+    if (!queued) void refresh();
     void updatePending();
     return res;
-  }, [recordCommit, refresh, updatePending]);
+  }, [commitOrQueue, rawState?.customers, recordCommit, refresh, updatePending]);
 
   const reverse = useCallback(async (txId: string | null, reason: string) => {
-    const base = { idempotency_key: newKey("rev"), transaction_id: txId, reason };
+    const key = newKey("rev");
+    const base = { idempotency_key: key, transaction_id: txId, reason };
     const payload = { ...base, audit_meta: { channel: reason, replay_payload: base } };
-    const res = await api<CommitResponse>("/api/transactions/reverse", { json: payload });
-    recordCommit(res, "/api/transactions/reverse", payload, null, null, "Reversal");
-    void refresh();
+    const { res, queued } = await commitOrQueue("/api/transactions/reverse", payload, key, {
+      type: "reversal",
+      total_paisa: 0,
+      cash_paid_paisa: 0,
+      credit_paisa: 0,
+      reversed_transaction_id: txId,
+      label: "Reversal",
+    });
+    if (!queued) {
+      recordCommit(res, "/api/transactions/reverse", payload, null, null, "Reversal");
+      void refresh();
+    }
     return res;
-  }, [recordCommit, refresh]);
+  }, [commitOrQueue, recordCommit, refresh]);
 
   const commitPurchase = useCallback(async (payload: Record<string, unknown>) => {
-    const res = await api<CommitResponse>("/api/transactions/purchase", { json: payload });
-    recordCommit(res, "/api/transactions/purchase", payload, null, null, `Restock ${formatRs(res.totals.total_paisa ?? 0)}`);
+    const key = typeof payload.idempotency_key === "string" ? payload.idempotency_key : newKey("pur");
+    const total = Number(payload.total_paisa ?? payload.stated_total_paisa ?? 0) || 0;
+    const cash = Number(payload.cash_paid_paisa ?? 0) || 0;
+    const { res, queued } = await commitOrQueue("/api/transactions/purchase", { ...payload, idempotency_key: key }, key, {
+      type: "purchase",
+      supplier_name: typeof payload.supplier_name === "string" ? payload.supplier_name : "Wholesale",
+      total_paisa: total,
+      cash_paid_paisa: cash,
+      credit_paisa: Math.max(0, total - cash),
+      label: `Restock ${formatRs(total)}`,
+    });
+    if (!queued) {
+      recordCommit(res, "/api/transactions/purchase", payload, null, null, `Restock ${formatRs(res.totals.total_paisa ?? 0)}`);
+      void refresh();
+    }
     navigator.vibrate?.(12);
-    void refresh();
     return res;
-  }, [recordCommit, refresh]);
+  }, [commitOrQueue, recordCommit, refresh]);
 
   const replayTest = useCallback(async (target?: { endpoint: string; payload: Record<string, unknown> }) => {
     const t = target ?? (lastCommit ? { endpoint: lastCommit.endpoint, payload: lastCommit.payload } : null);
@@ -510,17 +612,20 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     if (!shop || flushing.current || isOffline()) return;
     flushing.current = true;
     try {
-      const before = await pendingCount(shop);
-      if (!before) return;
+      const [beforeTurns, queuedCommits] = await Promise.all([pendingCount(shop), listCommits(shop)]);
+      const pendingCommits = queuedCommits.filter((c) => c.status === "pending").length;
+      if (!beforeTurns && !pendingCommits) return;
       const t0 = performance.now();
+      const cRes = await flushCommits(shop, (c) => api<CommitResponse>(c.endpoint, { json: c.payload }));
       const r = await flushQueue(shop, async (q) => {
         const res = await postTurn({ blob: q.blob, mime: q.mime, text: q.text });
         return handleTurn(res, q.idempotency_key, { deferSheet: true });
       });
       await updatePending();
       await refresh();
-      if (r.done || r.review) {
-        toast(`Synced ${r.done}${r.review ? ` · ${r.review} need review` : ""} in ${((performance.now() - t0) / 1000).toFixed(1)}s · 0 duplicates`, "ok");
+      const totalDone = cRes.done + r.done;
+      if (totalDone || r.review) {
+        toast(`Synced ${totalDone}${r.review ? ` · ${r.review} need review` : ""} in ${((performance.now() - t0) / 1000).toFixed(1)}s · 0 duplicates`, "ok");
       }
       if (r.review > 0 && !sheetRef.current) {
         await openQueuedReview();
