@@ -40,7 +40,7 @@ describe("AI extraction JSON schemas and Zod bounds", () => {
     expect(PARSED_TURN_JSON_SCHEMA.required).toEqual(expect.arrayContaining([
       "intent", "transcript", "transcript_roman", "items", "discount_phrase", "cash_phrase", "payment_mode", "payment_amount_phrase", "confidence",
     ]));
-    expect(PARSED_TURN_JSON_SCHEMA.properties.items.maxItems).toBe(40);
+    expect(PARSED_TURN_JSON_SCHEMA.properties.items.type).toBe("array");
   });
 
   it("enforces bounds and finite amounts in ParsedTurnZ", () => {
@@ -56,7 +56,7 @@ describe("AI extraction JSON schemas and Zod bounds", () => {
 
   it("defines evidence-only fields on PARCHI_JSON_SCHEMA and bounds in PARCHI_OCR_ZOD_SCHEMA", () => {
     expect(PARCHI_JSON_SCHEMA.required).toEqual(["supplier_name", "bill_date", "lines", "bill_total_raw", "legibility"]);
-    expect(PARCHI_JSON_SCHEMA.properties.lines.maxItems).toBe(80);
+    expect(PARCHI_JSON_SCHEMA.properties.lines.type).toBe("array");
     expect(PARCHI_OCR_ZOD_SCHEMA.safeParse(validParchi()).success).toBe(true);
     expect(PARCHI_OCR_ZOD_SCHEMA.safeParse(validParchi({ supplier_name: "a".repeat(121) })).success).toBe(false);
     expect(PARCHI_OCR_ZOD_SCHEMA.safeParse(validParchi({ bill_date: "2".repeat(41) })).success).toBe(false);

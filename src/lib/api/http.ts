@@ -97,7 +97,7 @@ export function fromDbError(err: { message?: string; hint?: string | null; code?
   const code = message.split(":")[0].trim();
   if (ERROR_STATUS[code]) return new ApiError(code, message, err.hint ?? err.details ?? undefined);
   if (err.code === "42501" || /permission denied/i.test(message)) return new ApiError("FORBIDDEN", "Access denied");
-  if (/JWT|token/i.test(message)) return new ApiError("AUTH_REQUIRED", "Authentication required");
+  if (/\bJWT\b|invalid.*token|expired.*token|token.*expired/i.test(message)) return new ApiError("AUTH_REQUIRED", "Authentication required");
   return new ApiError("DB_ERROR", message, err.details ?? undefined, 500);
 }
 

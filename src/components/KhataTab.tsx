@@ -145,7 +145,7 @@ function useVoiceReminder() {
       toast(how === "shared" ? "Awaaz wali yaad-dihani bhej di" : "Voice note download ho gaya — WhatsApp par bhejein", "ok");
     } catch {
       toast("Awaaz abhi nahi bani — text yaad-dihani khul rahi hai", "warn");
-      window.location.href = waLink(c.phone, reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue }));
+      window.open(waLink(c.phone, reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue })), "_blank", "noopener,noreferrer");
     } finally {
       setBusyId(null);
     }
@@ -223,9 +223,11 @@ function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: Bh
     setSending(via);
     try {
       const r = await api<{ wa: string; sms: string }>("/api/khata/link", { json: { customer_id: c.id } });
-      window.location.href = via === "wa" ? r.wa : r.sms;
+      if (via === "wa") window.open(r.wa, "_blank", "noopener,noreferrer");
+      else window.location.href = r.sms;
     } catch {
-      window.location.href = via === "wa" ? waLink(c.phone, msg) : smsLink(c.phone, msg);
+      if (via === "wa") window.open(waLink(c.phone, msg), "_blank", "noopener,noreferrer");
+      else window.location.href = smsLink(c.phone, msg);
     } finally {
       setSending(null);
     }
@@ -327,6 +329,24 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
   const [items, setItems] = useState<import("@/lib/api/contracts").FeedTx[] | null>(null);
   const [nextSeq, setNextSeq] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [linkBusy, setLinkBusy] = useState<"open" | "copy" | null>(null);
+
+  const handleKhataLink = async (mode: "open" | "copy") => {
+    setLinkBusy(mode);
+    try {
+      const r = await api<{ url: string; token: string }>("/api/khata/link", { json: { customer_id: c!.id } });
+      if (mode === "open") {
+        window.open(`/k/${r.token}`, "_blank", "noopener,noreferrer");
+      } else {
+        await navigator.clipboard?.writeText(r.url);
+        toast("Mutual Khata link copied", "ok");
+      }
+    } catch (e) {
+      toast(friendlyError(e), "err");
+    } finally {
+      setLinkBusy(null);
+    }
+  };
 
   useEffect(() => {
     setItems(null);
@@ -386,6 +406,24 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
         <PrimaryButton tone="cash" className="w-full" onClick={() => openSheet({ type: "wasooli", customerId: c.id })}>
           Wasooli
         </PrimaryButton>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => void handleKhataLink("open")}
+            disabled={linkBusy !== null}
+            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13.5px] font-semibold"
+          >
+            {linkBusy === "open" ? <Spinner className="h-3.5 w-3.5" /> : <ExternalLink size={14} strokeWidth={1.75} />}
+            Preview Khata Link
+          </button>
+          <button
+            onClick={() => void handleKhataLink("copy")}
+            disabled={linkBusy !== null}
+            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13.5px] font-semibold"
+          >
+            {linkBusy === "copy" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />}
+            Copy Khata Link
+          </button>
+        </div>
         <div className="section-label pt-1">Khata history (SHA-256 chained)</div>
         <div className="surface-card overflow-hidden">
           {items === null && <div className="flex items-center justify-center p-4 text-[13px] text-ink-2"><Spinner /></div>}
@@ -496,7 +534,7 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
                 <div className="rounded-[16px] bg-white p-3">
                   <QRCode value={p.verify_url} size={168} level="M" fgColor="#0F172A" bgColor="#FFFFFF" />
                 </div>
-                <a href={p.verify_url} target="_blank" rel="noreferrer" className="mt-4 flex items-center gap-1.5 rounded-[10px] border border-pass-emerald/50 bg-pass-emerald/10 px-3 py-2 font-mono text-[12px] text-pass-emerald">
+                <a href={`/verify#${p.token}`} target="_blank" rel="noreferrer" className="mt-4 flex items-center gap-1.5 rounded-[10px] border border-pass-emerald/50 bg-pass-emerald/10 px-3 py-2 font-mono text-[12px] text-pass-emerald">
                   Simulate Judge Phone Scan (/verify) <ExternalLink size={12} strokeWidth={1.75} />
                 </a>
               </div>

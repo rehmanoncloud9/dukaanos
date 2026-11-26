@@ -10,7 +10,7 @@ import { normalizeUrduNumberWords, parseRupeeAmount } from "@/lib/domain/urdu-nu
 import { generateContentOnce, parseModelJson } from "./models";
 
 const nullableString = { anyOf: [{ type: "string" }, { type: "null" }] };
-const nullableAmount = { anyOf: [{ type: "number", minimum: 0, maximum: 100_000_000 }, { type: "null" }] };
+const nullableAmount = { anyOf: [{ type: "number" }, { type: "null" }] };
 
 /** Structured extraction schema. Raw number phrases remain evidence beside normalized values. */
 export const PARSED_TURN_JSON_SCHEMA = {
@@ -22,7 +22,6 @@ export const PARSED_TURN_JSON_SCHEMA = {
     customer_mention: { ...nullableString, description: "Customer name as spoken" },
     items: {
       type: "array",
-      maxItems: 40,
       items: {
         type: "object",
         properties: {
@@ -31,7 +30,7 @@ export const PARSED_TURN_JSON_SCHEMA = {
           value_phrase: { ...nullableString, description: "Raw amount phrase for value-first items; null when absent" },
           value_rupees: nullableAmount,
           is_loose: { type: "boolean" },
-          confidence: { type: "number", minimum: 0, maximum: 1 },
+          confidence: { type: "number" },
         },
         required: ["spoken", "quantity_phrase", "value_phrase", "value_rupees", "is_loose", "confidence"],
       },
@@ -44,7 +43,7 @@ export const PARSED_TURN_JSON_SCHEMA = {
     payment_amount_phrase: { ...nullableString, description: "Raw amount phrase for a payment collection" },
     payment_amount_rupees: nullableAmount,
     question: { ...nullableString, description: "Question as spoken" },
-    confidence: { type: "number", minimum: 0, maximum: 1 },
+    confidence: { type: "number" },
   },
   required: [
     "intent", "transcript", "transcript_roman", "customer_mention", "items", "discount_phrase", "discount_rupees",

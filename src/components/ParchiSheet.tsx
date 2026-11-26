@@ -59,6 +59,7 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
   const [statedTotalPaisa, setStatedTotalPaisa] = useState<number | null>(null);
   const [grandTotalAcknowledged, setGrandTotalAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [parseErr, setParseErr] = useState<string | null>(null);
   const [done, setDone] = useState<CommitResponse | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const key = useRef(newKey("parchi"));
@@ -72,6 +73,7 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
 
   const run = async (file: Blob) => {
     try {
+      setParseErr(null);
       const prepared = await prepareImage(file);
       setImg(prepared);
       if (prepared.lowRes) toast("Photo bohat chhoti hai (<800px) — retake for best OCR", "warn");
@@ -88,7 +90,9 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
       setGrandTotalAcknowledged(false);
       setStage("review");
     } catch (error) {
-      toast(friendlyError(error), "err");
+      const msg = friendlyError(error);
+      setParseErr(msg);
+      toast(msg, "err");
       setStage("capture");
     }
   };
@@ -254,6 +258,11 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
 
       {stage === "capture" && (
         <div className="space-y-2.5 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">
+          {parseErr && (
+            <div className="rounded-[12px] border border-udhaar/30 bg-udhaar-bg px-3.5 py-2.5 text-[13.5px] font-medium text-udhaar-ink">
+              {parseErr}
+            </div>
+          )}
           <p className="text-[14px] text-ink-2">Use clear, even light and keep the whole parchi in frame. Upload is resized to a 1280px JPEG; the original stays available for review.</p>
           <PrimaryButton tone="maal" className="w-full" onClick={() => camRef.current?.click()}><Camera size={18} strokeWidth={SW} /> Snap parchi</PrimaryButton>
           <SecondaryButton className="flex w-full items-center justify-center gap-2" onClick={() => galRef.current?.click()}><FileImage size={16} strokeWidth={SW} /> Choose from gallery</SecondaryButton>

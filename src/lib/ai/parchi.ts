@@ -25,7 +25,6 @@ export const PARCHI_JSON_SCHEMA = {
     bill_date: { ...nullableText, description: "Date exactly as written; null if unclear" },
     lines: {
       type: "array",
-      maxItems: 80,
       items: {
         type: "object",
         properties: {
@@ -34,7 +33,7 @@ export const PARCHI_JSON_SCHEMA = {
           unit_raw: { ...nullableText, description: "Unit characters exactly as written; null if absent or unclear" },
           rate_raw: { ...nullableText, description: "Rate characters exactly as written, without calculating" },
           line_total_raw: { ...nullableText, description: "Line total characters exactly as written" },
-          confidence: { type: "number", minimum: 0, maximum: 1 },
+          confidence: { type: "number" },
         },
         required: ["name_raw", "quantity_raw", "unit_raw", "rate_raw", "line_total_raw", "confidence"],
       },

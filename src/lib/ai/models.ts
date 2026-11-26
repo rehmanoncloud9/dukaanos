@@ -88,6 +88,7 @@ function apiError(error: unknown, attempts: ModelCallResult["attempts"]): ApiErr
   if (error instanceof ApiError) return error; // e.g. AI_NOT_CONFIGURED from genai()
   const message = error instanceof Error ? error.message : String(error);
   const code = classifyAiError(message);
+  console.warn("[ai] generateContent failed", { code, message: message.slice(0, 240) });
   return new ApiError(code, AI_ERROR_MESSAGES[code], { attempts });
 }
 

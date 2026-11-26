@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { StateProduct } from "@/lib/api/contracts";
 import { api, friendlyError } from "@/lib/client/api";
@@ -31,6 +31,7 @@ export function isLow(p: StateProduct) {
 export function MaalTab() {
   const { state, openSheet, lang } = useDukaan();
   const [filter, setFilter] = useState<"all" | "low">("all");
+  const [query, setQuery] = useState("");
   useEffect(() => {
     const h = (e: Event) => {
       const d = (e as CustomEvent<{ tab: string; filter: string }>).detail;
@@ -42,7 +43,9 @@ export function MaalTab() {
   if (!state) return <div className="surface-card h-[400px] animate-pulse" />;
   const negative = state.products.filter((p) => p.stock_base_units < 0);
   const sorted = state.products.slice().sort((a, b) => Number(isLow(b)) - Number(isLow(a)) || a.name.localeCompare(b.name));
-  const list = filter === "low" ? sorted.filter(isLow) : sorted;
+  const q = query.trim().toLowerCase();
+  const filtered = filter === "low" ? sorted.filter(isLow) : sorted;
+  const list = q ? filtered.filter((p) => p.name.toLowerCase().includes(q) || (p.aliases ?? []).some((a) => a.toLowerCase().includes(q))) : filtered;
 
   return (
     <div className="space-y-3">
@@ -65,6 +68,24 @@ export function MaalTab() {
           { value: "low", label: `${tr("lowStock", lang)} (${sorted.filter(isLow).length})` },
         ]}
       />
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search maal / alias (e.g. cheeni, oil)..."
+        dir="auto"
+        className="h-11 w-full rounded-[12px] bg-surface px-3.5 text-[15px] shadow-[0_0_0_1px_rgba(12,18,16,0.08)] outline-none placeholder:text-ink-3"
+      />
+      <div className="relative">
+        <Search size={16} strokeWidth={1.75} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-3" />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search product or alias…"
+          aria-label="Search products"
+          className="h-11 w-full rounded-[12px] border border-black/10 bg-surface pl-10 pr-3 text-[15px] outline-none focus:border-ink"
+        />
+      </div>
       <div className="surface-card overflow-hidden">
         {list.map((p) => {
           const low = isLow(p);
