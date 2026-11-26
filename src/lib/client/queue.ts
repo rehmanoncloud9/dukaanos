@@ -27,7 +27,7 @@ export interface QueuedTurn {
 }
 
 const pending = typeof indexedDB !== "undefined" ? createStore("dukaanos-queue", "pending") : undefined;
-const commits = typeof indexedDB !== "undefined" ? createStore("dukaanos-queue", "commits") : undefined;
+const commits = typeof indexedDB !== "undefined" ? createStore("dukaanos-commits", "commits") : undefined;
 const replays = typeof indexedDB !== "undefined" ? createStore("dukaanos-replays", "clips") : undefined;
 
 export async function enqueue(item: Omit<QueuedTurn, "attempts" | "status" | "created_at">): Promise<void> {

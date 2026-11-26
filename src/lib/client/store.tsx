@@ -544,6 +544,15 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       if (input.text && !input.blob) {
         const local = tryLocalTurn(input.text, state, { offline: true });
         if (local) {
+          if (
+            local.kind === "sale" &&
+            local.proposal.credit_paisa === 0 &&
+            local.proposal.discount_paisa === 0 &&
+            local.proposal.lines.every((l) => l.kind === "catalog" && (l.match?.score ?? 0) === 1 && l.price_known && !l.number_unresolved)
+          ) {
+            await confirmSale(local.proposal, key, local.trace, { auto: true });
+            return;
+          }
           await handleTurn(local, key);
           return;
         }
@@ -575,7 +584,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     } finally {
       setThinking(false);
     }
-  }, [postTurn, handleTurn, toast, updatePending, state]);
+  }, [confirmSale, postTurn, handleTurn, toast, updatePending, state]);
 
   const openQueuedReview = useCallback(async (key?: string) => {
     const shop = shopRef.current;
