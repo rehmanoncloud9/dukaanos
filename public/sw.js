@@ -1,6 +1,6 @@
 /* DukaanOS service worker — app-shell cache so the PWA opens with Wi-Fi OFF.
    API calls are never cached: offline writes go to the IndexedDB queue instead. */
-const CACHE = "dukaanos-shell-v2";
+const CACHE = "dukaanos-shell-v3";
 const SHARE_CACHE = "dukaanos-share-v1";
 const SHELL = [
   "/",
@@ -62,16 +62,23 @@ self.addEventListener("fetch", (e) => {
 
   if (e.request.method !== "GET" || url.pathname.startsWith("/api/")) return;
 
-  // network-first for navigations, cache-first for static chunks & icons
+  // lie-fi resilient navigation: 2-second network timeout, then cached shell
   if (e.request.mode === "navigate") {
     e.respondWith(
-      fetch(e.request)
-        .then((res) => {
+      (async () => {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 2000);
+        try {
+          const res = await fetch(e.request, { signal: ctrl.signal });
+          clearTimeout(timer);
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(e.request, copy));
           return res;
-        })
-        .catch(() => caches.match(e.request).then((r) => r || caches.match("/"))),
+        } catch {
+          clearTimeout(timer);
+          return (await caches.match(e.request)) || (await caches.match("/"));
+        }
+      })(),
     );
     return;
   }

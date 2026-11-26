@@ -659,10 +659,11 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     if (!shopId) return;
     void refresh();
     void updatePending().then(() => flush());
-    const t = setInterval(() => {
-      if (!isOffline() && document.visibilityState === "visible") void refresh();
-    }, 30_000);
-    return () => clearInterval(t);
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && !isOffline()) void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [shopId, refresh, updatePending, flush]);
 
   useEffect(() => {

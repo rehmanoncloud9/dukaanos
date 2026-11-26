@@ -130,32 +130,65 @@ function todayPkt(): string {
   return isoDate(pktToday());
 }
 
-/** Voice-note reminder: TTS audio → share sheet; falls back to the text reminder if TTS is unavailable. */
+let cachedTtsAvailable: boolean | null = null;
+let ttsCheckPromise: Promise<boolean> | null = null;
+
+function useTtsAvailable(): boolean | null {
+  const [avail, setAvail] = useState<boolean | null>(cachedTtsAvailable);
+  useEffect(() => {
+    if (cachedTtsAvailable !== null) return;
+    if (!ttsCheckPromise) {
+      ttsCheckPromise = api<{ models_available?: Record<string, boolean> | null }>("/api/system/health", { auth: false, shop: false })
+        .then((h) => h.models_available?.tts === true)
+        .catch(() => false);
+    }
+    void ttsCheckPromise.then((v) => {
+      cachedTtsAvailable = v;
+      setAvail(v);
+    });
+  }, []);
+  return avail;
+}
+
+/** Voice-note reminder: TTS audio → share sheet; or explicit WhatsApp Text + Khata Link when TTS is disabled. */
 function useVoiceReminder() {
   const { toast } = useDukaan();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const ttsAvailable = useTtsAvailable();
   const run = async (c: StateCustomer, shop: string, b?: BharosaItem) => {
     setBusyId(c.id);
+    const fallbackText = reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue });
+    if (ttsAvailable === false) {
+      try {
+        const r = await api<{ wa: string }>("/api/khata/link", { json: { customer_id: c.id } });
+        window.open(r.wa, "_blank", "noopener,noreferrer");
+      } catch {
+        window.open(waLink(c.phone, fallbackText), "_blank", "noopener,noreferrer");
+      } finally {
+        setBusyId(null);
+      }
+      return;
+    }
     const script = voiceReminderScript({
       name: c.name, shop, balance_paisa: c.balance_paisa,
       promise_label: b?.promise_date && b.promise_state !== "kept" ? wadaLabel(b.promise_date).split(",")[0] : null,
     });
     try {
-      const how = await sendVoiceNote(script, c.name, reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue }));
+      const how = await sendVoiceNote(script, c.name, fallbackText);
       toast(how === "shared" ? "Awaaz wali yaad-dihani bhej di" : "Voice note download ho gaya — WhatsApp par bhejein", "ok");
     } catch {
       toast("Awaaz abhi nahi bani — text yaad-dihani khul rahi hai", "warn");
-      window.open(waLink(c.phone, reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue })), "_blank", "noopener,noreferrer");
+      window.open(waLink(c.phone, fallbackText), "_blank", "noopener,noreferrer");
     } finally {
       setBusyId(null);
     }
   };
-  return { busyId, run };
+  return { busyId, run, ttsAvailable };
 }
 
 /** "Aaj kisko yaad dilana hai" — the app does the asking so the shopkeeper doesn't have to. */
 function RemindToday({ customers, bharosa, shop }: { customers: StateCustomer[]; bharosa: Record<string, BharosaItem>; shop: string }) {
-  const { busyId, run } = useVoiceReminder();
+  const { busyId, run, ttsAvailable } = useVoiceReminder();
   const ranked = rankReminders(
     customers.map((c) => ({
       id: c.id, name: c.name, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue ?? null,
@@ -183,7 +216,8 @@ function RemindToday({ customers, bharosa, shop }: { customers: StateCustomer[];
             </div>
             <button onClick={() => void run(c, shop, bharosa[c.id])} disabled={busyId !== null}
               className="tactile flex h-12 shrink-0 items-center gap-1.5 rounded-[14px] bg-ink px-3.5 text-[14px] font-semibold text-white disabled:opacity-60">
-              {busyId === c.id ? <Spinner className="h-4 w-4" /> : <Volume2 size={16} strokeWidth={1.75} />} Awaaz bhejein
+              {busyId === c.id ? <Spinner className="h-4 w-4" /> : ttsAvailable === false ? <Link2 size={16} strokeWidth={1.75} /> : <Volume2 size={16} strokeWidth={1.75} />}
+              {ttsAvailable === false ? "WhatsApp Text + Khata Link" : "Awaaz bhejein"}
             </button>
           </div>
         );
@@ -277,7 +311,8 @@ function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: Bh
         </button>
         {c.balance_paisa > 0 && (
           <button onClick={() => void voice.run(c, shop, b)} disabled={voice.busyId !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
-            {voice.busyId === c.id ? <Spinner className="h-3.5 w-3.5" /> : <Volume2 size={14} strokeWidth={1.75} />} Awaaz
+            {voice.busyId === c.id ? <Spinner className="h-3.5 w-3.5" /> : voice.ttsAvailable === false ? <Link2 size={14} strokeWidth={1.75} /> : <Volume2 size={14} strokeWidth={1.75} />}
+            {voice.ttsAvailable === false ? "WhatsApp Text + Khata Link" : "Awaaz"}
           </button>
         )}
       </div>
