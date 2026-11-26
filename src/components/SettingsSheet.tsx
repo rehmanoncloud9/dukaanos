@@ -4,6 +4,7 @@ import { clearAppLock, isAppLockEnabled, setAppLockPin } from "./AppLock";
 import { Download, FileAudio, LogOut, Play, RefreshCw, ShieldAlert, ShieldCheck, Trash2, Upload, UserX, WifiOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, friendlyError } from "@/lib/client/api";
+import { downloadCsv, exportKhataCsv, exportMaalCsv } from "@/lib/client/csv-export";
 import { tr, type Lang } from "@/lib/client/i18n";
 import { listReplays, type ReplayClip } from "@/lib/client/queue";
 import { useDukaan } from "@/lib/client/store";
@@ -19,7 +20,7 @@ interface Health {
 }
 
 export function SettingsSheet({ onClose }: { onClose: () => void }) {
-  const { shops, shop, setShopId, pending, queue, flush, openQueuedReview, discardQueued, simulatedOffline, setSimulatedOffline, refresh, toast, signOut, openSheet, submitTurn, session, lang, setLang } = useDukaan();
+  const { shops, shop, setShopId, state, pending, queue, flush, openQueuedReview, discardQueued, simulatedOffline, setSimulatedOffline, refresh, toast, signOut, openSheet, submitTurn, session, lang, setLang } = useDukaan();
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
@@ -209,6 +210,28 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
             >
               {busy === "export" ? <Spinner /> : <Download size={15} strokeWidth={SW} />} {tr("exportData", lang)}
             </button>
+            {state && (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    downloadCsv(`dukaanos-khata-${new Date().toISOString().slice(0, 10)}.csv`, exportKhataCsv(state.customers));
+                    toast("Khata CSV downloaded", "ok");
+                  }}
+                  className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[13px] font-semibold"
+                >
+                  <Download size={13} strokeWidth={SW} /> Khata CSV
+                </button>
+                <button
+                  onClick={() => {
+                    downloadCsv(`dukaanos-maal-${new Date().toISOString().slice(0, 10)}.csv`, exportMaalCsv(state.products));
+                    toast("Maal (Stock) CSV downloaded", "ok");
+                  }}
+                  className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[13px] font-semibold"
+                >
+                  <Download size={13} strokeWidth={SW} /> Stock CSV
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-2">
               <a href="/privacy" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
                 {tr("privacy", lang)}

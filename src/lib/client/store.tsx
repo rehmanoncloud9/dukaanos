@@ -11,6 +11,7 @@ import { api, ClientApiError, friendlyError, isOffline, newKey, onOfflineChange,
 import { LANG_KEY, type Lang } from "./i18n";
 import { applyOptimisticOverlay, dequeue, enqueue, enqueueCommit, flushCommits, flushQueue, listCommits, listQueue, pendingCount, saveReplay, type FlushOutcome, type OptimisticDelta, type QueuedCommit, type QueuedTurn } from "./queue";
 import { browserSupabase, supabaseConfigured } from "./supabase";
+import { normalizePkPhone } from "@/lib/domain/starter-catalog";
 import { loadSnapshot, saveSnapshot, SHOPS_SNAPSHOT, stateSnapshotKey } from "./offline-cache";
 import { tryLocalTurn } from "./local-turn";
 
@@ -113,8 +114,10 @@ interface Store {
   signInSandbox: (turnstileToken?: string) => Promise<void>;
   signInPassword: (email: string, password: string) => Promise<void>;
   signInMagic: (email: string) => Promise<void>;
+  signInPhoneOtp: (phone: string) => Promise<string>;
+  verifyPhoneOtp: (phone: string, token: string) => Promise<void>;
   signOut: () => Promise<void>;
-  createShop: (b: { name: string; owner_name?: string; phone?: string; city?: string }) => Promise<void>;
+  createShop: (b: { name: string; owner_name?: string; phone?: string; city?: string; seed_starter?: boolean }) => Promise<void>;
   reloadShops: () => Promise<void>;
 }
 
@@ -669,11 +672,21 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     void refresh();
     void updatePending().then(() => flush());
     const onVisible = () => {
-      if (document.visibilityState === "visible" && !isOffline()) void refresh();
+      if (document.visibilityState !== "visible" || isOffline()) return;
+      const headSeq = rawState?.chain_head?.seq;
+      if (typeof headSeq === "number") {
+        void api<{ items: Array<{ seq: number }> }>("/api/shop/feed?limit=1")
+          .then((r) => {
+            if ((r.items[0]?.seq ?? 0) !== headSeq) void refresh();
+          })
+          .catch(() => undefined);
+      } else {
+        void refresh();
+      }
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [shopId, refresh, updatePending, flush]);
+  }, [shopId, rawState?.chain_head?.seq, refresh, updatePending, flush]);
 
   useEffect(() => {
     if (!undo) return;
@@ -704,6 +717,19 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     if (error) throw new Error(error.message);
   }, []);
 
+  const signInPhoneOtp = useCallback(async (rawPhone: string) => {
+    const phone = normalizePkPhone(rawPhone);
+    const { error } = await browserSupabase().auth.signInWithOtp({ phone });
+    if (error) throw new Error(error.message);
+    return phone;
+  }, []);
+
+  const verifyPhoneOtp = useCallback(async (rawPhone: string, token: string) => {
+    const phone = normalizePkPhone(rawPhone);
+    const { error } = await browserSupabase().auth.verifyOtp({ phone, token: token.trim(), type: "sms" });
+    if (error) throw new Error(error.message);
+  }, []);
+
   const signOut = useCallback(async () => {
     await browserSupabase().auth.signOut();
     localStorage.removeItem(SHOP_KEY);
@@ -711,7 +737,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     setLastCommit(null);
   }, []);
 
-  const createShop = useCallback(async (b: { name: string; owner_name?: string; phone?: string; city?: string }) => {
+  const createShop = useCallback(async (b: { name: string; owner_name?: string; phone?: string; city?: string; seed_starter?: boolean }) => {
     const r = await api<{ shop_id: string }>("/api/system/shops", { json: b, shop: false });
     localStorage.setItem(SHOP_KEY, r.shop_id);
     await reloadShops();
@@ -736,7 +762,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     tab, setTab, sheet, openSheet, closeSheet, xrayOn, setXrayOn, lang, setLang, online, simulatedOffline, setSimulatedOffline,
     pending, reviewCount, queue, flush, openQueuedReview, discardQueued, thinking, submitTurn, confirmSale, confirmPayment, reverse, commitPurchase,
     lastCommit, replayTest, undo, doUndo, dismissUndo: () => setUndo(null), toasts, toast, highlightTx,
-    signInSandbox, signInPassword, signInMagic, signOut, createShop, reloadShops,
+    signInSandbox, signInPassword, signInMagic, signInPhoneOtp, verifyPhoneOtp, signOut, createShop, reloadShops,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

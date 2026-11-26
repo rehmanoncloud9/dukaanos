@@ -2,6 +2,7 @@
 
 import { Delete, Lock } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { browserSupabase, supabaseConfigured } from "@/lib/client/supabase";
 import { cx, SW } from "./ui";
 
 /**
@@ -117,6 +118,18 @@ function LockScreen({ onUnlock }: { onUnlock: () => void }) {
           ),
         )}
       </div>
+      {supabaseConfigured() && (
+        <button
+          type="button"
+          onClick={() => {
+            clearAppLock();
+            void browserSupabase().auth.signOut().finally(() => onUnlock());
+          }}
+          className="mt-6 text-[13.5px] font-semibold text-ink-2 underline underline-offset-4"
+        >
+          PIN bhool gaye? Sign in se dobara kholein
+        </button>
+      )}
     </div>
   );
 }

@@ -2,9 +2,10 @@ import { z } from "zod";
 import { listModelIds } from "@/lib/ai/models";
 import { synthesizeUrdu } from "@/lib/ai/tts";
 import { ApiError, bearer, handle, ok, parseJson } from "@/lib/api/http";
+import { STARTER_KIRYANA_SKUS } from "@/lib/domain/starter-catalog";
 import { env, missingEnv } from "@/lib/env";
 import { requireShopContext } from "@/lib/server/auth";
-import { rpc, userClient } from "@/lib/supabase/server";
+import { adminClient, rpc, userClient } from "@/lib/supabase/server";
 
 export const maxDuration = 60;
 
@@ -54,6 +55,7 @@ const NewShop = z.object({
   owner_name: z.string().trim().max(60).optional(),
   phone: z.string().trim().max(20).optional(),
   city: z.string().trim().max(60).optional(),
+  seed_starter: z.boolean().optional(),
 });
 
 /**
@@ -77,6 +79,11 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     const id = await rpc<string>(userClient(bearer(req)), "create_shop", {
       p_name: b.name, p_owner_name: b.owner_name ?? null, p_phone: b.phone ?? null, p_city: b.city ?? null,
     });
+    if (b.seed_starter) {
+      await adminClient()
+        .from("products")
+        .insert(STARTER_KIRYANA_SKUS.map((s) => ({ ...s, shop_id: id, stock_base_units: 0 })));
+    }
     return ok({ shop_id: id });
   }
   throw new ApiError("BAD_REQUEST", `Unknown endpoint "${endpoint}"`, undefined, 404);

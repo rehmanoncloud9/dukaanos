@@ -1,6 +1,6 @@
 "use client";
 
-import { Lock, Mail, Store, UserRound } from "lucide-react";
+import { Lock, Mail, Phone, Store, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
 import { useDukaan } from "@/lib/client/store";
@@ -36,9 +36,12 @@ export function TrustBadge() {
 
 /** Flow 1 — zero CNIC, zero tax fields. */
 export function Splash() {
-  const { signInSandbox, signInPassword, signInMagic, toast } = useDukaan();
-  const [mode, setMode] = useState<"none" | "stage" | "magic">("none");
+  const { signInSandbox, signInPassword, signInMagic, signInPhoneOtp, verifyPhoneOtp, toast } = useDukaan();
+  const [mode, setMode] = useState<"none" | "stage" | "magic" | "phone">("none");
   const [email, setEmail] = useState("stage@dukaanos.pk");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSentTo, setOtpSentTo] = useState<string | null>(null);
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -135,6 +138,42 @@ export function Splash() {
               Open stage shop
             </PrimaryButton>
           </form>
+        ) : mode === "phone" ? (
+          <form
+            className="space-y-2 rounded-[16px] bg-surface p-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run("phone", async () => {
+                if (!otpSentTo) {
+                  const normalized = await signInPhoneOtp(phone);
+                  setOtpSentTo(normalized);
+                  toast(`OTP bhej diya: ${normalized}`, "ok");
+                } else {
+                  await verifyPhoneOtp(otpSentTo, otp);
+                }
+              });
+            }}
+          >
+            {!otpSentTo ? (
+              <>
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" placeholder="03xx-xxxxxxx" className="h-11 w-full rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
+                <PrimaryButton type="submit" className="w-full" busy={busy === "phone"} disabled={phone.trim().length < 10}>
+                  Send SMS OTP
+                </PrimaryButton>
+                <button type="button" onClick={() => setMode("magic")} className="block w-full py-1 text-center text-[12.5px] font-semibold text-ink-2 underline underline-offset-4">
+                  Use email magic link instead
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="text-[12.5px] text-ink-2">OTP sent to {otpSentTo}</div>
+                <input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="6-digit OTP" className="num h-11 w-full rounded-[12px] bg-canvas px-3 text-[16px] tracking-[0.25em] outline-none" />
+                <PrimaryButton type="submit" className="w-full" busy={busy === "phone"} disabled={otp.length < 4}>
+                  Verify & Open Shop
+                </PrimaryButton>
+              </>
+            )}
+          </form>
         ) : mode === "magic" ? (
           <form
             className="space-y-2 rounded-[16px] bg-surface p-3"
@@ -165,11 +204,12 @@ export function Splash() {
             <SecondaryButton
               className="flex items-center justify-center gap-2"
               onClick={() => {
-                setEmail("");
-                setMode("magic");
+                setOtpSentTo(null);
+                setOtp("");
+                setMode("phone");
               }}
             >
-              <Mail size={16} strokeWidth={SW} /> New shop
+              <Phone size={16} strokeWidth={SW} /> New shop
             </SecondaryButton>
           </div>
         )}
@@ -193,6 +233,7 @@ export function CreateShop() {
   const [owner, setOwner] = useState("");
   const [phone, setPhone] = useState("");
   const [city, setCity] = useState("");
+  const [seedStarter, setSeedStarter] = useState(true);
   const [busy, setBusy] = useState(false);
   return (
     <main className="mx-auto flex min-h-dvh max-w-[430px] flex-col px-6 pb-8 pt-14">
@@ -204,6 +245,10 @@ export function CreateShop() {
         <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="Owner name" className="h-12 w-full rounded-[12px] bg-surface px-3 text-[16px] outline-none" />
         <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone (optional)" inputMode="tel" className="h-12 w-full rounded-[12px] bg-surface px-3 text-[16px] outline-none" />
         <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Area / city (e.g. G-9 Markaz)" className="h-12 w-full rounded-[12px] bg-surface px-3 text-[16px] outline-none" />
+        <label className="flex cursor-pointer items-center gap-2.5 rounded-[12px] bg-surface px-3 py-2.5 text-[13.5px]">
+          <input type="checkbox" checked={seedStarter} onChange={(e) => setSeedStarter(e.target.checked)} className="h-4 w-4 accent-cash" />
+          <span>Pakistani Kiryana Starter List (20 items + Urdu aliases)</span>
+        </label>
       </div>
       <div className="mt-4">
         <TrustBadge />
@@ -216,7 +261,7 @@ export function CreateShop() {
           onClick={async () => {
             setBusy(true);
             try {
-              await createShop({ name, owner_name: owner || undefined, phone: phone || undefined, city: city || undefined });
+              await createShop({ name, owner_name: owner || undefined, phone: phone || undefined, city: city || undefined, seed_starter: seedStarter });
             } catch (e) {
               toast(e instanceof Error ? e.message : "Could not create shop", "err");
             } finally {

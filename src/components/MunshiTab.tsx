@@ -69,7 +69,20 @@ export function MunshiTab() {
   const { state, openSheet, submitTurn, thinking, toast, highlightTx, refresh, lang } = useDukaan();
   const [pulse, setPulse] = useState<Pulse | null>(null);
   const [stripOpen, setStripOpen] = useState(true);
-  const [typing, setTyping] = useState(false);
+  const [typing, setTypingState] = useState(() =>
+    typeof window !== "undefined" && sessionStorage.getItem("dukaanos.typing") === "1",
+  );
+  const setTyping = (next: boolean | ((prev: boolean) => boolean)) => {
+    setTypingState((prev) => {
+      const val = typeof next === "function" ? next(prev) : next;
+      try {
+        sessionStorage.setItem("dukaanos.typing", val ? "1" : "0");
+      } catch {
+        /* ignore storage quota */
+      }
+      return val;
+    });
+  };
   const [text, setText] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [extraFeed, setExtraFeed] = useState<FeedTx[]>([]);
