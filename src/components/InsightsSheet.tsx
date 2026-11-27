@@ -32,7 +32,7 @@ interface InsightsDoc {
 }
 
 export function InsightsSheet({ onClose }: { onClose: () => void }) {
-  const { xrayOn } = useDukaan();
+  const { xrayOn, lang } = useDukaan();
   const [days, setDays] = useState<"1" | "7" | "30">("7");
   const [doc, setDoc] = useState<InsightsDoc | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -52,7 +52,7 @@ export function InsightsSheet({ onClose }: { onClose: () => void }) {
     <Sheet
       open
       onClose={onClose}
-      title="Munafa & Hisaab"
+      title={lang === "ur" ? "منافع اور حساب" : "Munafa & Hisaab"}
       right={doc && xrayOn ? <Pill tone="cash" mono>SQL {doc.sql_ms}ms · Rs. 0</Pill> : undefined}
     >
       <div className="space-y-3 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">
@@ -60,9 +60,9 @@ export function InsightsSheet({ onClose }: { onClose: () => void }) {
           value={days}
           onChange={setDays}
           options={[
-            { value: "1", label: "Aaj (1D)" },
-            { value: "7", label: "Hafta (7D)" },
-            { value: "30", label: "Mahina (30D)" },
+            { value: "1", label: lang === "ur" ? "آج" : "Aaj (1D)" },
+            { value: "7", label: lang === "ur" ? "۷ دن" : "Hafta (7D)" },
+            { value: "30", label: lang === "ur" ? "۳۰ دن" : "Mahina (30D)" },
           ]}
         />
 
@@ -78,26 +78,26 @@ export function InsightsSheet({ onClose }: { onClose: () => void }) {
             <div className="surface-card p-4">
               <div className="flex items-baseline justify-between">
                 <div>
-                  <div className="section-label">Kul bikri ({days}D)</div>
+                  <div className="section-label" dir="auto">{lang === "ur" ? `کل فروخت (${days} دن)` : `Kul bikri (${days}D)`}</div>
                   <Money paisa={s.net_revenue_paisa} className="mt-1 block text-[28px] font-bold tracking-[-0.02em]" />
                 </div>
                 <div className="text-right">
-                  <div className="section-label">Munafa (Profit)</div>
+                  <div className="section-label" dir="auto">{lang === "ur" ? "منافع" : "Munafa (Profit)"}</div>
                   <Money paisa={s.gross_profit_paisa} className="mt-1 block text-[20px] font-bold text-cash" />
-                  <div className="num text-[12px] text-ink-2">{marginPct}% margin</div>
+                  <div className="num text-[12px] text-ink-2" dir="auto">{marginPct}% {lang === "ur" ? "منافع" : "margin"}</div>
                 </div>
               </div>
               <div className="hairline-t mt-3 grid grid-cols-3 gap-2 pt-3 text-[12.5px]">
                 <div>
-                  <span className="text-ink-2">Cash</span>
+                  <span className="text-ink-2" dir="auto">{lang === "ur" ? "نقد" : "Cash"}</span>
                   <b className="num block text-[14px] text-cash">{formatRs(s.cash_sales_paisa)}</b>
                 </div>
                 <div>
-                  <span className="text-ink-2">Udhaar</span>
+                  <span className="text-ink-2" dir="auto">{lang === "ur" ? "ادھار" : "Udhaar"}</span>
                   <b className="num block text-[14px] text-udhaar">{formatRs(s.credit_sales_paisa)}</b>
                 </div>
                 <div>
-                  <span className="text-ink-2">Wasooli</span>
+                  <span className="text-ink-2" dir="auto">{lang === "ur" ? "وصولی" : "Wasooli"}</span>
                   <b className="num block text-[14px] text-ink">{formatRs(s.wasooli_paisa)}</b>
                 </div>
               </div>

@@ -37,6 +37,7 @@ export const GET = handle(async (req: Request, ctx: Ctx) => {
       ok: missingEnv().length === 0 && legacy.length === 0 && coreModelsOk,
       ai_billing_mode: env.aiBillingMode(),
       gemini_configured: hasGeminiKey,
+      ur_pk_tts: true,
       missing_env: missingEnv(),
       pinned_models: pinned,
       models_available: models,

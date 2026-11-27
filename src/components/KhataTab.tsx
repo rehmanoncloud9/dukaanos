@@ -55,13 +55,12 @@ export interface BharosaItem {
   paid_claim_paisa: number;
 }
 
-/** Polls the customer-attestation overview every 3 s while the Khata tab is visible (live on the projector). */
-function useBharosa(): Record<string, BharosaItem> {
+/** Loads customer-attestation overview on mount and whenever the ledger head changes (zero idle polling). */
+function useBharosa(chainSeq?: number): Record<string, BharosaItem> {
   const [map, setMap] = useState<Record<string, BharosaItem>>({});
   useEffect(() => {
     let alive = true;
     const pull = async () => {
-      if (document.visibilityState !== "visible") return;
       try {
         const items = await api<BharosaItem[]>("/api/khata/overview");
         if (alive) setMap(Object.fromEntries(items.map((i) => [i.customer_id, i])));
@@ -70,12 +69,10 @@ function useBharosa(): Record<string, BharosaItem> {
       }
     };
     void pull();
-    const t = setInterval(pull, 15_000);
     return () => {
       alive = false;
-      clearInterval(t);
     };
-  }, []);
+  }, [chainSeq]);
   return map;
 }
 
@@ -84,7 +81,7 @@ export function KhataTab() {
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
-  const bharosa = useBharosa();
+  const bharosa = useBharosa(state?.chain_head?.seq);
 
   useEffect(() => {
     const h = (e: Event) => {
@@ -194,8 +191,8 @@ function useTtsAvailable(): boolean | null {
   useEffect(() => {
     if (cachedTtsAvailable !== null) return;
     if (!ttsCheckPromise) {
-      ttsCheckPromise = api<{ models_available?: Record<string, boolean> | null }>("/api/system/health", { auth: false, shop: false })
-        .then((h) => h.models_available?.tts === true)
+      ttsCheckPromise = api<{ ur_pk_tts?: boolean; models_available?: Record<string, boolean> | null }>("/api/system/health", { auth: false, shop: false })
+        .then((h) => h.ur_pk_tts === true || h.models_available?.tts === true)
         .catch(() => false);
     }
     void ttsCheckPromise.then((v) => {
