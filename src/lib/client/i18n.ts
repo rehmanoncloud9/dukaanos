@@ -45,10 +45,18 @@ const DICT = {
   signOut: { en: "Sign out", ur: "سائن آؤٹ" },
   judgeModeOn: { en: "Judge Mode ON — every commit opens </> X-Ray", ur: "جج موڈ آن — ہر اندراج پر X-Ray کھلے گا" },
   swUpdate: { en: "New version ready — tap to update", ur: "نیا ورژن تیار ہے — اپ ڈیٹ کریں" },
-  insights: { en: "Insights · P&L", ur: "منافع اور رپورٹ" },
+  insights: { en: "Munafa · Insights", ur: "منافع اور رپورٹ" },
   newBill: { en: "New Bill", ur: "نیا بل" },
   returnItem: { en: "Return", ur: "واپسی" },
   autoSpeak: { en: "Spoken Urdu confirmations", ur: "ہر اندراج پر اردو آواز میں تصدیق" },
+  searchCustomers: { en: "Search customer or phone…", ur: "گاہک یا فون تلاش کریں…" },
+  searchProducts: { en: "Search product or alias (e.g. cheeni, oil)…", ur: "سامان تلاش کریں (مثلاً چینی، تیل)…" },
+  reorderList: { en: "Reorder list", ur: "منگوانے والا مال" },
+  cashTag: { en: "Cash", ur: "نقد" },
+  udhaarTag: { en: "Udhaar", ur: "ادھار" },
+  restockTag: { en: "Restock", ur: "اسٹاک آمد" },
+  undoneTag: { en: "Undone", ur: "واپس" },
+  splitTag: { en: "Split · Khata", ur: "نقد + کھاتہ" },
 } as const;
 
 export type I18nKey = keyof typeof DICT;

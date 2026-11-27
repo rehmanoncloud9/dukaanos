@@ -32,8 +32,9 @@ export const GET = handle(async (req: Request, ctx: Ctx) => {
       }
     }
     const legacy = Object.values(pinned).filter((m) => m && /gemini-2\.5/.test(m));
+    const coreModelsOk = !models || (models.fast !== false && models.agent !== false);
     return ok({
-      ok: missingEnv().length === 0 && legacy.length === 0 && (!models || Object.values(models).every(Boolean)),
+      ok: missingEnv().length === 0 && legacy.length === 0 && coreModelsOk,
       ai_billing_mode: env.aiBillingMode(),
       gemini_configured: hasGeminiKey,
       missing_env: missingEnv(),

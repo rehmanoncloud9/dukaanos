@@ -57,7 +57,7 @@ npm run dev
 ## Quality gates
 
 ```bash
-npm run verify    # tsc --noEmit + vitest: 50 domain tests + 22 real-Postgres (PGlite) RPC/RLS/chain tests
+npm run verify    # tsc --noEmit + vitest: 32 test files (346 tests incl. real-Postgres PGlite RPC/RLS/chain tests)
 npm run eval      # 15-utterance golden eval (target ≥14/15) — Gemini if keyed, else rule parser
 ```
 
@@ -72,17 +72,18 @@ Canonical error codes: `UDHAAR_REQUIRES_CUSTOMER` (400), `NEGATIVE_STOCK` (soft)
 
 ## Links (CYE 04-HK Submission)
 
-- **Live Web App:** *Add deployed Vercel URL before submission (test in Private/Incognito window)*
-- **Demo Video (≤ 2 min):** *Add video link by Nov 27*
-- **Pitch Deck:** *Add PDF/PPTX link*
+- **Track:** FinTech
+- **Live Web App:** https://dukaanos-xi.vercel.app *(verified in Private/Incognito window)*
+- **Demo Video (≤ 2 min):** *Add unlisted YouTube / Drive link after Nov 27 recording*
+- **Pitch Deck (PDF/PPTX):** *Add public PDF/PPTX link before Nov 28, 11:59 PM*
 
 ## Tools & AI disclosure (CYE 04-HK)
 
 Built with **Claude (Anthropic, free tier)**, **Codex (free tier)**, and **Antigravity (free tier)** as AI coding assistants, under the team's direction and review.
 
-- **Runtime AI (Free Tier + Local Fallbacks):** **Google AI Studio Free Tier** (`AI_BILLING_MODE=free`, zero paid API keys) with `AI_FAST_MODEL` (`gemini-3.5-flash-lite` for audio/text & parchi OCR), `AI_AGENT_MODEL` (`gemini-3.8-flash` for Q&A), and `AI_TTS_MODEL` (`gemini-3.8-flash-lite-tts`), backed by deterministic local fallbacks (`fallback-parser.ts`, `agent.ts` rules fallback, and browser `speechSynthesis` `ur-PK`).
-- **Web Platform & Libraries:** **Supabase Free Tier** (Postgres, Auth, RLS, `pg_trgm`), **Vercel Hobby** (hosting + daily purge cron), **Cloudflare Turnstile** (free bot protection, optional), **Next.js 16 / React 19 / Tailwind CSS v4**, `idb-keyval`, `@noble/ed25519`, `@noble/hashes`, `react-qr-code`, `lucide-react`, `zod`, `@google/genai`, `pg`, Vitest + `@electric-sql/pglite`.
-- **Mobile App (`mobile/`):** **Expo SDK 58 / React Native**, `expo-router`, `expo-sqlite`, `expo-secure-store`, `expo-audio`, `expo-camera`, `expo-local-authentication`, `expo-print`, `expo-sharing`, `@tanstack/react-query`, `@shopify/flash-list`, `@gorhom/bottom-sheet`, `react-native-qrcode-svg`, Jest + `@testing-library/react-native`.
-- **Fonts:** Inter, JetBrains Mono, Noto Sans Arabic, Noto Nastaliq Urdu.
+- **Runtime AI (Free Tier + Local Fallbacks):** **Google AI Studio** (`GEMINI_API_KEY`) with `AI_FAST_MODEL` (`gemini-3.5-flash-lite` for audio/text & parchi OCR), `AI_AGENT_MODEL` (`gemini-3.8-flash` for Q&A), and optional `AI_TTS_MODEL` (`gemini-3.8-flash-lite-tts`), backed by deterministic local fallbacks (`fallback-parser.ts`, `qa.ts`, `agent.ts` rules fallback, and browser Web Speech `speechSynthesis` `ur-PK`).
+- **Web Platform, Browser APIs & Libraries:** **Supabase** (Postgres, Auth, RLS, `pg_trgm`), **Vercel** (hosting + daily purge cron), **Next.js 16 / React 19 / Tailwind CSS v4** (`@tailwindcss/turbopack`), Browser APIs (`MediaRecorder`, HTML5 Canvas, Web Speech `speechSynthesis`, Web Crypto), `idb-keyval`, `@noble/ed25519`, `@noble/hashes`, `react-qr-code`, `lucide-react`, `zod`, `@google/genai`, `pg`, `tsx`, `eslint`, Vitest + `@electric-sql/pglite`, Playwright (`@playwright/test`, `@axe-core/playwright`).
+- **Mobile App (`mobile/`):** **Expo SDK 58 / React Native**, `expo-router`, `expo-sqlite`, `expo-secure-store`, `expo-audio`, `expo-camera`, `expo-local-authentication`, `expo-print`, `expo-sharing`, `expo-haptics`, `expo-image-manipulator`, `expo-image-picker`, `expo-file-system`, `expo-crypto`, `expo-localization`, `expo-updates`, `expo-constants`, `expo-application`, `expo-font`, `expo-linking`, `expo-splash-screen`, `expo-status-bar`, `expo-system-ui`, `expo-web-browser`, `@expo-google-fonts/*`, `@react-native-community/netinfo`, `@tanstack/react-query`, `@shopify/flash-list`, `@gorhom/bottom-sheet`, `react-native-gesture-handler`, `react-native-reanimated`, `react-native-safe-area-context`, `react-native-screens`, `react-native-svg`, `react-native-view-shot`, `react-native-webview`, `react-native-qrcode-svg`, `react-native-url-polyfill`, `lucide-react-native`, Jest + `@testing-library/react-native`.
+- **Fonts:** Inter, JetBrains Mono, Noto Sans Arabic, Noto Nastaliq Urdu (`next/font/google`).
 
 *Informational only — DukaanOS is not a lender, wallet or credit bureau; the Trade Passport is not a credit score or underwriting decision.*

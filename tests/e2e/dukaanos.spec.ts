@@ -126,10 +126,10 @@ test.describe("DukaanOS Web PWA E2E", () => {
 
     // 7. Tier-1 sale + 5s Undo
     await page.getByRole("tab", { name: /Munshi/i }).click();
-    await input.fill("2 packet Lays cash");
+    await input.fill("dedh kilo chawal cash");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByRole("button", { name: "UNDO" })).toBeVisible({ timeout: 20_000 });
     await page.getByRole("button", { name: "UNDO" }).click();
-    await expect(page.getByText(/Undone/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Entry wapas ho gayi|Undone/i).first()).toBeVisible({ timeout: 15_000 });
   });
 });

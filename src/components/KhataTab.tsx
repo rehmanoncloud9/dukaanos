@@ -1,12 +1,13 @@
 "use client";
 
-import { Calendar, Check, ExternalLink, Link2, Printer, RotateCcw, Search, ShieldAlert, ShieldCheck, UserPlus, Volume2 } from "lucide-react";
+import { Calendar, Check, ChevronDown, ChevronUp, ExternalLink, Link2, Phone, Printer, RotateCcw, Search, ShieldAlert, ShieldCheck, UserPlus, Volume2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "react-qr-code";
 import type { CommitResponse, StateCustomer } from "@/lib/api/contracts";
 import { api, friendlyError, newKey } from "@/lib/client/api";
 import { isoDate, pktToday, wadaLabel } from "@/lib/domain/wada";
 import { tr } from "@/lib/client/i18n";
+import { speak } from "@/lib/client/speak";
 import { useDukaan } from "@/lib/client/store";
 import { verifyPassport, type PassportPayload, type TradeSummary } from "@/lib/crypto/passport";
 import { rankReminders, reminderText, smsLink, voiceReminderScript, waLink } from "@/lib/domain/messages";
@@ -145,7 +146,7 @@ export function KhataTab() {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search customer or phone…"
+          placeholder={tr("searchCustomers", lang)}
           aria-label="Search customers"
           dir="auto"
           className="h-11 w-full rounded-[12px] border border-black/10 bg-surface pl-10 pr-3 text-[15px] outline-none focus:border-ink"
@@ -261,9 +262,9 @@ function RemindToday({ customers, bharosa, shop }: { customers: StateCustomer[];
               </div>
             </div>
             <button onClick={() => void run(c, shop, bharosa[c.id])} disabled={busyId !== null}
-              className="tactile flex h-12 shrink-0 items-center gap-1.5 rounded-[14px] bg-ink px-3.5 text-[14px] font-semibold text-white disabled:opacity-60">
-              {busyId === c.id ? <Spinner className="h-4 w-4" /> : ttsAvailable === false ? <Link2 size={16} strokeWidth={1.75} /> : <Volume2 size={16} strokeWidth={1.75} />}
-              {ttsAvailable === false ? "WhatsApp Text + Khata Link" : "Awaaz bhejein"}
+              className="tactile flex h-11 shrink-0 items-center gap-1.5 rounded-[12px] bg-ink px-3.5 text-[13.5px] font-semibold text-white disabled:opacity-60">
+              {busyId === c.id ? <Spinner className="h-4 w-4" /> : ttsAvailable === false ? <Link2 size={15} strokeWidth={1.75} /> : <Volume2 size={15} strokeWidth={1.75} />}
+              {ttsAvailable === false ? "WhatsApp" : "Awaaz bhejein"}
             </button>
           </div>
         );
@@ -356,10 +357,15 @@ function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: Bh
         <button onClick={() => void send("sms")} disabled={sending !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
           {sending === "sms" ? <Spinner className="h-3.5 w-3.5" /> : null} SMS (2G)
         </button>
-        {c.balance_paisa > 0 && (
+        {c.phone && (
+          <a href={`tel:${c.phone}`} className="tactile flex h-9 items-center gap-1 rounded-full border border-black/10 bg-surface-sunken px-3 text-[13.5px] font-semibold">
+            <Phone size={13} strokeWidth={1.75} /> Call
+          </a>
+        )}
+        {c.balance_paisa > 0 && voice.ttsAvailable !== false && (
           <button onClick={() => void voice.run(c, shop, b)} disabled={voice.busyId !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
-            {voice.busyId === c.id ? <Spinner className="h-3.5 w-3.5" /> : voice.ttsAvailable === false ? <Link2 size={14} strokeWidth={1.75} /> : <Volume2 size={14} strokeWidth={1.75} />}
-            {voice.ttsAvailable === false ? "WhatsApp Text + Khata Link" : "Awaaz"}
+            {voice.busyId === c.id ? <Spinner className="h-3.5 w-3.5" /> : <Volume2 size={14} strokeWidth={1.75} />}
+            Awaaz
           </button>
         )}
       </div>
@@ -418,6 +424,7 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
   const [loadingMore, setLoadingMore] = useState(false);
   const [linkBusy, setLinkBusy] = useState<"open" | "copy" | "wa" | null>(null);
   const [remLog, setRemLog] = useState<ReminderLogEntry[]>(() => readReminderLog(shopId, customerId));
+  const [showMore, setShowMore] = useState(false);
 
   const handleKhataLink = async (mode: "open" | "copy" | "wa") => {
     setLinkBusy(mode);
@@ -471,55 +478,29 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
     <Sheet open onClose={onClose} title={c.name}>
       <div className="space-y-3 px-5 pb-[max(16px,env(safe-area-inset-bottom))]">
         <div className="surface-card p-4">
-          <div className="section-label">Balance</div>
-          <Money paisa={c.balance_paisa} className={cx("mt-1 block text-[30px] font-bold", c.balance_paisa > 0 ? "text-udhaar" : "text-cash")} />
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="section-label">Balance</div>
+              <Money paisa={c.balance_paisa} className={cx("mt-1 block text-[30px] font-bold", c.balance_paisa > 0 ? "text-udhaar" : "text-cash")} />
+            </div>
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => void speak(`${c.name} ka baqaya ${Math.round(c.balance_paisa / 100)} rupay hai${c.days_overdue ? `, ${c.days_overdue} din se baqi` : ""}.`)}
+                className="tactile inline-flex h-9 items-center gap-1 rounded-full bg-surface-sunken px-3 text-[12.5px] font-semibold"
+              >
+                <Volume2 size={13} strokeWidth={1.75} /> Suniye
+              </button>
+              {c.phone && (
+                <a href={`tel:${c.phone}`} className="tactile inline-flex h-9 items-center gap-1 rounded-full bg-cash-bg px-3 text-[12.5px] font-semibold text-cash-ink">
+                  <Phone size={13} strokeWidth={1.75} /> Call
+                </a>
+              )}
+            </div>
+          </div>
           <div className="text-[13px] text-ink-2">
             {c.role_tag ?? "Customer"} · Last paid {shortDate(c.last_paid_at)}
             {c.days_overdue ? ` · oldest unpaid ${c.days_overdue}d` : ""}
-          </div>
-        </div>
-        <div className="space-y-2">
-          <div className="flex gap-2">
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone (03xx…)" inputMode="tel" className="h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
-            <input value={roleTag} onChange={(e) => setRoleTag(e.target.value)} placeholder="Tag / Family" className="h-11 w-[130px] rounded-[12px] bg-canvas px-3 text-[14px] outline-none" />
-            <button
-              onClick={async () => {
-                try {
-                  await api("/api/shop/customer-update", { json: { customer_id: c.id, phone, role_tag: roleTag } });
-                  await refresh();
-                  toast("Customer details saved", "ok");
-                } catch (e) {
-                  toast(friendlyError(e), "err");
-                }
-              }}
-              className="tactile h-11 rounded-[12px] bg-ink px-4 text-[14px] font-semibold text-white"
-            >
-              Save
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              inputMode="numeric"
-              value={limitRs}
-              onChange={(e) => setLimitRs(e.target.value.replace(/[^\d]/g, ""))}
-              placeholder="Udhaar limit (Rs. — blank = none)"
-              className="num h-10 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[14px] outline-none"
-            />
-            <button
-              onClick={async () => {
-                try {
-                  const val = limitRs.trim() ? rupeesToPaisa(Number(limitRs)) : null;
-                  await api("/api/shop/customer-credit-limit", { json: { customer_id: c.id, credit_limit_paisa: val } });
-                  await refresh();
-                  toast(val !== null ? `Credit limit ${formatRs(val)} set` : "Credit limit cleared", "ok");
-                } catch (e) {
-                  toast(friendlyError(e), "err");
-                }
-              }}
-              className="tactile h-10 rounded-[12px] bg-surface-sunken px-3 text-[13px] font-semibold"
-            >
-              Set Limit
-            </button>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -556,90 +537,148 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
             className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-cash/30 bg-cash-bg px-3 text-[13px] font-semibold text-cash-ink"
           >
             {linkBusy === "wa" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />}
-            Share Mini-Statement
-          </button>
-          <button
-            onClick={() => void handleKhataLink("open")}
-            disabled={linkBusy !== null}
-            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13px] font-semibold"
-          >
-            {linkBusy === "open" ? <Spinner className="h-3.5 w-3.5" /> : <ExternalLink size={14} strokeWidth={1.75} />}
-            Preview Khata Link
-          </button>
-          <button
-            onClick={() => void handleKhataLink("copy")}
-            disabled={linkBusy !== null}
-            className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13px] font-semibold"
-          >
-            {linkBusy === "copy" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />}
-            Copy Link
+            WhatsApp Statement
           </button>
           <button
             onClick={() => openSheet({ type: "return", customerId: c.id })}
-            className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13px] font-semibold"
+            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13px] font-semibold"
           >
             <RotateCcw size={14} strokeWidth={1.75} /> Item Return
           </button>
         </div>
-        {remLog.length > 0 && (
-          <div className="rounded-[12px] bg-canvas px-3 py-2 text-[12px] text-ink-2">
-            <span className="font-semibold text-ink">Reminder history:</span>{" "}
-            {remLog.slice(0, 3).map((r) => `${r.channel.toUpperCase()} (${new Date(r.at).toLocaleDateString("en-PK", { day: "numeric", month: "short" })})`).join(" · ")}
-          </div>
-        )}
-        {c.balance_paisa > 0 && (
-          <div className="surface-card p-3">
-            {!writeOffOpen ? (
+
+        <button
+          type="button"
+          onClick={() => setShowMore((v) => !v)}
+          className="tactile flex h-10 w-full items-center justify-between rounded-[12px] px-2 text-[13px] font-semibold text-ink-2"
+        >
+          <span>More options (Phone, Udhaar limit, Link, Maaf)</span>
+          {showMore ? <ChevronUp size={15} strokeWidth={1.75} /> : <ChevronDown size={15} strokeWidth={1.75} />}
+        </button>
+
+        {showMore && (
+          <div className="space-y-2.5 border-t border-black/10 pt-2.5">
+            <div className="flex gap-2">
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone (03xx…)" inputMode="tel" className="h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
+              <input value={roleTag} onChange={(e) => setRoleTag(e.target.value)} placeholder="Tag / Family" className="h-11 w-[130px] rounded-[12px] bg-canvas px-3 text-[14px] outline-none" />
               <button
-                type="button"
-                onClick={() => {
-                  setWriteOffRs(String(c.balance_paisa / 100));
-                  setWriteOffOpen(true);
+                onClick={async () => {
+                  try {
+                    await api("/api/shop/customer-update", { json: { customer_id: c.id, phone, role_tag: roleTag } });
+                    await refresh();
+                    toast("Customer details saved", "ok");
+                  } catch (e) {
+                    toast(friendlyError(e), "err");
+                  }
                 }}
-                className="flex w-full items-center justify-between text-[13px] font-semibold text-udhaar-ink"
+                className="tactile h-11 rounded-[12px] bg-ink px-4 text-[14px] font-semibold text-white"
               >
-                <span>Maaf / Write-off Bad Debt</span>
-                <span className="text-[12px] text-ink-2">Balanced A/R adjustment</span>
+                Save
               </button>
-            ) : (
-              <div className="space-y-2">
-                <div className="text-[12.5px] font-semibold text-udhaar-ink">Write-off amount (max {formatRs(c.balance_paisa)})</div>
-                <div className="flex gap-2">
-                  <input
-                    inputMode="numeric"
-                    value={writeOffRs}
-                    onChange={(e) => setWriteOffRs(e.target.value.replace(/[^\d]/g, ""))}
-                    className="num h-10 min-w-0 flex-1 rounded-[10px] bg-canvas px-3 text-[15px] font-semibold outline-none"
-                  />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                inputMode="numeric"
+                value={limitRs}
+                onChange={(e) => setLimitRs(e.target.value.replace(/[^\d]/g, ""))}
+                placeholder="Udhaar limit (Rs. — blank = none)"
+                className="num h-10 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[14px] outline-none"
+              />
+              <button
+                onClick={async () => {
+                  try {
+                    const val = limitRs.trim() ? rupeesToPaisa(Number(limitRs)) : null;
+                    await api("/api/shop/customer-credit-limit", { json: { customer_id: c.id, credit_limit_paisa: val } });
+                    await refresh();
+                    toast(val !== null ? `Credit limit ${formatRs(val)} set` : "Credit limit cleared", "ok");
+                  } catch (e) {
+                    toast(friendlyError(e), "err");
+                  }
+                }}
+                className="tactile h-10 rounded-[12px] bg-surface-sunken px-3 text-[13px] font-semibold"
+              >
+                Set Limit
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => void handleKhataLink("open")}
+                disabled={linkBusy !== null}
+                className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13px] font-semibold"
+              >
+                {linkBusy === "open" ? <Spinner className="h-3.5 w-3.5" /> : <ExternalLink size={14} strokeWidth={1.75} />}
+                Preview Khata Link
+              </button>
+              <button
+                onClick={() => void handleKhataLink("copy")}
+                disabled={linkBusy !== null}
+                className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13px] font-semibold"
+              >
+                {linkBusy === "copy" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />}
+                Copy Link
+              </button>
+            </div>
+            {remLog.length > 0 && (
+              <div className="rounded-[12px] bg-canvas px-3 py-2 text-[12px] text-ink-2">
+                <span className="font-semibold text-ink">Reminder history:</span>{" "}
+                {remLog.slice(0, 3).map((r) => `${r.channel.toUpperCase()} (${new Date(r.at).toLocaleDateString("en-PK", { day: "numeric", month: "short" })})`).join(" · ")}
+              </div>
+            )}
+            {c.balance_paisa > 0 && (
+              <div className="surface-card p-3">
+                {!writeOffOpen ? (
                   <button
                     type="button"
-                    disabled={writeOffBusy || Number(writeOffRs) <= 0}
-                    onClick={async () => {
-                      setWriteOffBusy(true);
-                      try {
-                        await api<CommitResponse>("/api/transactions/write-off", {
-                          json: {
-                            idempotency_key: newKey("wo"),
-                            customer_id: c.id,
-                            amount_paisa: rupeesToPaisa(Number(writeOffRs)),
-                            reason: "bad-debt-maaf",
-                            audit_meta: { channel: "khata-writeoff" },
-                          },
-                        });
-                        await refresh();
-                        setWriteOffOpen(false);
-                        toast("Write-off darj ho gaya ✓", "ok");
-                      } catch (e) {
-                        toast(friendlyError(e), "err");
-                      } finally {
-                        setWriteOffBusy(false);
-                      }
+                    onClick={() => {
+                      setWriteOffRs(String(c.balance_paisa / 100));
+                      setWriteOffOpen(true);
                     }}
-                    className="tactile h-10 rounded-[10px] bg-udhaar px-3 text-[13px] font-semibold text-white disabled:opacity-50"
+                    className="flex w-full items-center justify-between text-[13px] font-semibold text-udhaar-ink"
                   >
-                    {writeOffBusy ? <Spinner /> : "Confirm Write-off"}
+                    <span>Maaf / Write-off Bad Debt</span>
+                    <span className="text-[12px] text-ink-2">Balanced A/R adjustment</span>
                   </button>
-                </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="text-[12.5px] font-semibold text-udhaar-ink">Write-off amount (max {formatRs(c.balance_paisa)})</div>
+                    <div className="flex gap-2">
+                      <input
+                        inputMode="numeric"
+                        value={writeOffRs}
+                        onChange={(e) => setWriteOffRs(e.target.value.replace(/[^\d]/g, ""))}
+                        className="num h-10 min-w-0 flex-1 rounded-[10px] bg-canvas px-3 text-[15px] font-semibold outline-none"
+                      />
+                      <button
+                        type="button"
+                        disabled={writeOffBusy || Number(writeOffRs) <= 0}
+                        onClick={async () => {
+                          setWriteOffBusy(true);
+                          try {
+                            await api<CommitResponse>("/api/transactions/write-off", {
+                              json: {
+                                idempotency_key: newKey("wo"),
+                                customer_id: c.id,
+                                amount_paisa: rupeesToPaisa(Number(writeOffRs)),
+                                reason: "bad-debt-maaf",
+                                audit_meta: { channel: "khata-writeoff" },
+                              },
+                            });
+                            await refresh();
+                            setWriteOffOpen(false);
+                            toast("Write-off darj ho gaya ✓", "ok");
+                          } catch (e) {
+                            toast(friendlyError(e), "err");
+                          } finally {
+                            setWriteOffBusy(false);
+                          }
+                        }}
+                        className="tactile h-10 rounded-[10px] bg-udhaar px-3 text-[13px] font-semibold text-white disabled:opacity-50"
+                      >
+                        {writeOffBusy ? <Spinner /> : "Confirm Write-off"}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

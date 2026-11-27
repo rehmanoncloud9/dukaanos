@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, friendlyError } from "@/lib/client/api";
+import { useDukaan } from "@/lib/client/store";
 import { formatBaseQty, type BaseUnit } from "@/lib/domain/desi-units";
 import { formatRs } from "@/lib/domain/money";
 import { Money, Pill, Segmented, Sheet, Spinner } from "./ui";
@@ -31,6 +32,7 @@ interface InsightsDoc {
 }
 
 export function InsightsSheet({ onClose }: { onClose: () => void }) {
+  const { xrayOn } = useDukaan();
   const [days, setDays] = useState<"1" | "7" | "30">("7");
   const [doc, setDoc] = useState<InsightsDoc | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -50,8 +52,8 @@ export function InsightsSheet({ onClose }: { onClose: () => void }) {
     <Sheet
       open
       onClose={onClose}
-      title="Munshi P&L · Insights"
-      right={doc ? <Pill tone="cash" mono>SQL {doc.sql_ms}ms · Rs. 0</Pill> : undefined}
+      title="Munafa & Hisaab"
+      right={doc && xrayOn ? <Pill tone="cash" mono>SQL {doc.sql_ms}ms · Rs. 0</Pill> : undefined}
     >
       <div className="space-y-3 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">
         <Segmented<"1" | "7" | "30">
@@ -76,11 +78,11 @@ export function InsightsSheet({ onClose }: { onClose: () => void }) {
             <div className="surface-card p-4">
               <div className="flex items-baseline justify-between">
                 <div>
-                  <div className="section-label">Net revenue ({days}D)</div>
+                  <div className="section-label">Kul bikri ({days}D)</div>
                   <Money paisa={s.net_revenue_paisa} className="mt-1 block text-[28px] font-bold tracking-[-0.02em]" />
                 </div>
                 <div className="text-right">
-                  <div className="section-label">Gross profit</div>
+                  <div className="section-label">Munafa (Profit)</div>
                   <Money paisa={s.gross_profit_paisa} className="mt-1 block text-[20px] font-bold text-cash" />
                   <div className="num text-[12px] text-ink-2">{marginPct}% margin</div>
                 </div>
@@ -100,9 +102,9 @@ export function InsightsSheet({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-[12px] text-ink-2 num">
-                <div>COGS: {formatRs(s.cogs_paisa)}</div>
-                <div>Returns: {formatRs(s.returns_paisa)}</div>
-                <div>Restock: {formatRs(s.purchases_paisa)}</div>
+                <div>Laagat: {formatRs(s.cogs_paisa)}</div>
+                <div>Wapasi: {formatRs(s.returns_paisa)}</div>
+                <div>Khareedari: {formatRs(s.purchases_paisa)}</div>
               </div>
               {(s.wastage_paisa > 0 || s.writeoff_paisa > 0) && (
                 <div className="mt-1.5 flex gap-3 text-[12px] text-udhaar-ink num">

@@ -1,19 +1,9 @@
 "use client";
 
-import { Lock, Mail, Phone, Store, UserRound } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/client/api";
+import { Lock, Mail, Store, UserRound } from "lucide-react";
+import { useState } from "react";
 import { useDukaan } from "@/lib/client/store";
 import { PrimaryButton, SecondaryButton, Spinner, SW } from "./ui";
-
-declare global {
-  interface Window {
-    turnstile?: {
-      render: (container: HTMLElement, opts: { sitekey: string; callback: (token: string) => void; "expired-callback"?: () => void; theme?: "light" | "dark" }) => string;
-      reset: (id?: string) => void;
-    };
-  }
-}
 
 export function Logo({ size = 44 }: { size?: number }) {
   return (
@@ -46,45 +36,6 @@ export function Splash() {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-  const [siteKey, setSiteKey] = useState<string | null>(null);
-  const [turnstileToken, setTurnstileToken] = useState<string | undefined>(undefined);
-  const turnstileRef = useRef<HTMLDivElement | null>(null);
-  const widgetId = useRef<string | undefined>(undefined);
-
-  useEffect(() => {
-    api<{ turnstile_site_key: string | null }>("/api/app-config", { auth: false, shop: false })
-      .then((cfg) => setSiteKey(cfg.turnstile_site_key))
-      .catch(() => undefined);
-  }, []);
-
-  useEffect(() => {
-    if (!siteKey || !turnstileRef.current) return;
-    const renderWidget = () => {
-      if (!window.turnstile || !turnstileRef.current || turnstileRef.current.childElementCount > 0) return;
-      widgetId.current = window.turnstile.render(turnstileRef.current, {
-        sitekey: siteKey,
-        theme: "light",
-        callback: (token) => setTurnstileToken(token),
-        "expired-callback": () => setTurnstileToken(undefined),
-      });
-    };
-    if (window.turnstile) {
-      renderWidget();
-      return;
-    }
-    const existing = document.querySelector<HTMLScriptElement>('script[data-turnstile="1"]');
-    if (existing) {
-      existing.addEventListener("load", renderWidget, { once: true });
-      return;
-    }
-    const s = document.createElement("script");
-    s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-    s.async = true;
-    s.defer = true;
-    s.dataset.turnstile = "1";
-    s.addEventListener("load", renderWidget, { once: true });
-    document.head.appendChild(s);
-  }, [siteKey]);
 
   const run = async (name: string, fn: () => Promise<void>) => {
     setBusy(name);
@@ -92,11 +43,6 @@ export function Splash() {
       await fn();
     } catch (e) {
       toast(e instanceof Error ? e.message : "Sign-in failed", "err");
-      // Turnstile tokens are single-use: after a failed attempt, issue a fresh challenge.
-      if (name === "sandbox" && siteKey && window.turnstile) {
-        setTurnstileToken(undefined);
-        window.turnstile.reset(widgetId.current);
-      }
     } finally {
       setBusy(null);
     }
@@ -106,24 +52,22 @@ export function Splash() {
     <main className="mx-auto flex min-h-dvh max-w-[430px] flex-col px-6 pb-8 pt-16">
       <Logo size={64} />
       <h1 className="mt-6 text-[34px] font-bold leading-[38px] tracking-[-0.03em]">DukaanOS</h1>
-      <p className="mt-2 text-[17px] leading-6 text-ink-2">Bolo, parchi dikhao — munshi hisaab likh dega. Voice & parchi → hash-chained khata.</p>
+      <p className="mt-2 text-[17px] leading-6 text-ink-2">Bolo, parchi dikhao — munshi hisaab likh dega. Voice &amp; parchi → pakka khata.</p>
       <p className="urdu-read mt-1 text-right text-ink" dir="rtl">آپ بولیں، منشی حساب لکھے گا</p>
       <div className="mt-4">
         <TrustBadge />
       </div>
 
       <div className="mt-auto space-y-3 pt-10">
-        {siteKey && <div ref={turnstileRef} className="flex justify-center" />}
         <PrimaryButton
           tone="cash"
           className="h-14 w-full text-[17px]"
           busy={busy === "sandbox"}
-          disabled={Boolean(siteKey && !turnstileToken)}
-          onClick={() => void run("sandbox", () => signInSandbox(turnstileToken))}
+          onClick={() => void run("sandbox", () => signInSandbox())}
         >
           <Store size={18} strokeWidth={SW} /> Try Live Demo Shop
         </PrimaryButton>
-        <p className="-mt-1 text-center text-[12.5px] text-ink-2">Your own isolated sandbox · 3 Alis, 2 Tariqs, Bilal · 14-day history</p>
+        <p className="-mt-1 text-center text-[12.5px] text-ink-2">Demo dukaan — bina account ke check karein</p>
 
         {mode === "stage" ? (
           <form
@@ -214,9 +158,6 @@ export function Splash() {
                 <PrimaryButton type="submit" className="w-full" busy={busy === "magic"} disabled={!email.includes("@")}>
                   Send verification code
                 </PrimaryButton>
-                <button type="button" onClick={() => setMode("phone")} className="block w-full py-1 text-center text-[12.5px] font-semibold text-ink-2 underline underline-offset-4">
-                  Use phone SMS (requires paid SMS gateway)
-                </button>
               </>
             )}
           </form>

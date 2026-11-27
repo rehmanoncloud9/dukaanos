@@ -1,12 +1,13 @@
 "use client";
 
-import { AlertTriangle, Camera, FileImage, Plus, Trash2, Wand2 } from "lucide-react";
+import { AlertTriangle, Camera, FileImage, Plus, Trash2, Volume2, Wand2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CommitResponse } from "@/lib/api/contracts";
 import type { ParchiParseResult, ParchiReviewLine } from "@/lib/ai/parchi";
 import { api, friendlyError, newKey } from "@/lib/client/api";
 import { renderStagedParchi } from "@/lib/client/canvas";
 import { prepareImage, type PreparedImage } from "@/lib/client/image";
+import { speak } from "@/lib/client/speak";
 import { useDukaan } from "@/lib/client/store";
 import { parseQuantityPhrase, quantityToBaseUnits, requiresExplicitPackSize, type BaseUnit } from "@/lib/domain/desi-units";
 import { formatAmount, formatJournal, formatRs, mulDiv } from "@/lib/domain/money";
@@ -588,12 +589,21 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
           <div className="mx-5 mt-3 flex items-center gap-3">
             <span className="text-[13px] text-ink-2">Cash paid now</span><span className="text-[13px] text-ink-2">Rs.</span>
             <input inputMode="decimal" value={cash} onChange={(event) => setCash(event.target.value.replace(/[^\d.,]/g, ""))} placeholder="required" className="num h-9 w-28 rounded-[8px] bg-canvas px-2 text-[15px] font-semibold outline-none" />
-            <span className="ml-auto text-[12.5px] text-ink-2 num">A/P {formatRs(Math.max(0, total - (cashPaidPaisa ?? 0)))}</span>
+            <span className="ml-auto text-[12.5px] text-ink-2 num">{xrayOn ? "A/P" : "Baqi"} {formatRs(Math.max(0, total - (cashPaidPaisa ?? 0)))}</span>
           </div>
 
           <div className="hairline-t mt-3 flex items-baseline justify-between px-5 pt-3">
-            <span className="text-[14px] text-ink-2">Restock Total ({lines.length} SKUs{newCount ? ` · ${newCount} new` : ""})</span>
-            <Money paisa={total} className="text-[22px] font-bold" />
+            <span className="text-[14px] text-ink-2">Restock Total ({lines.length} items{newCount ? ` · ${newCount} new` : ""})</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void speak(`${supplierName} ki parchi mein ${lines.length} items hain, kul bill ${Math.round(total / 100)} rupay.`)}
+                className="tactile inline-flex h-8 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[12px] font-semibold text-ink"
+              >
+                <Volume2 size={13} strokeWidth={SW} /> Suniye
+              </button>
+              <Money paisa={total} className="text-[22px] font-bold" />
+            </div>
           </div>
           <div className="flex gap-3 px-5 pb-[max(16px,env(safe-area-inset-bottom))] pt-3">
             <SecondaryButton onClick={onClose} className="w-[92px]">Cancel</SecondaryButton>

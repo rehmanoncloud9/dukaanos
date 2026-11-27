@@ -78,12 +78,13 @@ function InlineAddCustomer({ defaultName = "", onCreated }: { defaultName?: stri
   );
 }
 
-function CustomerRail({ proposalCustomer, customers, selected, onSelect, required }: {
+function CustomerRail({ proposalCustomer, customers, selected, onSelect, required, xrayOn }: {
   proposalCustomer: SaleProposal["customer"];
   customers: CustomerRow[];
   selected: string | null;
   onSelect: (id: string | null) => void;
   required: boolean;
+  xrayOn?: boolean;
 }) {
   const chips = proposalCustomer.candidates.length
     ? proposalCustomer.candidates.map((c) => customers.find((x) => x.id === c.id) ?? { ...c, aliases: [] })
@@ -92,8 +93,8 @@ function CustomerRail({ proposalCustomer, customers, selected, onSelect, require
   return (
     <div className="px-5 pb-3">
       <div className={cx("section-label mb-2", required && !selected && "text-udhaar-ink")}>
-        Match customer {proposalCustomer.candidates.length > 1 ? "(3-Ali disambiguation)" : ""}
-        {required && !selected && " · required for udhaar"}
+        {proposalCustomer.candidates.length > 1 ? (xrayOn ? "Match customer (3-Ali disambiguation)" : "Kaunsa gahak?") : "Gahak (Customer)"}
+        {required && !selected && " · udhaar ke liye zaroori"}
       </div>
       <div className="no-scrollbar -mx-5 flex flex-wrap gap-2 px-5">
         {!required && (
@@ -247,7 +248,7 @@ function LineRow({ line, stockBefore, onChange, onRemove }: { line: ProposalLine
 /* ───────────────────────────── Tier-2 sale review (Screen 2) ───────────────────────────── */
 
 export function SaleReviewSheet({ proposal: initial, idemKey, trace, onClose }: { proposal: SaleProposal; idemKey: string; trace: TurnTrace | null; onClose: () => void }) {
-  const { state, shopId, confirmSale, openSheet, toast } = useDukaan();
+  const { state, shopId, confirmSale, openSheet, toast, xrayOn } = useDukaan();
   const customers = state?.customers ?? [];
   const products = state?.products ?? [];
   const [p, setP] = useState<SaleProposal>(initial);
@@ -341,6 +342,36 @@ export function SaleReviewSheet({ proposal: initial, idemKey, trace, onClose }: 
     onClose();
   };
 
+  const addNewItem = (rawName: string) => {
+    const clean = rawName.trim();
+    if (!clean) return;
+    const newLine: ProposalLine = {
+      key: `new-${Date.now().toString(36)}`,
+      kind: "new_sku",
+      product_id: null,
+      name: clean,
+      spoken: clean,
+      quantity_phrase: "1",
+      base_unit: "pcs",
+      pack_size_base_units: 1,
+      unit_price_paisa: 0,
+      qty_base_units: 1,
+      line_total_paisa: 0,
+      value_first: false,
+      value_paisa: null,
+      is_loose: false,
+      formula: "new item — set price",
+      match: null,
+      confidence: 1,
+      stock_after: null,
+      price_known: false,
+      number_unresolved: false,
+    };
+    update({ lines: [...p.lines, newLine] });
+    setAddingItem(false);
+    setItemQuery("");
+  };
+
   const searchResults = useMemo(() => {
     const q = itemQuery.trim().toLowerCase();
     const list = q
@@ -357,9 +388,11 @@ export function SaleReviewSheet({ proposal: initial, idemKey, trace, onClose }: 
       onClose={onClose}
       title="Review Entry"
       right={
-        <Pill tone={trace?.source === "rules" ? "amber" : "cash"} className="h-7 px-3 text-[13px]">
-          {trace?.source === "rules" ? "Rule parse" : `${match}% Match`}
-        </Pill>
+        xrayOn ? (
+          <Pill tone={trace?.source === "rules" ? "amber" : "cash"} className="h-7 px-3 text-[13px]">
+            {trace?.source === "rules" ? "Rule parse" : `${match}% Match`}
+          </Pill>
+        ) : undefined
       }
     >
       {trace?.transcript && (
@@ -368,7 +401,7 @@ export function SaleReviewSheet({ proposal: initial, idemKey, trace, onClose }: 
         </div>
       )}
       <div className="mx-5 mb-3 flex flex-wrap items-center gap-1.5">
-        <Pill tone="dark" mono>Tier 2</Pill>
+        {xrayOn && <Pill tone="dark" mono>Tier 2</Pill>}
         {p.tier_reasons.map((r) => (
           <Pill key={r} tone={r.startsWith("UDHAAR") || r === "AMBIGUOUS_CUSTOMER" ? "udhaar" : r === "NEW_SKU" ? "maal" : "neutral"}>
             {REASON_LABEL[r] ?? r}
@@ -388,12 +421,12 @@ export function SaleReviewSheet({ proposal: initial, idemKey, trace, onClose }: 
       </div>
 
       {(p.customer.mention || p.credit_paisa !== 0 || customers.length > 0) && (
-        <CustomerRail proposalCustomer={p.customer} customers={customers} selected={p.customer.selected_id} onSelect={(id) => update({ selected_customer_id: id })} required={p.credit_paisa !== 0} />
+        <CustomerRail proposalCustomer={p.customer} customers={customers} selected={p.customer.selected_id} onSelect={(id) => update({ selected_customer_id: id })} required={p.credit_paisa !== 0} xrayOn={xrayOn} />
       )}
 
       <div className="px-5">
         <div className="mb-2 flex items-center justify-between">
-          <span className="section-label">Items (deterministic math)</span>
+          <span className="section-label">{xrayOn ? "Items (deterministic math)" : "Saman / Items"}</span>
           <button
             type="button"
             onClick={() => setAddingItem((v) => !v)}
@@ -424,6 +457,15 @@ export function SaleReviewSheet({ proposal: initial, idemKey, trace, onClose }: 
                   + {prod.name} <span className="num text-ink-2">({formatRs(prod.unit_price_paisa)})</span>
                 </button>
               ))}
+              {itemQuery.trim() && !searchResults.some((x) => x.name.toLowerCase() === itemQuery.trim().toLowerCase()) && (
+                <button
+                  type="button"
+                  onClick={() => addNewItem(itemQuery)}
+                  className="tactile rounded-[10px] border border-dashed border-maal/60 bg-maal-bg px-2.5 py-1.5 text-left text-[12.5px] font-semibold text-maal"
+                >
+                  + Naya item “{itemQuery.trim()}”
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -556,7 +598,8 @@ export function PaymentSheet({ proposal, customerId, idemKey, trace, onClose }: 
   const [amount, setAmount] = useState(proposal?.amount_paisa ? String(proposal.amount_paisa / 100) : cust ? String(Math.max(0, cust.balance_paisa) / 100) : "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const amt = rupeesToPaisa(Number(amount || 0));
+  const parsedAmt = Number(amount || 0);
+  const amt = Number.isFinite(parsedAmt) && parsedAmt >= 0 ? rupeesToPaisa(parsedAmt) : 0;
   const withBal = customers.filter((c) => c.balance_paisa > 0 || c.id === selected);
   const chips = proposal?.customer.candidates.length
     ? proposal.customer.candidates.map((c) => customers.find((x) => x.id === c.id)!).filter(Boolean)
@@ -578,7 +621,20 @@ export function PaymentSheet({ proposal, customerId, idemKey, trace, onClose }: 
   };
 
   return (
-    <Sheet open onClose={onClose} title="Wasooli · Payment">
+    <Sheet
+      open
+      onClose={onClose}
+      title="Wasooli · Payment"
+      right={
+        <button
+          type="button"
+          onClick={() => void speak(`${cust ? `${cust.name} se ` : ""}${Math.round(amt / 100)} rupay wasooli${cust ? `, baqi ${Math.round((cust.balance_paisa - amt) / 100)} rupay` : ""}.`)}
+          className="tactile inline-flex h-8 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[12px] font-semibold text-ink"
+        >
+          <Volume2 size={13} strokeWidth={SW} /> Suniye
+        </button>
+      }
+    >
       {trace?.transcript && <div className="mx-5 mb-3 rounded-[12px] bg-canvas px-3.5 py-2.5 text-[15px]" dir="auto">“{trace.transcript}”</div>}
       <div className="px-5">
         <div className="section-label mb-2">Customer</div>
@@ -749,6 +805,19 @@ export function ReceiptSheet({ commit, proposal, customerPhone, onClose }: { com
           </span>
           Saved
         </span>
+      }
+      right={
+        <button
+          type="button"
+          onClick={() =>
+            void speak(
+              `${commit.customer?.name ? `${commit.customer.name} ka ` : ""}${isPayment ? "wasooli " : "bill "}${Math.round((t.total_paisa ?? 0) / 100)} rupay mehfooz ho gaya${commit.customer ? `, naya baqaya ${Math.round(commit.customer.balance_paisa / 100)} rupay` : ""}.`,
+            )
+          }
+          className="tactile inline-flex h-8 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[12px] font-semibold text-ink"
+        >
+          <Volume2 size={13} strokeWidth={SW} /> Suniye
+        </button>
       }
     >
       <div className="px-5 pb-2">

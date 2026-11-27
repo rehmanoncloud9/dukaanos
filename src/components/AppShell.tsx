@@ -148,13 +148,9 @@ function Header() {
           )}
           {xrayOn && (
             <button
-              aria-label="Toggle X-Ray Judge Mode"
+              aria-label="Open X-Ray Inspector"
               aria-pressed={xrayOn}
-              onClick={() => {
-                const next = !xrayOn;
-                setXrayOn(next);
-                if (next) openSheet({ type: "xray" });
-              }}
+              onClick={() => openSheet({ type: "xray" })}
               className="tactile ml-auto h-7 shrink-0 rounded-full border border-ink bg-ink px-2.5 font-mono text-[12.5px] font-semibold text-white"
             >
               {"</>"} X-Ray
@@ -248,7 +244,7 @@ function UndoToast() {
   if (!undo) return null;
   const left = Math.max(0, undo.until - Date.now());
   return (
-    <div role="status" aria-live="polite" className="fixed inset-x-0 bottom-[150px] z-40 mx-auto max-w-[430px] px-4">
+    <div role="status" aria-live="polite" className="fixed inset-x-0 bottom-[150px] z-[55] mx-auto max-w-[430px] px-4">
       <div className="relative flex h-11 items-center overflow-hidden rounded-xl bg-[#0A0A0A] pl-4 pr-1 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
         <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">{undo.message}</span>
         <button onClick={() => void doUndo()} className="tactile h-9 rounded-lg px-3 text-[14px] font-bold text-[#34D399]">

@@ -199,10 +199,10 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
       {recording && (
         <div aria-live="polite" className="absolute -top-11 whitespace-nowrap rounded-full bg-ink px-3 py-1 text-[12px] font-semibold text-white num">
           {cancelling
-            ? "Release to cancel"
+            ? "Chhor dein — cancel"
             : toggleMode
-              ? `0:${String(secs).padStart(2, "0")} · Tap mic or Space to stop`
-              : `0:${String(secs).padStart(2, "0")} · ← slide to cancel`}
+              ? `0:${String(secs).padStart(2, "0")} · Dobara tap karein`
+              : `0:${String(secs).padStart(2, "0")} · ← Khiskayein cancel`}
         </div>
       )}
       {offlineTranscript && !recording && (

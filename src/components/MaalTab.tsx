@@ -105,12 +105,12 @@ export function MaalTab() {
           <span className="flex-1 text-[13.5px] font-medium text-udhaar-ink">
             {p.name} stock is now {formatBaseQty(p.stock_base_units, p.base_unit)} — Log Restock?
           </span>
-          <button onClick={() => openSheet({ type: "parchi" })} className="tactile h-8 rounded-full bg-surface px-3 text-[13px] font-semibold text-udhaar-ink">
+          <button onClick={() => openSheet({ type: "product", productId: p.id })} className="tactile h-8 rounded-full bg-surface px-3 text-[13px] font-semibold text-udhaar-ink">
             Fix
           </button>
         </div>
       ))}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Segmented<"all" | "low">
           value={filter}
           onChange={setFilter}
@@ -143,7 +143,7 @@ export function MaalTab() {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search product or alias (e.g. cheeni, oil)…"
+          placeholder={tr("searchProducts", lang)}
           aria-label="Search products"
           dir="auto"
           className="h-11 w-full rounded-[12px] border border-black/10 bg-surface pl-10 pr-3 text-[15px] outline-none focus:border-ink"
@@ -152,7 +152,7 @@ export function MaalTab() {
       {forecast && forecast.items.length > 0 && (
         <div className="surface-card p-3.5">
           <div className="flex items-center justify-between">
-            <span className="section-label">Velocity reorder plan</span>
+            <span className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("reorderList", lang)}</span>
             <span className="num text-[12.5px] font-semibold text-maal">Est. {formatRs(forecast.total_reorder_cost_paisa)}</span>
           </div>
           <div className="mt-1.5 space-y-1 text-[12.5px] text-ink-2">
@@ -246,7 +246,7 @@ function NewProductSheet({ initialSku, onClose, onSaved }: { initialSku: string;
       <div className="space-y-2.5 px-5 pb-[max(16px,env(safe-area-inset-bottom))]">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Item ka naam (e.g. Tapal 95g)" className="h-12 w-full rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
         <input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="Barcode / SKU (optional)" className="num h-11 w-full rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ""))} placeholder="Sell price (Rs.)" className="num h-12 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
           <input inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value.replace(/[^\d.]/g, ""))} placeholder="Cost (Rs.)" className="num h-12 w-28 rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
           <select value={unit} onChange={(e) => setUnit(e.target.value as "pcs" | "g" | "ml")} className="h-12 rounded-[12px] bg-canvas px-3 text-[15px] outline-none">
@@ -268,10 +268,15 @@ function NewProductSheet({ initialSku, onClose, onSaved }: { initialSku: string;
 }
 
 export function ProductSheet({ productId, onClose }: { productId: string; onClose: () => void }) {
-  const { state, refresh, toast, openSheet, xrayOn } = useDukaan();
+  const { state, refresh, toast, openSheet, xrayOn, commitPurchase } = useDukaan();
   const p = state?.products.find((x) => x.id === productId);
   const [price, setPrice] = useState(p ? String(p.unit_price_paisa / 100) : "");
   const [alias, setAlias] = useState("");
+  const [restockQty, setRestockQty] = useState("");
+  const [restockCost, setRestockCost] = useState("");
+  const [restockSupplier, setRestockSupplier] = useState("Wholesale");
+  const [restockPaid, setRestockPaid] = useState<"cash" | "credit">("cash");
+  const [restockBusy, setRestockBusy] = useState(false);
   const [adjQty, setAdjQty] = useState("");
   const [adjDir, setAdjDir] = useState<-1 | 1>(-1);
   const [adjReason, setAdjReason] = useState<"wastage" | "spoilage" | "personal_use" | "stock_count">("wastage");
@@ -289,8 +294,57 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
   }, [state, p]);
 
   if (!p) return null;
+  const unitLabel = p.base_unit === "pcs" ? "pcs" : p.base_unit === "g" ? "kg" : "L";
   const per = p.base_unit === "pcs" ? (p.pack_size_base_units === 1 ? "pc" : `${p.pack_size_base_units} pcs`) : p.pack_size_base_units === 1000 ? (p.base_unit === "g" ? "kg" : "L") : formatBaseQty(p.pack_size_base_units, p.base_unit);
-  const adjBaseUnits = Math.round(Number(adjQty || 0) * (p.base_unit === "pcs" ? 1 : 1000));
+  const parsedRestockQty = Number(restockQty);
+  const restockBaseUnits = Number.isFinite(parsedRestockQty) && parsedRestockQty > 0
+    ? Math.round(parsedRestockQty * (p.base_unit === "pcs" ? 1 : 1000))
+    : 0;
+  const suggestedRestockPaisa = p.cost_price_paisa > 0 && restockBaseUnits > 0
+    ? Math.round((restockBaseUnits * p.cost_price_paisa) / p.pack_size_base_units)
+    : 0;
+  const parsedRestockCost = Number(restockCost);
+  const restockTotalPaisa = restockCost.trim()
+    ? (Number.isFinite(parsedRestockCost) && parsedRestockCost >= 0 ? rupeesToPaisa(parsedRestockCost) : 0)
+    : suggestedRestockPaisa;
+  const parsedAdjQty = Number(adjQty);
+  const adjBaseUnits = Number.isFinite(parsedAdjQty) && parsedAdjQty > 0
+    ? Math.round(parsedAdjQty * (p.base_unit === "pcs" ? 1 : 1000))
+    : 0;
+
+  const submitManualRestock = async () => {
+    if (restockBaseUnits <= 0) return;
+    setRestockBusy(true);
+    try {
+      const cashPaid = restockPaid === "cash" ? restockTotalPaisa : 0;
+      const basePayload = {
+        idempotency_key: newKey("pur"),
+        supplier_name: restockSupplier.trim() || "Wholesale",
+        cash_paid_paisa: cashPaid,
+        stated_total_paisa: restockTotalPaisa,
+        lines: [
+          {
+            product_id: p.id,
+            qty_base_units: restockBaseUnits,
+            line_total_paisa: restockTotalPaisa,
+            spoken: `${restockQty} ${unitLabel} ${p.name}`,
+          },
+        ],
+      };
+      await commitPurchase({
+        ...basePayload,
+        audit_meta: { channel: "manual-restock", replay_payload: basePayload },
+      });
+      setRestockQty("");
+      setRestockCost("");
+      await refresh();
+      toast(`${p.name} restock ho gaya ✓`, "ok");
+    } catch (e) {
+      toast(friendlyError(e), "err");
+    } finally {
+      setRestockBusy(false);
+    }
+  };
 
   const submitAdj = async () => {
     if (adjBaseUnits <= 0) return;
@@ -339,7 +393,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
               : "1 darjan = 12 pcs"}
         </div>
         <div className="section-label pt-1">Sell price (per {per})</div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ""))} className="num h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
           <button
             onClick={async () => {
@@ -357,7 +411,51 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
           </button>
         </div>
 
-        <div className="section-label pt-1">Wastage / Personal Use / Stock Adjust</div>
+        <div className="section-label pt-1">Manual Restock (No Parchi)</div>
+        <div className="surface-card space-y-2 p-3">
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              inputMode="decimal"
+              value={restockQty}
+              onChange={(e) => setRestockQty(e.target.value.replace(/[^\d.]/g, ""))}
+              placeholder={`Add qty (${unitLabel})`}
+              className="num h-10 rounded-[10px] bg-canvas px-3 text-[14px] outline-none"
+            />
+            <input
+              inputMode="decimal"
+              value={restockCost}
+              onChange={(e) => setRestockCost(e.target.value.replace(/[^\d.]/g, ""))}
+              placeholder={suggestedRestockPaisa > 0 ? `Cost Rs. (~${Math.round(suggestedRestockPaisa / 100)})` : "Total cost (Rs.)"}
+              className="num h-10 rounded-[10px] bg-canvas px-3 text-[14px] outline-none"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={restockSupplier}
+              onChange={(e) => setRestockSupplier(e.target.value)}
+              placeholder="Supplier (optional)"
+              className="h-10 min-w-0 flex-1 rounded-[10px] bg-canvas px-3 text-[13.5px] outline-none"
+            />
+            <select
+              value={restockPaid}
+              onChange={(e) => setRestockPaid(e.target.value as "cash" | "credit")}
+              className="h-10 rounded-[10px] bg-canvas px-2 text-[13px] font-semibold outline-none"
+            >
+              <option value="cash">Cash Paid</option>
+              <option value="credit">Wholesale Udhaar</option>
+            </select>
+            <button
+              type="button"
+              disabled={restockBusy || restockBaseUnits <= 0}
+              onClick={() => void submitManualRestock()}
+              className="tactile h-10 shrink-0 rounded-[10px] bg-maal px-3.5 text-[13px] font-semibold text-white disabled:opacity-40"
+            >
+              {restockBusy ? "Saving…" : "Restock"}
+            </button>
+          </div>
+        </div>
+
+        <div className="section-label pt-1">Stock Count / Wastage / Personal Use</div>
         <div className="surface-card space-y-2 p-3">
           <div className="grid grid-cols-2 gap-1.5">
             <select value={adjDir} onChange={(e) => setAdjDir(Number(e.target.value) as -1 | 1)} className="h-10 rounded-[10px] bg-canvas px-2 text-[13px] font-semibold outline-none">
@@ -371,7 +469,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
               <option value="stock_count">Stock count</option>
             </select>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <input
               inputMode="decimal"
               value={adjQty}
@@ -415,7 +513,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
             </Pill>
           ))}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input value={alias} onChange={(e) => setAlias(e.target.value)} dir="auto" placeholder="e.g. khand, کھنڈ" className="h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
           <button
             disabled={!alias.trim()}

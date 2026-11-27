@@ -39,20 +39,21 @@ export function feedSummary(t: FeedTx): string {
   return t.type === "return" ? `Wapasi · ${items}` : items;
 }
 
-function feedTag(t: FeedTx): string {
+function feedTag(t: FeedTx, lang: "en" | "ur"): string {
   if (t.audit_meta?.pending_sync) return "Offline";
-  if (t.type === "payment") return "Wasooli";
-  if (t.type === "purchase") return t.credit_paisa > 0 ? "Restock · Udhaar" : "Restock";
-  if (t.type === "reversal") return "Undone";
+  if (t.type === "payment") return tr("wasooli", lang);
+  if (t.type === "purchase") return t.credit_paisa > 0 ? `${tr("restockTag", lang)} · ${tr("udhaarTag", lang)}` : tr("restockTag", lang);
+  if (t.type === "reversal") return tr("undoneTag", lang);
   if (t.type === "return") return t.credit_paisa > 0 ? "Return · Khata" : "Return · Cash";
-  if (t.type === "adjustment") return "Adjustment";
-  if (t.type === "writeoff") return "Write-off";
-  if (t.credit_paisa !== 0 && t.cash_paid_paisa > 0) return "Split · Khata";
-  if (t.credit_paisa > 0) return "Udhaar";
-  return "Cash";
+  if (t.type === "adjustment") return "Stock Adjust";
+  if (t.type === "writeoff") return "Maaf";
+  if (t.credit_paisa !== 0 && t.cash_paid_paisa > 0) return tr("splitTag", lang);
+  if (t.credit_paisa > 0) return tr("udhaarTag", lang);
+  return tr("cashTag", lang);
 }
 
 export function FeedRow({ t, onOpen, flash }: { t: FeedTx; onOpen: () => void; flash?: boolean }) {
+  const { lang } = useDukaan();
   const title = t.type === "purchase" ? t.supplier_name ?? "Wholesale" : t.type === "reversal" ? "Reversal" : t.type === "adjustment" ? (t.lines[0]?.name ?? "Stock Adjustment") : t.customer_name ?? "Walk-in Cash";
   const amount = t.type === "sale" ? (t.cash_paid_paisa > 0 ? t.cash_paid_paisa : t.total_paisa) : Math.abs(t.total_paisa);
   const color = t.type === "purchase" ? "text-maal" : t.type === "reversal" || t.type === "adjustment" || t.type === "writeoff" ? "text-ink-3" : t.type === "return" ? "text-udhaar" : t.type === "sale" && t.cash_paid_paisa === 0 ? "text-udhaar" : "text-cash";
@@ -71,7 +72,7 @@ export function FeedRow({ t, onOpen, flash }: { t: FeedTx; onOpen: () => void; f
           <span className="rs-prefix">Rs.</span>
           <span className="num">{(amount / 100).toLocaleString("en-US")}</span>
         </div>
-        <div className="text-[12px] leading-4 text-ink-2">{t.is_reversed ? "Undone" : feedTag(t)}</div>
+        <div className="text-[12px] leading-4 text-ink-2">{t.is_reversed ? tr("undoneTag", lang) : feedTag(t, lang)}</div>
       </div>
     </button>
   );
@@ -245,16 +246,16 @@ export function MunshiTab() {
       {/* Quick-Sell Top-4 strip — rush-hour 1-tap cash sale, Rs. 0 LLM */}
       <QuickSellStrip products={state.products} />
 
-      {/* Compact action bar: P&L Insights, Manual Bill, Return, Guide */}
+      {/* Compact action bar: Munafa Insights, Manual Bill, Return, Guide */}
       <div className="no-scrollbar flex items-center gap-2 overflow-x-auto py-0.5">
-        <button type="button" onClick={() => openSheet({ type: "insights" })} className="tactile flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold">
-          <BarChart3 size={13} strokeWidth={SW} className="text-cash" /> Insights · P&amp;L
+        <button type="button" onClick={() => openSheet({ type: "insights" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+          <BarChart3 size={13} strokeWidth={SW} className="text-cash" /> {tr("insights", lang)}
         </button>
-        <button type="button" onClick={openBlankBill} className="tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold">
-          <Plus size={13} strokeWidth={SW} /> New Bill
+        <button type="button" onClick={openBlankBill} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+          <Plus size={13} strokeWidth={SW} /> {tr("newBill", lang)}
         </button>
-        <button type="button" onClick={() => openSheet({ type: "return" })} className="tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold">
-          <RotateCcw size={13} strokeWidth={SW} className="text-udhaar" /> Return
+        <button type="button" onClick={() => openSheet({ type: "return" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+          <RotateCcw size={13} strokeWidth={SW} className="text-udhaar" /> {tr("returnItem", lang)}
         </button>
         {!showGuide && (
           <button
