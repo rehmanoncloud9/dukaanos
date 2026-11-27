@@ -34,8 +34,13 @@ export async function speakUrdu(text: string, shopId?: string, budgetMs = 2500):
       apiClient.tts(text, shopId),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("tts budget exceeded")), budgetMs)),
     ]);
-    const file = new File(Paths.cache, `tts-${Crypto.randomUUID()}.wav`);
-    await file.write(new Uint8Array(wavBuffer));
+    const bytes = new Uint8Array(wavBuffer);
+    const isMp3 =
+      (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) || // ID3
+      (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0); // MPEG sync
+    const ext = isMp3 ? "mp3" : "wav";
+    const file = new File(Paths.cache, `tts-${Crypto.randomUUID()}.${ext}`);
+    await file.write(bytes);
     await setAudioModeAsync({
       allowsRecording: false,
       playsInSilentMode: true,

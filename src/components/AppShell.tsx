@@ -11,6 +11,7 @@ import { MaalTab, ProductSheet } from "./MaalTab";
 import { MunshiTab } from "./MunshiTab";
 import { CreateShop, Loading, SetupNeeded, Splash } from "./Onboarding";
 import { InsightsSheet } from "./InsightsSheet";
+import { EodSheet } from "./EodSheet";
 import { PulseSheet } from "./PulseSheet";
 import { AnswerSheet, EntryDetailSheet, PaymentSheet, PromiseSheet, ReceiptSheet, ReturnSheet, ReversalSheet, SaleReviewSheet } from "./ReviewSheets";
 import { AppLockGate } from "./AppLock";
@@ -353,6 +354,8 @@ function SheetRouter() {
       return <ReturnSheet customerId={sheet.customerId} onClose={closeSheet} />;
     case "insights":
       return <InsightsSheet onClose={closeSheet} />;
+    case "eod":
+      return <EodSheet onClose={closeSheet} />;
     default:
       return null;
   }

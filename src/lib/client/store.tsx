@@ -36,7 +36,8 @@ export type Sheet =
   | { type: "replays" }
   | { type: "receipt"; commit: CommitResponse; proposal: SaleProposal | null; customerPhone: string | null }
   | { type: "return"; customerId?: string | null }
-  | { type: "insights" };
+  | { type: "insights" }
+  | { type: "eod" };
 
 export interface LastCommit {
   response: CommitResponse;
