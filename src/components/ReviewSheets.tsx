@@ -256,6 +256,7 @@ export function SaleReviewSheet({ proposal: initial, idemKey, trace, onClose }: 
   const [discText, setDiscText] = useState(String(initial.discount_paisa / 100));
   const [addingItem, setAddingItem] = useState(initial.lines.length === 0);
   const [itemQuery, setItemQuery] = useState("");
+  const [pickupNote, setPickupNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const stockOf = (id: string | null) => (id ? products.find((x) => x.id === id)?.stock_base_units ?? null : null);
@@ -315,7 +316,10 @@ export function SaleReviewSheet({ proposal: initial, idemKey, trace, onClose }: 
     setBusy(true);
     setErr(null);
     try {
-      const res = await confirmSale(p, idemKey, trace);
+      const noteTrace = pickupNote.trim()
+        ? { ...(trace ?? { transcript: "", source: "rules" as const, model: null, latency_ms: 0, api_ms: 0, attempts: [], pakphone: null }), note: pickupNote.trim() }
+        : trace;
+      const res = await confirmSale(p, idemKey, noteTrace as TurnTrace | null);
       if (shopId) removeHeldBill(shopId, idemKey);
       const phone = customers.find((c) => c.id === p.customer.selected_id)?.phone ?? null;
       openSheet({ type: "receipt", commit: res, proposal: p, customerPhone: phone });
@@ -423,10 +427,25 @@ export function SaleReviewSheet({ proposal: initial, idemKey, trace, onClose }: 
       {(p.customer.mention || p.credit_paisa !== 0 || customers.length > 0) && (
         <CustomerRail proposalCustomer={p.customer} customers={customers} selected={p.customer.selected_id} onSelect={(id) => update({ selected_customer_id: id })} required={p.credit_paisa !== 0} xrayOn={xrayOn} />
       )}
+      {p.customer.mention && p.customer.selected_id === null && p.credit_paisa === 0 && (
+        <div className="mx-5 mb-2.5 rounded-[10px] bg-amber-bg px-3 py-2 text-[12.5px] font-medium text-amber-ink">
+          Naam “{p.customer.mention}” suna gaya tha — Walk-in rakhna hai ya customer chunein?
+        </div>
+      )}
+      {p.customer.selected_id !== null && (
+        <div className="mx-5 mb-2.5">
+          <input
+            value={pickupNote}
+            onChange={(e) => setPickupNote(e.target.value)}
+            placeholder="Kaun le gaya / note (optional, e.g. Chhota beta)"
+            className="h-9 w-full rounded-[10px] bg-canvas px-3 text-[13px] outline-none"
+          />
+        </div>
+      )}
 
       <div className="px-5">
         <div className="mb-2 flex items-center justify-between">
-          <span className="section-label">{xrayOn ? "Items (deterministic math)" : "Saman / Items"}</span>
+          <span className="section-label">{xrayOn ? "Items (deterministic math)" : "Saman / Items"}{p.lines.length >= 6 ? ` (${p.lines.length})` : ""}</span>
           <button
             type="button"
             onClick={() => setAddingItem((v) => !v)}
@@ -570,6 +589,11 @@ export function SaleReviewSheet({ proposal: initial, idemKey, trace, onClose }: 
             {p.change_due_paisa > 0 && <div className="text-[12.5px] text-ink-2">Change: {formatRs(p.change_due_paisa)}</div>}
           </div>
         </div>
+        {p.total_paisa >= 2_500_000 && (
+          <div className="mt-3 rounded-[12px] bg-amber-bg px-3 py-2 text-[13px] font-medium text-amber-ink">
+            Bari rakam ({formatRs(p.total_paisa)}) — save karne se pehle check kar lein.
+          </div>
+        )}
         {err && <div className="mt-3 rounded-[12px] bg-udhaar-bg px-3 py-2 text-[14px] font-medium text-udhaar-ink">{err}</div>}
       </div>
 
@@ -1264,6 +1288,9 @@ export function EntryDetailSheet({ tx: initialTx, txId, onClose }: { tx?: FeedTx
                 {tx?.type === "sale" && tx.credit_paisa > 0 && <Pill tone="udhaar">Udhaar {formatRs(tx.credit_paisa)}</Pill>}
                 {discountPaisa > 0 && <Pill>Chhoot {formatRs(discountPaisa)}</Pill>}
               </div>
+              {typeof tx?.audit_meta?.note === "string" && tx.audit_meta.note && (
+                <div className="mt-2 text-[12.5px] text-ink-2">Note: {tx.audit_meta.note}</div>
+              )}
             </div>
 
             {tx && tx.lines.length > 0 && (

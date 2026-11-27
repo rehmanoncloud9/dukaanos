@@ -12,8 +12,8 @@ export interface PreparedImage {
   originalPreviewUrl: string;
 }
 
-/** Downscale to ≤1280px JPEG (q=0.75) so uploads stay well under the 4.5 MB serverless cap. */
-export async function prepareImage(file: Blob, maxSide = 1280, quality = 0.75): Promise<PreparedImage> {
+/** Downscale to ≤1280px JPEG (q=0.75) so uploads stay well under the 4.5 MB serverless cap. Optional contrast boost for faded/dim slips. */
+export async function prepareImage(file: Blob, maxSide = 1280, quality = 0.75, enhance = false): Promise<PreparedImage> {
   if (!Number.isInteger(maxSide) || maxSide < 256 || maxSide > 4096) throw new RangeError("maxSide must be between 256 and 4096 pixels");
   if (!Number.isFinite(quality) || quality < 0.4 || quality > 1) throw new RangeError("quality must be between 0.4 and 1");
   const originalPreviewUrl = URL.createObjectURL(file);
@@ -29,6 +29,9 @@ export async function prepareImage(file: Blob, maxSide = 1280, quality = 0.75): 
     canvas.height = h;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Image canvas is unavailable");
+    if (enhance && "filter" in ctx) {
+      ctx.filter = "contrast(1.38) brightness(1.06) grayscale(0.6)";
+    }
     ctx.drawImage(bmp, 0, 0, w, h);
     const blob: Blob = await new Promise((resolve, reject) => canvas.toBlob((value) => (value ? resolve(value) : reject(new Error("Image encoding failed"))), "image/jpeg", quality));
     return {

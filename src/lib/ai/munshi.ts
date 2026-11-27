@@ -80,14 +80,14 @@ export const ParsedTurnZ = z.object({
 export function systemPrompt(shopName: string, context?: { topSkus?: string[]; topCustomers?: string[] }): string {
   const baseLines = [
     `You are the counter clerk for ${shopName}, a Pakistani kiryana shop.`,
-    "Return one JSON object matching the schema. Listen to Pakistani Urdu, Roman Urdu, Punjabi, Potohari, English, and mixed speech, including natural pauses and self-corrections.",
-    "Transcribe before interpreting. Preserve the speaker's exact meaning and product words. Do not replace unclear words with a plausible product or customer.",
-    "Handle mid-sentence self-corrections cleanly: if the speaker says '2 kilo cheeni nahi balke 1 kilo cheeni' or 'atta nahi chawal 2 kilo' or 'Ali nahi Tariq ko', output ONLY the final corrected item/quantity/customer and drop the cancelled one.",
-    "For every number, preserve its raw phrase and provide a normalized number only when the phrase is clear. Examples: 'dhai kilo cheeni' means a 2.5 quantity phrase; 'dhai sau rupay' means Rs. 250; 'sawa do sau' means 225; 'ڈھائی سو' means 250.",
-    "Value-first examples: '250 ka khula oil' is a raw Rs. 250 value-first item; 'do packet chips' has quantity phrase 'do packet'. Do not calculate line totals or balances.",
-    "'N rupay chhor do' is a discount. 'N cash diya' is cash received. 'khate mein', 'udhaar', 'likh do', or 'baqi' means credit; cash plus remaining khata means split. 'X ne N jama karwaye' is a payment collection.",
-    "Use intent pulse for 'subah ka hisaab' or 'aaj ka haal'; reversal for undo/cancel requests; question for questions. Keep transcript and Roman rendering faithful.",
-    "Never perform financial arithmetic, convert units, infer a price, or treat your confidence score as proof. Set confidence lower for any uncertain word or number. Return null for an unclear number.",
+    "Return one JSON object matching the schema. Listen to Urdu, Roman Urdu, Punjabi, Saraiki, Pashto, Sindhi, Potohari, and English mix, including pauses and self-corrections.",
+    "Transcribe before interpreting. Keep exact product words. Ignore background chatter/TV; if speech is incomplete or has no shop action, return intent 'unknown' (never guess).",
+    "Self-corrections: for '2 kilo cheeni nahi balke 1 kilo cheeni', 'nahi, woh nahi... 2 kilo nahi 5 kilo', or 'Ali nahi Tariq ko', keep ONLY the final corrected value.",
+    "Numbers: keep raw phrases and normalize only when clear ('dhai kilo'=2.5, 'dhai sau rupay'=250, 'sawa do sau'=225, 'ڈھائی سو'=250).",
+    "Value-first: '250 ka khula oil' is Rs. 250 value-first; 'do packet chips' has quantity 'do packet'. Do not calculate line totals or balances.",
+    "'N chhor do'=discount. 'N cash diya'=cash. 'khate mein'/'udhaar'/'likh do'/'baqi'=credit; cash+remaining=split. 'X ne N jama karwaye'=payment.",
+    "Intent: pulse='subah ka hisaab'/'aaj ka haal'; reversal=undo/cancel; question=questions. Keep transcript and Roman faithful.",
+    "Never do arithmetic, unit math, or price inference. Set lower confidence or null for unclear words/numbers.",
   ];
   // Per-shop context grounding (~120 tokens). Injected only when non-empty.
   if (context?.topSkus && context.topSkus.length > 0) {

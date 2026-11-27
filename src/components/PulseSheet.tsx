@@ -21,7 +21,7 @@ export function pulseSpeech(p: Pulse): string {
 }
 
 export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => void }) {
-  const { state, xrayOn } = useDukaan();
+  const { state, xrayOn, helperMode } = useDukaan();
   const shop = state?.shop.name ?? "DukaanOS";
   const list = wholesaleListText(
     shop,
@@ -59,9 +59,11 @@ export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => vo
             <div>
               Udhaar <b className="block text-[15px] text-udhaar num">{formatRs(pulse.galla.udhaar_paisa)}</b>
             </div>
-            <div>
-              Est. margin <b className="block text-[15px] text-cash num">{formatRs(pulse.galla.est_margin_paisa)}</b>
-            </div>
+            {!helperMode && (
+              <div>
+                Est. margin <b className="block text-[15px] text-cash num">{formatRs(pulse.galla.est_margin_paisa)}</b>
+              </div>
+            )}
           </div>
         </div>
 
@@ -94,7 +96,7 @@ export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => vo
 
         <div className="surface-card overflow-hidden">
           <div className="flex items-center justify-between px-4 pb-2 pt-3">
-            <span className="text-[15px] font-semibold">2-day stockout velocity</span>
+            <span className="text-[15px] font-semibold">{xrayOn ? "2-day stockout velocity" : "Kam stock alerts"}</span>
             <Pill tone="maal">{pulse.stockout.count} items</Pill>
           </div>
           {pulse.stockout.items.map((s) => (

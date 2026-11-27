@@ -23,12 +23,16 @@ interface Health {
 }
 
 export function SettingsSheet({ onClose }: { onClose: () => void }) {
-  const { shops, shop, setShopId, state, pending, queue, flush, openQueuedReview, discardQueued, simulatedOffline, setSimulatedOffline, xrayOn, setXrayOn, refresh, toast, signOut, openSheet, submitTurn, session, lang, setLang } = useDukaan();
+  const { shops, shop, setShopId, state, pending, queue, queuedCommits, flush, openQueuedReview, discardQueued, retryCommit, discardCommit, simulatedOffline, setSimulatedOffline, xrayOn, setXrayOn, helperMode, setHelperMode, refresh, reloadShops, toast, signOut, openSheet, submitTurn, session, lang, setLang } = useDukaan();
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [chain, setChain] = useState<{ ok: boolean; code: string; checked: number; ms: number; first_broken_seq?: number } | null>(null);
   const [showDevTools, setShowDevTools] = useState(xrayOn);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [shopNameInput, setShopNameInput] = useState(state?.shop.name ?? shop?.name ?? "");
+  const [shopCityInput, setShopCityInput] = useState(state?.shop.city ?? shop?.city ?? "");
+  const [shopPhoneInput, setShopPhoneInput] = useState(state?.shop.phone ?? "");
   // Shift Handover — Galla Count
   const [gallaInput, setGallaInput] = useState("");
   const [raastId, setRaastId] = useState("");
@@ -115,16 +119,89 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
               <button key={s.id} onClick={() => setShopId(s.id)} className="hairline-b flex w-full items-center justify-between px-4 py-3 text-left last:border-b-0">
                 <span>
                   <span className="block text-[15px] font-semibold">{s.name}</span>
-                  <span className="text-[12.5px] text-ink-2">{s.is_stage_shop ? "Stage shop (protected)" : s.is_demo_shop ? "Isolated judge sandbox" : s.city ?? "Live shop"} · {s.role}</span>
+                  <span className="text-[12.5px] text-ink-2">{s.is_stage_shop ? "Stage shop" : s.is_demo_shop ? (xrayOn ? "Isolated judge sandbox" : "Demo dukaan") : s.city ?? "Live shop"} · {s.role}</span>
                 </span>
                 {shop?.id === s.id && <Pill tone="cash">Active</Pill>}
               </button>
             ))}
           </div>
-          <div className="mt-1.5 text-[12px] text-ink-2">{session?.user.email}</div>
+          <div className="mt-1.5 flex items-center justify-between text-[12px] text-ink-2">
+            <span>{session?.user.email}</span>
+            <div className="flex items-center gap-3">
+              {!helperMode && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShopNameInput(state?.shop.name ?? shop?.name ?? "");
+                    setShopCityInput(state?.shop.city ?? shop?.city ?? "");
+                    setShopPhoneInput(state?.shop.phone ?? "");
+                    setEditingProfile((v) => !v);
+                  }}
+                  className="font-semibold text-ink underline underline-offset-2"
+                >
+                  {editingProfile ? "Close edit" : "Edit shop"}
+                </button>
+              )}
+              {shop?.is_demo_shop && (
+                <button
+                  type="button"
+                  onClick={() => void signOut()}
+                  className="font-semibold text-cash underline underline-offset-2"
+                >
+                  Apni asli dukaan banayein →
+                </button>
+              )}
+            </div>
+          </div>
+          {editingProfile && !helperMode && (
+            <form
+              className="surface-card mt-2 space-y-2 p-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void act("profile", async () => {
+                  await api("/api/shop/profile", {
+                    json: {
+                      name: shopNameInput.trim(),
+                      city: shopCityInput.trim() || null,
+                      phone: shopPhoneInput.trim() || null,
+                    },
+                  });
+                  await Promise.all([reloadShops(), refresh()]);
+                  setEditingProfile(false);
+                  toast("Dukaan ki maloomat save ho gayin ✓", "ok");
+                });
+              }}
+            >
+              <input value={shopNameInput} onChange={(e) => setShopNameInput(e.target.value)} placeholder="Dukaan ka naam" required className="h-10 w-full rounded-[10px] bg-canvas px-3 text-[14.5px] font-medium outline-none" />
+              <div className="grid grid-cols-2 gap-2">
+                <input value={shopCityInput} onChange={(e) => setShopCityInput(e.target.value)} placeholder="City / Area" className="h-10 w-full rounded-[10px] bg-canvas px-3 text-[14px] outline-none" />
+                <input value={shopPhoneInput} onChange={(e) => setShopPhoneInput(e.target.value)} placeholder="Phone (03xx…)" inputMode="tel" className="h-10 w-full rounded-[10px] bg-canvas px-3 text-[14px] outline-none" />
+              </div>
+              <PrimaryButton type="submit" busy={busy === "profile"} disabled={!shopNameInput.trim()} className="h-10 w-full text-[14px]">
+                Save Shop Details
+              </PrimaryButton>
+            </form>
+          )}
         </section>
 
         <AppLockSection />
+
+        {/* Helper / Family Restricted Mode */}
+        <section>
+          <div className="section-label mb-2">Helper / Family Mode</div>
+          <button
+            type="button"
+            onClick={() => {
+              const next = !helperMode;
+              setHelperMode(next);
+              toast(next ? "Helper Mode ON — munafa aur cost ab chhupa hai" : "Owner Mode wapas ON", "info");
+            }}
+            className="tactile flex h-11 w-full items-center justify-between rounded-[12px] bg-surface px-3.5 text-[13.5px] font-medium"
+          >
+            <span>Munafa, cost aur settings chhupayein</span>
+            <Pill tone={helperMode ? "amber" : "neutral"}>{helperMode ? "ON" : "OFF"}</Pill>
+          </button>
+        </section>
 
         {/* Shift Handover · Galla Count */}
         <section>
@@ -194,31 +271,35 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
           </form>
         </section>
 
-        <div className="grid grid-cols-3 gap-2">
-          <a href="/privacy" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
-            {tr("privacy", lang)}
-          </a>
-          <a href="/terms" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
-            {tr("terms", lang)}
-          </a>
-          <a href="/delete-account" className="tactile flex h-10 items-center justify-center gap-1 rounded-[12px] bg-udhaar-bg text-[12.5px] font-semibold text-udhaar-ink">
-            <UserX size={13} strokeWidth={SW} /> Delete
-          </a>
-        </div>
+        {!helperMode && (
+          <div className="grid grid-cols-3 gap-2">
+            <a href="/privacy" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
+              {tr("privacy", lang)}
+            </a>
+            <a href="/terms" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
+              {tr("terms", lang)}
+            </a>
+            <a href="/delete-account" className="tactile flex h-10 items-center justify-center gap-1 rounded-[12px] bg-udhaar-bg text-[12.5px] font-semibold text-udhaar-ink">
+              <UserX size={13} strokeWidth={SW} /> Delete
+            </a>
+          </div>
+        )}
 
         <button onClick={() => void signOut()} className="tactile flex h-12 w-full items-center justify-center gap-2 rounded-[12px] bg-surface text-[14px] font-semibold text-udhaar-ink">
           <LogOut size={15} strokeWidth={SW} /> {tr("signOut", lang)}
         </button>
 
         {/* Collapsed by default so normal shopkeepers never see dev/export/audit clutter */}
-        <button
-          type="button"
-          onClick={() => setShowDevTools((v) => !v)}
-          className="tactile flex h-10 w-full items-center justify-between rounded-[12px] px-3 text-[12.5px] font-medium text-ink-3"
-        >
-          <span className="flex items-center gap-1.5"><Code2 size={14} strokeWidth={SW} /> Advanced · Backup &amp; Developer Tools</span>
-          {showDevTools ? <ChevronUp size={15} strokeWidth={SW} /> : <ChevronDown size={15} strokeWidth={SW} />}
-        </button>
+        {(!helperMode || xrayOn) && (
+          <button
+            type="button"
+            onClick={() => setShowDevTools((v) => !v)}
+            className="tactile flex h-10 w-full items-center justify-between rounded-[12px] px-3 text-[12.5px] font-medium text-ink-3"
+          >
+            <span className="flex items-center gap-1.5"><Code2 size={14} strokeWidth={SW} /> {xrayOn ? "Advanced · Backup & Developer Tools" : "Backup, Sync & Hisaab Check"}</span>
+            {showDevTools ? <ChevronUp size={15} strokeWidth={SW} /> : <ChevronDown size={15} strokeWidth={SW} />}
+          </button>
+        )}
 
         {showDevTools && (
           <div className="space-y-4 border-t border-black/10 pt-3">
@@ -363,6 +444,23 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
                 <button onClick={() => setSimulatedOffline(!simulatedOffline)} className={cx("tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] text-[14px] font-semibold", simulatedOffline ? "bg-amber-bg text-amber-ink" : "bg-surface-sunken")}>
                   <WifiOff size={15} strokeWidth={SW} /> Simulate Offline: {simulatedOffline ? "ON" : "OFF"}
                 </button>
+                {queuedCommits.map((c) => (
+                  <div key={c.idempotency_key} className="space-y-1 rounded-[10px] bg-canvas p-2.5 text-[12.5px]">
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate font-medium">{c.optimistic.label}</span>
+                      <Pill tone={c.status === "failed" ? "udhaar" : "amber"}>{c.status}</Pill>
+                      {c.status === "failed" && (
+                        <button type="button" onClick={() => void retryCommit(c.idempotency_key)} className="tactile font-semibold text-cash">
+                          Retry
+                        </button>
+                      )}
+                      <button type="button" aria-label="Discard commit" onClick={() => void discardCommit(c.idempotency_key)} className="grid h-7 w-7 place-items-center text-ink-3">
+                        <Trash2 size={13} strokeWidth={SW} />
+                      </button>
+                    </div>
+                    {c.last_error && <div className="text-[11.5px] text-udhaar-ink">{c.last_error}</div>}
+                  </div>
+                ))}
                 {queue.map((q) => (
                   <div key={q.idempotency_key} className="flex items-center gap-2 text-[13px]">
                     <FileAudio size={14} strokeWidth={SW} className="text-ink-2" />
@@ -403,11 +501,13 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
                   onClick={() => void act("chain", async () => setChain(await api("/api/shop/chain")))}
                   className="tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold"
                 >
-                  {busy === "chain" ? <Spinner /> : <ShieldCheck size={15} strokeWidth={SW} />} Verify SHA-256 chain
+                  {busy === "chain" ? <Spinner /> : <ShieldCheck size={15} strokeWidth={SW} />} {xrayOn ? "Verify SHA-256 chain" : "Hisaab Check Karein"}
                 </button>
                 {chain && (
-                  <div className={cx("rounded-[10px] px-3 py-2 font-mono text-[12px]", chain.ok ? "bg-cash-bg text-cash-ink" : "bg-udhaar-bg text-udhaar-ink")}>
-                    {chain.ok ? `CHAIN_OK · ${chain.checked} links · ${chain.ms}ms` : `CHAIN_BROKEN at #${chain.first_broken_seq} (${chain.code})`}
+                  <div className={cx("rounded-[10px] px-3 py-2 text-[12px]", xrayOn && "font-mono", chain.ok ? "bg-cash-bg text-cash-ink" : "bg-udhaar-bg text-udhaar-ink")}>
+                    {xrayOn
+                      ? (chain.ok ? `CHAIN_OK · ${chain.checked} links · ${chain.ms}ms` : `CHAIN_BROKEN at #${chain.first_broken_seq} (${chain.code})`)
+                      : (chain.ok ? `Sab ${chain.checked} entries bilkul durust hain ✓` : `Entry #${chain.first_broken_seq} mein farq mila`)}
                   </div>
                 )}
                 {shop?.is_demo_shop && (

@@ -32,7 +32,7 @@ export function isLow(p: StateProduct) {
 }
 
 export function MaalTab() {
-  const { state, openSheet, refresh, lang, toast } = useDukaan();
+  const { state, openSheet, refresh, lang, toast, xrayOn } = useDukaan();
   const [filter, setFilter] = useState<"all" | "low">("all");
   const [query, setQuery] = useState("");
   const [scanning, setScanning] = useState(false);
@@ -183,14 +183,16 @@ export function MaalTab() {
                     {p.is_quick_added && <Pill tone="maal" className="h-5 px-1.5 text-[10.5px]">QuickAdd</Pill>}
                   </div>
                   <div className="text-[13px] text-ink-2 num">
-                    Cost Rs. {formatAmount(p.cost_price_paisa)} · Sell Rs. {formatAmount(p.unit_price_paisa)}
+                    {xrayOn ? `Cost Rs. ${formatAmount(p.cost_price_paisa)} · ` : ""}Sell Rs. {formatAmount(p.unit_price_paisa)}
                   </div>
                 </div>
                 <div className="text-right">
                   <div className={cx("num text-[15px] font-bold", low ? "text-udhaar" : "text-ink")}>{stockLabel(p)}</div>
-                  <div className={cx("text-[12.5px]", low ? "font-semibold text-udhaar" : "text-ink-2")} dir="auto">
-                    {p.stock_base_units < 0 ? tr("negative", lang) : low ? tr("lowStock", lang) : tr("healthy", lang)}
-                  </div>
+                  {(p.stock_base_units < 0 || low) && (
+                    <div className="text-[12.5px] font-semibold text-udhaar" dir="auto">
+                      {p.stock_base_units < 0 ? tr("negative", lang) : tr("lowStock", lang)}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="mt-2 h-1 rounded-full bg-surface-sunken">
@@ -268,15 +270,22 @@ function NewProductSheet({ initialSku, onClose, onSaved }: { initialSku: string;
 }
 
 export function ProductSheet({ productId, onClose }: { productId: string; onClose: () => void }) {
-  const { state, refresh, toast, openSheet, xrayOn, commitPurchase } = useDukaan();
+  const { state, refresh, toast, openSheet, xrayOn, helperMode, commitPurchase } = useDukaan();
   const p = state?.products.find((x) => x.id === productId);
   const [price, setPrice] = useState(p ? String(p.unit_price_paisa / 100) : "");
   const [alias, setAlias] = useState("");
   const [restockQty, setRestockQty] = useState("");
+  const [restockByPack, setRestockByPack] = useState(Boolean(p && p.pack_size_base_units > 1 && p.pack_size_base_units !== 1000));
   const [restockCost, setRestockCost] = useState("");
   const [restockSupplier, setRestockSupplier] = useState("Wholesale");
   const [restockPaid, setRestockPaid] = useState<"cash" | "credit">("cash");
   const [restockBusy, setRestockBusy] = useState(false);
+  const [reorderInput, setReorderInput] = useState(
+    p && p.reorder_level_base_units
+      ? String(p.base_unit === "pcs" ? p.reorder_level_base_units : p.reorder_level_base_units / 1000)
+      : "",
+  );
+  const [reorderBusy, setReorderBusy] = useState(false);
   const [adjQty, setAdjQty] = useState("");
   const [adjDir, setAdjDir] = useState<-1 | 1>(-1);
   const [adjReason, setAdjReason] = useState<"wastage" | "spoilage" | "personal_use" | "stock_count">("wastage");
@@ -295,12 +304,15 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
 
   if (!p) return null;
   const unitLabel = p.base_unit === "pcs" ? "pcs" : p.base_unit === "g" ? "kg" : "L";
+  const hasPackUnit = p.pack_size_base_units > 1 && !(p.base_unit !== "pcs" && p.pack_size_base_units === 1000);
+  const packLabel = p.base_unit === "ml" && p.pack_size_base_units >= 4000 ? "tin" : "pack";
   const per = p.base_unit === "pcs" ? (p.pack_size_base_units === 1 ? "pc" : `${p.pack_size_base_units} pcs`) : p.pack_size_base_units === 1000 ? (p.base_unit === "g" ? "kg" : "L") : formatBaseQty(p.pack_size_base_units, p.base_unit);
   const parsedRestockQty = Number(restockQty);
+  const restockMult = restockByPack && hasPackUnit ? p.pack_size_base_units : (p.base_unit === "pcs" ? 1 : 1000);
   const restockBaseUnits = Number.isFinite(parsedRestockQty) && parsedRestockQty > 0
-    ? Math.round(parsedRestockQty * (p.base_unit === "pcs" ? 1 : 1000))
+    ? Math.round(parsedRestockQty * restockMult)
     : 0;
-  const suggestedRestockPaisa = p.cost_price_paisa > 0 && restockBaseUnits > 0
+  const suggestedRestockPaisa = !helperMode && p.cost_price_paisa > 0 && restockBaseUnits > 0
     ? Math.round((restockBaseUnits * p.cost_price_paisa) / p.pack_size_base_units)
     : 0;
   const parsedRestockCost = Number(restockCost);
@@ -413,12 +425,22 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
 
         <div className="section-label pt-1">Manual Restock (No Parchi)</div>
         <div className="surface-card space-y-2 p-3">
+          {hasPackUnit && (
+            <div className="flex gap-1.5 text-[12px]">
+              <button type="button" onClick={() => setRestockByPack(true)} className={cx("tactile rounded-full px-2.5 py-1 font-semibold", restockByPack ? "bg-ink text-white" : "bg-canvas text-ink-2")}>
+                {packLabel} ({per})
+              </button>
+              <button type="button" onClick={() => setRestockByPack(false)} className={cx("tactile rounded-full px-2.5 py-1 font-semibold", !restockByPack ? "bg-ink text-white" : "bg-canvas text-ink-2")}>
+                {unitLabel}
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <input
               inputMode="decimal"
               value={restockQty}
               onChange={(e) => setRestockQty(e.target.value.replace(/[^\d.]/g, ""))}
-              placeholder={`Add qty (${unitLabel})`}
+              placeholder={`Add qty (${restockByPack && hasPackUnit ? packLabel : unitLabel})`}
               className="num h-10 rounded-[10px] bg-canvas px-3 text-[14px] outline-none"
             />
             <input
@@ -488,7 +510,55 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
           </div>
         </div>
 
-        {supplierHistory.length > 0 && (
+        {!helperMode && (
+          <>
+            <div className="section-label pt-1">Low Stock Alert Threshold</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                inputMode="decimal"
+                value={reorderInput}
+                onChange={(e) => setReorderInput(e.target.value.replace(/[^\d.]/g, ""))}
+                placeholder={`Alert below (${unitLabel})`}
+                className="num h-10 min-w-0 flex-1 rounded-[10px] bg-canvas px-3 text-[14px] outline-none"
+              />
+              {p.sold_7d > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const threeDayBase = Math.max(1, Math.round((p.sold_7d / 7) * 3));
+                    setReorderInput(String(p.base_unit === "pcs" ? threeDayBase : Math.round((threeDayBase / 1000) * 10) / 10));
+                  }}
+                  className="tactile h-10 rounded-[10px] bg-maal-bg px-2.5 text-[12px] font-semibold text-maal"
+                >
+                  3-day auto
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={reorderBusy}
+                onClick={async () => {
+                  const n = Number(reorderInput || 0);
+                  const baseVal = Math.max(0, Math.round(n * (p.base_unit === "pcs" ? 1 : 1000)));
+                  setReorderBusy(true);
+                  try {
+                    await api("/api/shop/reorder-level", { json: { product_id: p.id, reorder_level_base_units: baseVal } });
+                    await refresh();
+                    toast("Alert threshold save ho gaya ✓", "ok");
+                  } catch (e) {
+                    toast(friendlyError(e), "err");
+                  } finally {
+                    setReorderBusy(false);
+                  }
+                }}
+                className="tactile h-10 rounded-[10px] bg-ink px-3.5 text-[13px] font-semibold text-white disabled:opacity-40"
+              >
+                {reorderBusy ? "…" : "Save"}
+              </button>
+            </div>
+          </>
+        )}
+
+        {supplierHistory.length > 0 && !helperMode && (
           <div>
             <div className="section-label mb-1.5 pt-1">Supplier purchase history</div>
             <div className="surface-card overflow-hidden">

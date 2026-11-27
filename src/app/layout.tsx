@@ -8,8 +8,8 @@ const notoArabic = Noto_Sans_Arabic({ variable: "--font-noto-arabic", subsets: [
 const nastaliq = Noto_Nastaliq_Urdu({ variable: "--font-nastaliq", subsets: ["arabic"], weight: ["400"], display: "swap" });
 
 export const metadata: Metadata = {
-  title: "DukaanOS — Zero-Literacy Financial Compiler",
-  description: "Voice + parchi → SHA-256 hash-chained double-entry khata for Pakistan's kiryana stores. Sirf Aap Ka Record — Zero FBR Linkage.",
+  title: "DukaanOS — Voice & Parchi Khata",
+  description: "Bol kar aur parchi scan kar ke apni kiryana dukaan ka hisaab, udhaar aur maal rakhein. Sirf Aap Ka Record.",
   applicationName: "DukaanOS",
   appleWebApp: { capable: true, title: "DukaanOS", statusBarStyle: "default" },
   icons: {

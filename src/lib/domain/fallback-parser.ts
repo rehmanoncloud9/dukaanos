@@ -7,7 +7,7 @@ import type { Intent, ParsedItem, ParsedTurn, PaymentMode } from "./types";
 
 export const FALLBACK_CONFIDENCE = 0.8;
 
-export const PULSE_REGEX = /\b(subah?|subha|subuh)\s+(ka|ki)\s+(hisaa?b|hisab)\b|\baaj\s+ka\s+(haal|hisaa?b)\b|\bpulse\b|\bhisaa?b\s+batao\b|صبح کا حساب/i;
+export const PULSE_REGEX = /\b(subah?|subha|subuh)\s+(ka|ki)\s+(hisaa?b|hisab)\b|\baaj\s+ka\s+(haal|hisaa?b)\b|\bpulse\b|^\s*(?:aaj\s+(?:ka\s+)?)?hisaa?b\s+batao\b|صبح کا حساب/i;
 
 const REVERSAL_REGEX = /\b(wapas|wapis|waapas)\s+(kar|kr)|\bcancel\b|\bundo\b|\bgalat\s+entry\b|\bpichli\s+entry\b|\bentry\s+(hata|mita|delete)/i;
 const PAYMENT_REGEX = /\b(jama|jamaa|jmaa)\b|\bwasooli\b|\bwasool\b|\bpayment\b|\bada\s+(kiye|kiya|kar)/i;
@@ -86,8 +86,10 @@ export function detectViewCommand(input: string): ViewCommand | null {
  *      "Ali nahi Tariq ko 500 udhaar", "2 kilo cheeni, nahi 1 kilo cheeni".
  */
 export function applySelfCorrections(raw: string): string {
+  // Strip filler reset openers like "nahi, woh nahi..." when followed by the real utterance
+  let s = raw.replace(/\b(?:nahi|nahin|sorry|galat)\s*,?\s*(?:woh|wo)\s+(?:nahi|nahin)[.,…\s]+/gi, " ");
   // Explicit "X nahi balke Y" or "X woh nahi Y" on customer / whole prefix
-  let s = raw.replace(
+  s = s.replace(
     /\b([a-z0-9.\s]+?)\s+(?:nahi|nahin|galat|sorry)\s*,?\s*(?:balke|balkay|balki|matlab|woh\s+nahi|wo\s+nahi)\s+/gi,
     " ",
   );
@@ -104,8 +106,8 @@ export function applySelfCorrections(raw: string): string {
     }
   }
   s = kept.join(", ");
-  // Inline "<word> nahi <replacement>" within a short phrase (e.g. "atta nahi chawal 2 kilo")
-  s = s.replace(/\b(\S+(?:\s+\S+)?)\s+(?:nahi|nahin)\s+(?:balke|balkay|balki\s+)?(?=[a-z0-9])/gi, "");
+  // Inline "<1-3 words> nahi <replacement>" within a short phrase (e.g. "2 kilo nahi 5 kilo", "atta nahi chawal 2 kilo")
+  s = s.replace(/\b(\S+(?:\s+\S+){0,2})\s+(?:nahi|nahin)\s+(?:balke|balkay|balki\s+)?(?=[a-z0-9])/gi, "");
   return s.replace(/\s+/g, " ").trim();
 }
 

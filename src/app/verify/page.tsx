@@ -11,6 +11,7 @@ import { formatRsCompact } from "@/lib/domain/money";
  */
 export default function VerifyPage() {
   const [token, setToken] = useState("");
+  const [xray, setXray] = useState(false);
   const [res, setRes] = useState<VerifyResult | null>(null);
   const [revoked, setRevoked] = useState<boolean | null>(null);
   const pub = process.env.NEXT_PUBLIC_ED25519_PUBLIC_KEY ?? "";
@@ -31,6 +32,7 @@ export default function VerifyPage() {
   };
 
   useEffect(() => {
+    setXray(new URLSearchParams(window.location.search).get("xray") === "1");
     const t = window.location.hash.replace(/^#/, "");
     if (t) {
       setToken(t);
@@ -56,9 +58,9 @@ export default function VerifyPage() {
   const p = res?.payload;
   return (
     <main className="mx-auto min-h-dvh max-w-[430px] px-5 pb-10 pt-10">
-      <div className="text-[13px] font-semibold uppercase tracking-[0.06em] text-ink-2">DukaanOS · SMEConnect</div>
-      <h1 className="mt-1 text-[28px] font-bold tracking-[-0.02em]">Trade Passport verification</h1>
-      <p className="mt-1 text-[14px] text-ink-2">Ed25519 signature checked on this device against the pinned DukaanOS key.</p>
+      <div className="text-[13px] font-semibold uppercase tracking-[0.06em] text-ink-2">{xray ? "DukaanOS · SMEConnect" : "DukaanOS"}</div>
+      <h1 className="mt-1 text-[28px] font-bold tracking-[-0.02em]">{xray ? "Trade Passport verification" : "Karobar Summary Verification"}</h1>
+      <p className="mt-1 text-[14px] text-ink-2">{xray ? "Ed25519 signature checked on this device against the pinned DukaanOS key." : "Is phone par tasdeeq shuda."}</p>
 
       {res && (
         <div className={`mt-5 overflow-hidden rounded-[20px] border ${res.valid && !revoked ? "border-pass-emerald/40 bg-pass-bg text-pass-ink" : "border-udhaar/40 bg-udhaar-bg text-udhaar-ink"}`}>
@@ -68,9 +70,11 @@ export default function VerifyPage() {
               {res.valid && !revoked ? <ShieldCheck size={22} strokeWidth={1.75} className="text-pass-emerald" /> : <ShieldX size={22} strokeWidth={1.75} />}
               {revoked ? "Revoked by Shop Owner" : res.valid ? "Signature valid ✓" : `Invalid — ${res.reason}`}
             </div>
-            <div className={`mt-1 font-mono text-[11.5px] ${res.valid ? "text-pass-muted" : ""}`}>
-              verified in {res.verify_ms}ms · key {pub.slice(0, 8)}…{pub.slice(-6)}
-            </div>
+            {xray && (
+              <div className={`mt-1 font-mono text-[11.5px] ${res.valid ? "text-pass-muted" : ""}`}>
+                verified in {res.verify_ms}ms · key {pub.slice(0, 8)}…{pub.slice(-6)}
+              </div>
+            )}
             {p && (
               <div className="mt-4 space-y-2 text-[14px]">
                 <div className="text-[22px] font-bold">{p.n}</div>
@@ -78,7 +82,7 @@ export default function VerifyPage() {
                   {p.c} · active {p.ad} days
                 </div>
                 <div className="grid grid-cols-3 gap-2 border-t border-white/10 pt-3">
-                  <Metric label={`${p.pd}D GMV`} value={formatRsCompact(p.gmv)} />
+                  <Metric label={xray ? `${p.pd}D GMV` : `${p.pd}D Bikri`} value={formatRsCompact(p.gmv)} />
                   <Metric label="Cash share" value={`${(p.cash_bp / 100).toFixed(0)}%`} />
                   <Metric label="Recovery" value={`${(p.rec_bp / 100).toFixed(1)}%`} />
                 </div>
@@ -96,13 +100,15 @@ export default function VerifyPage() {
                       <Metric label="Wada kept" value={p.pk_bp === undefined ? "—" : `${(p.pk_bp / 100).toFixed(0)}%`} />
                     </div>
                     <p className={`mt-2 text-[12px] leading-[17px] ${res.valid ? "text-pass-muted" : ""}`}>
-                      Share of credit sales the borrowers themselves confirmed via a signed link · {p.att ?? 0} attestations · chain {p.ah}…
+                      Share of credit sales confirmed by customers · {p.att ?? 0} confirmations
                     </p>
                   </div>
                 )}
-                <div className="break-all rounded-[10px] bg-black/20 p-2.5 font-mono text-[11px]">
-                  SHA-256 head (#{p.txn}): {p.h}
-                </div>
+                {xray && (
+                  <div className="break-all rounded-[10px] bg-black/20 p-2.5 font-mono text-[11px]">
+                    SHA-256 head (#{p.txn}): {p.h}
+                  </div>
+                )}
                 <div className={`text-[12px] ${res.valid ? "text-pass-muted" : ""}`}>
                   Period {p.f} → {p.t} · issued {new Date(p.iat * 1000).toLocaleString("en-PK")}
                 </div>
@@ -112,18 +118,20 @@ export default function VerifyPage() {
         </div>
       )}
 
-      <label className="mt-6 block text-[12px] font-semibold uppercase tracking-[0.06em] text-ink-2">Passport token</label>
+      <label className="mt-6 block text-[12px] font-semibold uppercase tracking-[0.06em] text-ink-2">{xray ? "Passport token" : "Verification token"}</label>
       <textarea value={token} onChange={(e) => setToken(e.target.value.trim())} rows={4} className="mt-1 w-full rounded-[12px] bg-surface p-3 font-mono text-[11px] outline-none" placeholder="Scan the QR or paste the token" />
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      <div className={`mt-2 grid gap-2 ${xray ? "grid-cols-2" : "grid-cols-1"}`}>
         <button onClick={() => void run(token)} className="tactile h-11 rounded-[12px] bg-ink text-[15px] font-semibold text-white">
           Verify
         </button>
-        <button onClick={tamper} disabled={!token} className="tactile h-11 rounded-[12px] bg-surface-sunken text-[15px] font-semibold disabled:opacity-40">
-          Tamper test (2× GMV)
-        </button>
+        {xray && (
+          <button onClick={tamper} disabled={!token} className="tactile h-11 rounded-[12px] bg-surface-sunken text-[15px] font-semibold disabled:opacity-40">
+            Tamper test (2× GMV)
+          </button>
+        )}
       </div>
       <p className="mt-6 text-[12px] leading-[17px] text-ink-2">
-        Owner-consented 30-day trade summary aligned with SBP SMEConnect (Nov 1, 2026). Informational only — not a credit score, underwriting decision, tax filing or Shariah certification. Zero FBR linkage.
+        Owner-consented trade summary. Informational only — not a credit score or tax filing.
       </p>
     </main>
   );

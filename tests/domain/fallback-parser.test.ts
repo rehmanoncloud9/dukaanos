@@ -69,6 +69,11 @@ describe("deterministic fallback extraction", () => {
     const p3 = parseFallback("atta nahi chawal 2 kilo cash");
     expect(p3.items).toHaveLength(1);
     expect(p3.items[0]?.spoken).toContain("chawal");
+
+    const p4 = parseFallback("nahi, woh nahi... 2 kilo nahi 5 kilo cheeni cash");
+    expect(p4.items).toHaveLength(1);
+    expect(p4.items[0]?.quantity_phrase).toBe("5 kilo");
+    expect(p4.items[0]?.spoken).toContain("cheeni");
   });
 
   it("detects non-sale navigation commands", () => {

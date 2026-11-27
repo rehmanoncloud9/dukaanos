@@ -19,7 +19,7 @@ export function Logo({ size = 44 }: { size?: number }) {
 export function TrustBadge() {
   return (
     <div className="inline-flex items-center gap-1.5 rounded-full bg-cash-bg px-3 py-1.5 text-[13px] font-semibold text-cash-ink">
-      <Lock size={12} strokeWidth={SW} /> Sirf Aap Ka Record — Zero FBR Linkage
+      <Lock size={12} strokeWidth={SW} /> Sirf Aap Ka Record · 100% Private
     </div>
   );
 }
@@ -180,7 +180,7 @@ export function Splash() {
           </div>
         )}
         <a href="/verify" className="block pt-2 text-center text-[13px] font-semibold text-ink-2 underline underline-offset-4">
-          Verify an SMEConnect Passport →
+          Verify Trade Summary →
         </a>
         <div className="flex items-center justify-center gap-4 pt-1 text-[12px] text-ink-2">
           <a href="/privacy" className="underline underline-offset-4 hover:text-ink-2">Privacy</a>

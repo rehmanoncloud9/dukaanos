@@ -147,7 +147,7 @@ export function friendlyError(e: unknown): string {
     case "MATH_MISMATCH":
       return "Items ka total aur bill match nahi kar raha";
     case "CHAIN_BROKEN":
-      return "SHA-256 ledger chain verification fail hui";
+      return "Hisaab ka record verify nahi ho saka";
     case "REPLAY_DEDUPLICATED":
       return "Yeh entry pehle hi save ho chuki hai (0 duplicates)";
     case "ALREADY_REVERSED":
@@ -158,7 +158,7 @@ export function friendlyError(e: unknown): string {
       return "Session khatam ho gaya — dobara sign in karein (draft mehfooz hai)";
     case "OFFLINE":
     case "NETWORK":
-      return "Offline — IndexedDB mein mehfooz";
+      return "Internet band hai — phone par mehfooz hai";
     default:
       return e.message;
   }

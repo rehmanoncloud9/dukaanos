@@ -165,6 +165,12 @@ export async function dequeueCommit(key: string): Promise<void> {
   await del(key, commits);
 }
 
+export async function resetCommitForRetry(key: string): Promise<void> {
+  if (!commits) return;
+  const cur = await get<QueuedCommit>(key, commits);
+  if (cur) await set(key, { ...cur, status: "pending", attempts: 0, last_error: undefined } satisfies QueuedCommit, commits);
+}
+
 /** Strict FIFO flush of queued commits. Preserves original idempotency_key so retries cannot double-post. */
 export async function flushCommits(
   shopId: string,

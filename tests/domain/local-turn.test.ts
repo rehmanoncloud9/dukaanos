@@ -121,6 +121,38 @@ describe("tryLocalTurn", () => {
     expect(q1?.kind).toBe("answer");
     if (q1?.kind === "answer") expect(q1.answer).toContain("500");
 
+    const stateWithHistory = makeState();
+    stateWithHistory.feed = [
+      {
+        id: "tx-1",
+        seq: 1,
+        type: "sale",
+        customer_id: "c-bilal",
+        customer_name: "Bilal",
+        customer_role: null,
+        supplier_name: null,
+        total_paisa: 50000,
+        subtotal_paisa: 50000,
+        cash_paid_paisa: 0,
+        credit_paisa: 50000,
+        discount_paisa: 0,
+        prev_hash: "h0",
+        entry_hash: "h1",
+        idempotency_key: "k-1",
+        is_reversed: false,
+        reversed_transaction_id: null,
+        created_at: "2026-11-26T10:00:00Z",
+        audit_meta: {},
+        lines: [],
+      },
+    ];
+    const qHist = tryLocalTurn("Bilal ka pichla hisaab batao?", stateWithHistory, { offline: true });
+    expect(qHist?.kind).toBe("answer");
+    if (qHist?.kind === "answer") {
+      expect(qHist.answer).toContain("500");
+      expect(qHist.answer).toContain("Pichli entries");
+    }
+
     const q2 = tryLocalTurn("cheeni kitna stock hai?", makeState(), { offline: true });
     expect(q2?.kind).toBe("answer");
     if (q2?.kind === "answer") expect(q2.answer).toContain("15kg");

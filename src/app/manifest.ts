@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "DukaanOS — Munshi",
     short_name: "DukaanOS",
-    description: "Voice + parchi khata · SHA-256 hash-chained · Zero FBR linkage",
+    description: "Voice + parchi khata — aapki dukaan ka aasaan hisaab",
     start_url: "/",
     display: "standalone",
     orientation: "portrait",

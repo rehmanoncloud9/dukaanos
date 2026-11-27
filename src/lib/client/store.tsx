@@ -10,7 +10,7 @@ import type { PaymentProposal, SaleProposal } from "@/lib/domain/types";
 import { api, ClientApiError, friendlyError, isOffline, newKey, onOfflineChange, registerAuthHandlers, setApiShop, setSimulateOffline as setSimOffline, isSimulatedOffline } from "./api";
 import { LANG_KEY, type Lang } from "./i18n";
 import { speak } from "./speak";
-import { applyOptimisticOverlay, dequeue, enqueue, enqueueCommit, flushCommits, flushQueue, listCommits, listQueue, pendingCount, saveReplay, type FlushOutcome, type OptimisticDelta, type QueuedCommit, type QueuedTurn } from "./queue";
+import { applyOptimisticOverlay, dequeue, dequeueCommit, enqueue, enqueueCommit, flushCommits, flushQueue, listCommits, listQueue, pendingCount, resetCommitForRetry, saveReplay, type FlushOutcome, type OptimisticDelta, type QueuedCommit, type QueuedTurn } from "./queue";
 import { browserSupabase, supabaseConfigured } from "./supabase";
 import { normalizePkPhone } from "@/lib/domain/starter-catalog";
 import { loadSnapshot, saveSnapshot, SHOPS_SNAPSHOT, stateSnapshotKey } from "./offline-cache";
@@ -90,17 +90,23 @@ interface Store {
   closeSheet: () => void;
   xrayOn: boolean;
   setXrayOn: (v: boolean) => void;
+  helperMode: boolean;
+  setHelperMode: (v: boolean) => void;
   lang: Lang;
   setLang: (l: Lang) => void;
   online: boolean;
   simulatedOffline: boolean;
   setSimulatedOffline: (v: boolean) => void;
   pending: number;
+  failedCount: number;
   reviewCount: number;
   queue: QueuedTurn[];
+  queuedCommits: QueuedCommit[];
   flush: () => Promise<void>;
   openQueuedReview: (key?: string) => Promise<void>;
   discardQueued: (key: string) => Promise<void>;
+  retryCommit: (key: string) => Promise<void>;
+  discardCommit: (key: string) => Promise<void>;
   thinking: boolean;
   submitTurn: (input: { blob?: Blob; mime?: string; text?: string }, key?: string) => Promise<void>;
   confirmSale: (p: SaleProposal, key: string, trace: TurnTrace | null, opts?: { auto?: boolean }) => Promise<CommitResponse>;
@@ -149,10 +155,12 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   const [tab, setTab] = useState<Tab>("munshi");
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [xrayOn, setXrayOn] = useState(false);
+  const [helperMode, setHelperModeState] = useState(false);
   const [lang, setLangState] = useState<Lang>("en");
   const [online, setOnline] = useState(true);
   const [simulatedOffline, setSimulatedOfflineState] = useState(false);
   const [pending, setPending] = useState(0);
+  const [failedCount, setFailedCount] = useState(0);
   const [queue, setQueue] = useState<QueuedTurn[]>([]);
   const [thinking, setThinking] = useState(false);
   const [lastCommit, setLastCommit] = useState<LastCommit | null>(null);
@@ -178,9 +186,13 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   /* ── auth ─────────────────────────────────────────── */
   useEffect(() => {
     setXrayOn(new URLSearchParams(window.location.search).get("xray") === "1");
+    setHelperModeState(localStorage.getItem("dukaanos.helperMode") === "1");
     const savedLang = localStorage.getItem(LANG_KEY);
     if (savedLang === "ur" || savedLang === "en") setLangState(savedLang);
     setOnline(!isOffline());
+    if (typeof navigator !== "undefined" && navigator.storage?.persist) {
+      void navigator.storage.persist().catch(() => undefined);
+    }
     if (!configured) {
       setAuthReady(true);
       return;
@@ -292,6 +304,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     setQueue(q);
     setCommits(c);
     setPending((await pendingCount(shopRef.current)) + c.filter((x) => x.status === "pending").length);
+    setFailedCount(q.filter((x) => x.status === "failed").length + c.filter((x) => x.status === "failed").length);
   }, []);
 
   /* ── commits ─────────────────────────────────────────── */
@@ -303,6 +316,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     latency_ms: trace?.latency_ms ?? null,
     pakphone_ms: trace?.pakphone?.ms_total ?? null,
     pakphone: trace?.pakphone ?? null,
+    ...(trace && "note" in trace && typeof (trace as { note?: unknown }).note === "string" ? { note: (trace as { note: string }).note } : {}),
     ...extra,
   });
 
@@ -350,7 +364,12 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     });
 
     if (isOffline() && shop) {
-      await enqueueCommit({ idempotency_key: idempotencyKey, shop_id: shop, endpoint, payload, optimistic });
+      try {
+        await enqueueCommit({ idempotency_key: idempotencyKey, shop_id: shop, endpoint, payload, optimistic });
+      } catch {
+        toast("Phone ki storage full ho rahi hai — internet on kar ke sync karein", "err");
+        throw new ClientApiError("Phone storage full", "OFFLINE", 0);
+      }
       await updatePending();
       return { res: makeOfflineResponse(), queued: true };
     }
@@ -359,13 +378,18 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       return { res, queued: false };
     } catch (e) {
       if (shop && e instanceof ClientApiError && e.network) {
-        await enqueueCommit({ idempotency_key: idempotencyKey, shop_id: shop, endpoint, payload, optimistic });
+        try {
+          await enqueueCommit({ idempotency_key: idempotencyKey, shop_id: shop, endpoint, payload, optimistic });
+        } catch {
+          toast("Phone ki storage full ho rahi hai — internet on kar ke sync karein", "err");
+          throw e;
+        }
         await updatePending();
         return { res: makeOfflineResponse(), queued: true };
       }
       throw e;
     }
-  }, [updatePending]);
+  }, [updatePending, toast]);
 
   const confirmSale = useCallback(async (p: SaleProposal, key: string, trace: TurnTrace | null, opts?: { auto?: boolean }) => {
     const base = toCommitInput(p, key, {});
@@ -566,7 +590,12 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     if (!shop) return;
     const key = givenKey ?? newKey("turn");
     const queueIt = async () => {
-      await enqueue({ idempotency_key: key, shop_id: shop, kind: input.blob ? "audio" : "text", blob: input.blob, mime: input.mime, text: input.text });
+      try {
+        await enqueue({ idempotency_key: key, shop_id: shop, kind: input.blob ? "audio" : "text", blob: input.blob, mime: input.mime, text: input.text });
+      } catch {
+        toast("Phone ki storage bhar gayi hai — purani entries sync ya delete karein", "err");
+        return;
+      }
       await updatePending();
       if (input.blob) toast("Internet band hai — awaz phone par mehfooz ho gayi", "info");
     };
@@ -643,6 +672,11 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
 
   const discardQueued = useCallback(async (key: string) => {
     await dequeue(key);
+    await updatePending();
+  }, [updatePending]);
+
+  const discardCommit = useCallback(async (key: string) => {
+    await dequeueCommit(key);
     await updatePending();
   }, [updatePending]);
 
@@ -786,6 +820,15 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     setSimulatedOfflineState(v);
   }, []);
 
+  const setHelperMode = useCallback((v: boolean) => {
+    try {
+      localStorage.setItem("dukaanos.helperMode", v ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+    setHelperModeState(v);
+  }, []);
+
   const setLang = useCallback((l: Lang) => {
     localStorage.setItem(LANG_KEY, l);
     setLangState(l);
@@ -794,10 +837,16 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   const shop = useMemo(() => shops?.find((s) => s.id === shopId) ?? null, [shops, shopId]);
   const reviewCount = useMemo(() => queue.filter((q) => q.status === "review").length, [queue]);
 
+  const retryCommit = useCallback(async (key: string) => {
+    await resetCommitForRetry(key);
+    await updatePending();
+    await flush();
+  }, [flush, updatePending]);
+
   const value: Store = {
     configured, authReady, session, shops, shopId, shop, setShopId, state, stateError, refresh,
-    tab, setTab, sheet, openSheet, closeSheet, xrayOn, setXrayOn, lang, setLang, online, simulatedOffline, setSimulatedOffline,
-    pending, reviewCount, queue, flush, openQueuedReview, discardQueued, thinking, submitTurn, confirmSale, confirmPayment, reverse, commitPurchase,
+    tab, setTab, sheet, openSheet, closeSheet, xrayOn, setXrayOn, helperMode, setHelperMode, lang, setLang, online, simulatedOffline, setSimulatedOffline,
+    pending, failedCount, reviewCount, queue, queuedCommits: commits, flush, openQueuedReview, discardQueued, retryCommit, discardCommit, thinking, submitTurn, confirmSale, confirmPayment, reverse, commitPurchase,
     lastCommit, replayTest, undo, doUndo, dismissUndo: () => setUndo(null), toasts, toast, highlightTx,
     signInSandbox, signInPassword, signInMagic, verifyEmailOtp, signInPhoneOtp, verifyPhoneOtp, signOut, createShop, reloadShops,
   };

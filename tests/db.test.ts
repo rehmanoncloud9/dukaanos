@@ -280,7 +280,14 @@ describe("gap closures — returns, adjustments, write-offs, add_product, insigh
     const rot = await asUser(db, JUDGE, () => rpc("rotate_passport_tokens", shop));
     expect(rot.passport_nonce).toBe(1);
 
-    // 7. Full SHA-256 chain & SUM(ledger)=0 hold
+    // 7. update_shop_profile & update_product_reorder_level
+    const updatedShop = await asUser(db, JUDGE, () => rpc("update_shop_profile", shop, "Bismillah Super Store", "Tariq Bhai", "03001234567", "Lahore"));
+    expect(updatedShop.name).toBe("Bismillah Super Store");
+    expect(updatedShop.city).toBe("Lahore");
+    const updatedReorder = await asUser(db, JUDGE, () => rpc("update_product_reorder_level", shop, created.id, 15));
+    expect(Number(updatedReorder.reorder_level_base_units)).toBe(15);
+
+    // 8. Full SHA-256 chain & SUM(ledger)=0 hold
     const v = await rpc("verify_ledger_chain", shop);
     expect(v.ok).toBe(true);
     expect(Number(v.ledger_sum_paisa)).toBe(0);

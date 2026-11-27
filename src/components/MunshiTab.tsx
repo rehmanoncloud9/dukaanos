@@ -96,7 +96,7 @@ function QuickSellStrip({ products }: { products: StateProduct[] }) {
     <div className="surface-card overflow-hidden">
       <div className="flex items-center gap-1.5 px-4 pb-1.5 pt-2.5">
         <Zap size={12} strokeWidth={SW} className="text-cash" />
-        <span className="section-label">Quick-Sell</span>
+        <span className="section-label">Tez Bikri</span>
       </div>
       <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3">
         {top4.map((p) => {
@@ -128,7 +128,7 @@ function QuickSellStrip({ products }: { products: StateProduct[] }) {
 }
 
 export function MunshiTab() {
-  const { state, shop, shopId, xrayOn, openSheet, submitTurn, thinking, toast, highlightTx, refresh, lang } = useDukaan();
+  const { state, shop, shopId, xrayOn, helperMode, openSheet, submitTurn, thinking, toast, highlightTx, refresh, lang } = useDukaan();
   const [pulse, setPulse] = useState<Pulse | null>(null);
   const [stripOpen, setStripOpen] = useState(false);
   const [held, setHeld] = useState<HeldBill[]>([]);
@@ -200,7 +200,7 @@ export function MunshiTab() {
   const seenIds = new Set(state.feed.map((t) => t.id));
   const combinedFeed = [...state.feed, ...extraFeed.filter((t) => !seenIds.has(t.id))];
   const todays = combinedFeed.filter((t) => new Date(t.created_at) >= dayStart);
-  const list = showAll ? combinedFeed : (todays.length ? todays : combinedFeed).slice(0, 7);
+  const list = showAll ? combinedFeed : (todays.length ? todays : combinedFeed).slice(0, 5);
 
   const loadMoreFeed = async () => {
     const cursor = nextSeq ?? combinedFeed[combinedFeed.length - 1]?.seq;
@@ -228,8 +228,18 @@ export function MunshiTab() {
     <div className={cx("space-y-2.5", typing ? "pb-44" : "pb-24")}>
       <div className="grid grid-cols-2 gap-2.5">
         <div className="surface-card p-3.5">
-          <div className={cx("section-label flex items-center gap-1.5", lang === "ur" && "urdu-ui")} dir="auto">
-            <span className="h-1.5 w-1.5 rounded-full bg-cash" /> {tr("todayCash", lang)}
+          <div className="flex items-center justify-between gap-1">
+            <div className={cx("section-label flex items-center gap-1.5", lang === "ur" && "urdu-ui")} dir="auto">
+              <span className="h-1.5 w-1.5 rounded-full bg-cash" /> {tr("todayCash", lang)}
+            </div>
+            <button
+              type="button"
+              aria-label="Aaj ka hisaab sunein"
+              onClick={() => void speak(`Aaj cash ${Math.round(today.cash_sales_paisa / 100)} rupay aur udhaar ${Math.round(today.udhaar_paisa / 100)} rupay hai, kul ${today.sales_count} sales.`)}
+              className="tactile grid h-6 w-6 place-items-center rounded-full bg-surface-sunken text-ink-2"
+            >
+              <Volume2 size={12} strokeWidth={SW} />
+            </button>
           </div>
           <Money paisa={today.cash_sales_paisa} className="mt-1.5 block text-[22px] font-bold leading-[26px] tracking-[-0.02em]" />
           <div className="mt-1 text-[13px] text-ink-2" dir="auto">{today.sales_count} {tr("sales", lang)}</div>
@@ -248,9 +258,11 @@ export function MunshiTab() {
 
       {/* Compact action bar: Munafa Insights, Manual Bill, Return, Guide */}
       <div className="no-scrollbar flex items-center gap-2 overflow-x-auto py-0.5">
-        <button type="button" onClick={() => openSheet({ type: "insights" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
-          <BarChart3 size={13} strokeWidth={SW} className="text-cash" /> {tr("insights", lang)}
-        </button>
+        {!helperMode && (
+          <button type="button" onClick={() => openSheet({ type: "insights" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+            <BarChart3 size={13} strokeWidth={SW} className="text-cash" /> {tr("insights", lang)}
+          </button>
+        )}
         <button type="button" onClick={openBlankBill} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
           <Plus size={13} strokeWidth={SW} /> {tr("newBill", lang)}
         </button>

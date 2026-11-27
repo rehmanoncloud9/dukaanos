@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Camera, Lock, Mic, Package, QrCode, WifiOff } from "lucide-react";
+import { BookOpen, Camera, Mic, Package, QrCode, WifiOff } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { newKey } from "@/lib/client/api";
@@ -89,6 +89,7 @@ function Shell() {
         <Header />
         <JudgeBanner />
         <OfflineBanner />
+        <PendingSyncBanner />
         {stateError && !state && <div role="alert" aria-live="assertive" className="mb-3 rounded-[12px] bg-udhaar-bg px-3 py-2 text-[14px] text-udhaar-ink">{stateError}</div>}
         {tab === "munshi" && <MunshiTab />}
         {tab === "khata" && <KhataTab />}
@@ -103,7 +104,7 @@ function Shell() {
 }
 
 function Header() {
-  const { tab, state, shop, xrayOn, setXrayOn, openSheet, reviewCount, openQueuedReview, lang } = useDukaan();
+  const { tab, state, shop, xrayOn, helperMode, openSheet, reviewCount, openQueuedReview, lang } = useDukaan();
   const press = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longFired = useRef(false);
   const name = state?.shop.name ?? shop?.name ?? "DukaanOS";
@@ -133,10 +134,6 @@ function Header() {
       {tab === "munshi" && (
         <>
           {titleButton(name)}
-          <span title={tr("zeroFbr", lang)} className={cx("inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-surface-sunken px-2 text-[11px] font-semibold text-ink-2", lang === "ur" && "urdu-ui")} dir="auto">
-            <Lock size={10} strokeWidth={SW} />
-            <span className="hidden min-[400px]:inline">{tr("zeroFbr", lang)}</span>
-          </span>
           {reviewCount > 0 && (
             <button
               onClick={() => void openQueuedReview()}
@@ -145,6 +142,11 @@ function Header() {
             >
               Review {reviewCount}
             </button>
+          )}
+          {helperMode && !xrayOn && (
+            <span className="ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-amber-bg px-2.5 text-[11px] font-semibold text-amber-ink">
+              Helper Mode
+            </span>
           )}
           {xrayOn && (
             <button
@@ -161,9 +163,16 @@ function Header() {
       {tab === "khata" && (
         <>
           {titleButton(tr("khata", lang))}
-          <button onClick={() => openSheet({ type: "passport" })} className="tactile ml-auto flex h-8 items-center gap-1.5 rounded-full bg-ink px-3 text-[13.5px] font-semibold text-white">
-            <QrCode size={14} strokeWidth={SW} /> SMEConnect
-          </button>
+          {helperMode && !xrayOn && (
+            <span className="ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-amber-bg px-2.5 text-[11px] font-semibold text-amber-ink">
+              Helper Mode
+            </span>
+          )}
+          {xrayOn && (
+            <button onClick={() => openSheet({ type: "passport" })} className="tactile ml-auto flex h-8 items-center gap-1.5 rounded-full bg-ink px-3 text-[13.5px] font-semibold text-white">
+              <QrCode size={14} strokeWidth={SW} /> SMEConnect
+            </button>
+          )}
         </>
       )}
       {tab === "maal" && (
@@ -208,6 +217,27 @@ function OfflineBanner() {
           Reconnect
         </button>
       )}
+    </div>
+  );
+}
+
+function PendingSyncBanner() {
+  const { online, pending, failedCount, flush, openSheet } = useDukaan();
+  if (!online || (pending === 0 && failedCount === 0)) return null;
+  return (
+    <div className={cx("mb-3 flex items-center gap-2 rounded-[12px] px-3 py-2 text-[13px] font-medium", failedCount > 0 ? "bg-udhaar-bg text-udhaar-ink" : "bg-amber-bg text-amber-ink")}>
+      <span className="flex-1">
+        {failedCount > 0
+          ? `${failedCount} entry sync nahi ho saki — check karein`
+          : `${pending} entry phone par baqi hai — sync ho rahi hai`}
+      </span>
+      <button
+        type="button"
+        onClick={() => (failedCount > 0 ? openSheet({ type: "settings" }) : void flush())}
+        className="tactile h-7 rounded-full bg-surface px-3 text-[12px] font-semibold text-ink"
+      >
+        {failedCount > 0 ? "Check" : "Sync now"}
+      </button>
     </div>
   );
 }

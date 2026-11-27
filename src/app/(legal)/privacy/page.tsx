@@ -30,28 +30,28 @@ export default function PrivacyPage() {
         <section className="space-y-2 text-[14.5px] leading-6 text-ink-2">
           <h2 className="text-[16px] font-bold text-ink">1. What we collect</h2>
           <p>
-            We store only what your kiryana khata needs: your shop profile (name, city), customer names/phones/tags you add, product catalog, and SHA-256 hash-chained ledger entries. We <strong>never</strong> ask for or collect CNIC numbers, NTN/STRN tax numbers, or bank account credentials.
+            We store only what your kiryana khata needs: your shop profile (name, city), customer names/phones/tags you add, product catalog, and tamper-evident ledger entries. We <strong>never</strong> ask for or collect CNIC numbers, NTN/STRN tax numbers, or bank account credentials.
           </p>
         </section>
 
         <section className="space-y-2 text-[14.5px] leading-6 text-ink-2">
           <h2 className="text-[16px] font-bold text-ink">2. Voice &amp; Parchi Photos (Transient Processing)</h2>
           <p>
-            Microphone audio clips and wholesale parchi photos are processed <strong>transiently</strong> to extract structured ledger items and are <strong>not stored</strong> on our servers after parsing. Offline clips stay solely in your device&apos;s IndexedDB until synced.
+            Microphone audio clips and wholesale parchi photos are processed <strong>transiently</strong> to extract structured ledger items and are <strong>not stored</strong> on our servers after parsing. Offline clips stay solely on your device until synced.
           </p>
         </section>
 
         <section className="space-y-2 text-[14.5px] leading-6 text-ink-2">
-          <h2 className="text-[16px] font-bold text-ink">3. Sub-processors &amp; Zero Sharing</h2>
+          <h2 className="text-[16px] font-bold text-ink">3. Sub-processors &amp; Private Records</h2>
           <p>
-            We do not sell or share your khata with advertisers, third-party brokers, or tax authorities (<strong>Zero FBR Linkage</strong>). Infrastructure processors used strictly to run the service: <strong>Supabase</strong> (PostgreSQL database &amp; auth) and <strong>Google Gemini API</strong> (transient speech/parchi parsing).
+            We do not sell or share your khata with advertisers, third-party brokers, or tax authorities. Infrastructure processors used strictly to run the service: <strong>Supabase</strong> (PostgreSQL database &amp; auth) and <strong>Google Gemini API</strong> (transient speech/parchi parsing).
           </p>
         </section>
 
         <section className="space-y-2 text-[14.5px] leading-6 text-ink-2">
-          <h2 className="text-[16px] font-bold text-ink">4. SMEConnect Trade Passport</h2>
+          <h2 className="text-[16px] font-bold text-ink">4. Trade Summary Sharing</h2>
           <p>
-            Your Ed25519-signed Trade Passport is generated only when you tap to share it. It is an <strong>informational summary only</strong> — not a credit score, underwriting decision, or tax filing.
+            Your signed Trade Summary QR is generated only when you tap to share it. It is an <strong>informational summary only</strong> — not a credit score, underwriting decision, or tax filing.
           </p>
         </section>
 

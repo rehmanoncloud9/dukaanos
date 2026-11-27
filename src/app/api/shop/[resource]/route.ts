@@ -107,6 +107,13 @@ const AddCustomer = z.object({ name: z.string().trim().min(1).max(60), phone: z.
 const UpdateCustomer = z.object({ customer_id: z.string().uuid(), phone: z.string().max(20).optional(), role_tag: z.string().max(40).optional() });
 const CreditLimit = z.object({ customer_id: z.string().uuid(), credit_limit_paisa: z.number().int().min(0).nullable() });
 const Price = z.object({ product_id: z.string().uuid(), unit_price_paisa: z.number().int().min(0) });
+const ReorderLevel = z.object({ product_id: z.string().uuid(), reorder_level_base_units: z.number().int().min(0).max(100_000_000) });
+const ShopProfile = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  owner_name: z.string().max(80).nullable().optional(),
+  phone: z.string().max(20).nullable().optional(),
+  city: z.string().max(80).nullable().optional(),
+});
 const Alias = z.object({ product_id: z.string().uuid(), alias: z.string().trim().min(1).max(60) });
 const AddProduct = z.object({
   name: z.string().trim().min(1).max(80),
@@ -147,6 +154,20 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     case "price": {
       const b = await parseJson(req, Price);
       return ok(await rpc(sb, "update_product_price", { p_shop_id: shopId, p_product_id: b.product_id, p_unit_price_paisa: b.unit_price_paisa }));
+    }
+    case "reorder-level": {
+      const b = await parseJson(req, ReorderLevel);
+      return ok(await rpc(sb, "update_product_reorder_level", { p_shop_id: shopId, p_product_id: b.product_id, p_reorder_level_base_units: b.reorder_level_base_units }));
+    }
+    case "profile": {
+      const b = await parseJson(req, ShopProfile);
+      return ok(await rpc(sb, "update_shop_profile", {
+        p_shop_id: shopId,
+        p_name: b.name ?? null,
+        p_owner_name: b.owner_name ?? null,
+        p_phone: b.phone ?? null,
+        p_city: b.city ?? null,
+      }));
     }
     case "alias": {
       const b = await parseJson(req, Alias);

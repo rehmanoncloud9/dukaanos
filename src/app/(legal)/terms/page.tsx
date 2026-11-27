@@ -30,21 +30,21 @@ export default function TermsPage() {
         <section className="space-y-2 text-[14.5px] leading-6 text-ink-2">
           <h2 className="text-[16px] font-bold text-ink">1. Ledger &amp; Bookkeeping Tool</h2>
           <p>
-            DukaanOS is a digital khata and inventory assistant for shopkeepers. You remain responsible for reviewing Tier-2 entries, customer balances, and wholesale parchi totals before confirming.
+            DukaanOS is a digital khata and inventory assistant for shopkeepers. You remain responsible for reviewing entries, customer balances, and wholesale parchi totals before confirming.
           </p>
         </section>
 
         <section className="space-y-2 text-[14.5px] leading-6 text-ink-2">
-          <h2 className="text-[16px] font-bold text-ink">2. Zero FBR &amp; Non-Financial-Advice</h2>
+          <h2 className="text-[16px] font-bold text-ink">2. Private Record &amp; Non-Financial-Advice</h2>
           <p>
-            DukaanOS has <strong>zero linkage</strong> to tax authorities (FBR) and does not provide tax, legal, accounting, or Shariah rulings. SMEConnect Trade Passports are owner-consented informational summaries only, not credit underwriting or lending offers.
+            DukaanOS has <strong>no linkage</strong> to tax authorities and does not provide tax, legal, accounting, or Shariah rulings. Trade Summaries are owner-consented informational summaries only, not credit underwriting or lending offers.
           </p>
         </section>
 
         <section className="space-y-2 text-[14.5px] leading-6 text-ink-2">
-          <h2 className="text-[16px] font-bold text-ink">3. Offline Queue &amp; Fair Use</h2>
+          <h2 className="text-[16px] font-bold text-ink">3. Offline Sync &amp; Fair Use</h2>
           <p>
-            Entries recorded offline are stored in your browser&apos;s IndexedDB and synced when connectivity returns using idempotency keys. Automated abuse or scraping of AI endpoints is prohibited and rate-limited.
+            Entries recorded offline are stored safely on your device and synced automatically without duplicates when connectivity returns. Automated abuse or scraping of AI endpoints is prohibited and rate-limited.
           </p>
         </section>
 

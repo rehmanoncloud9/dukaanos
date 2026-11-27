@@ -69,21 +69,29 @@ export function answerQuestionFromState(question: string, state: ShopState): str
     }
   }
 
-  // 3. Today's galla / hisaab
-  if (/\b(aaj|today|galla|kamai|hisaa?b|pulse)\b/.test(q) && !/\b(udhaar|baqaya|baqi)\b/.test(q)) {
-    return `Aaj ki kul bikri ${formatRs(state.today.gross_sales_paisa)} hai (${state.today.sales_count} sales · ${formatRs(state.today.cash_sales_paisa)} cash, ${formatRs(state.today.udhaar_paisa)} udhaar). Galla mein ${formatRs(state.today.cash_in_galla_paisa)} aur munafa ${formatRs(state.today.est_margin_paisa)} hai.`;
-  }
-
-  // 4. Customer balance lookup
+  // 3. Customer balance + recent verbal history lookup (checked before generic hisaab so "Bilal ka hisaab" resolves to Bilal)
   const custMatch = bestTokenMatch(question, customerEntries(catalog.customers), 0.65);
   if (custMatch) {
     const c = state.customers.find((x) => x.id === custMatch.id);
     if (c) {
       const overdue = c.days_overdue ? ` (${c.days_overdue} din purana)` : "";
+      const recent = state.feed
+        .filter((t) => t.customer_id === c.id && !t.is_reversed && t.type !== "reversal")
+        .slice(0, 3)
+        .map((t) => {
+          const dt = new Date(t.created_at).toLocaleDateString("en-PK", { day: "numeric", month: "short" });
+          return t.type === "payment" ? `${dt}: ${formatRs(t.total_paisa)} wasooli` : `${dt}: ${formatRs(t.total_paisa)}`;
+        });
+      const hist = recent.length > 0 ? ` Pichli entries: ${recent.join(", ")}.` : "";
       return c.balance_paisa > 0
-        ? `${c.name} ke zimme ${formatRs(c.balance_paisa)} udhaar hai${overdue}.`
-        : `${c.name} ka khata bilkul saaf hai (Rs. 0).`;
+        ? `${c.name} ke zimme ${formatRs(c.balance_paisa)} udhaar hai${overdue}.${hist}`
+        : `${c.name} ka khata bilkul saaf hai (Rs. 0).${hist}`;
     }
+  }
+
+  // 4. Today's galla / hisaab
+  if (/\b(aaj|today|galla|kamai|hisaa?b|pulse)\b/.test(q) && !/\b(udhaar|baqaya|baqi)\b/.test(q)) {
+    return `Aaj ki kul bikri ${formatRs(state.today.gross_sales_paisa)} hai (${state.today.sales_count} sales · ${formatRs(state.today.cash_sales_paisa)} cash, ${formatRs(state.today.udhaar_paisa)} udhaar). Galla mein ${formatRs(state.today.cash_in_galla_paisa)} aur munafa ${formatRs(state.today.est_margin_paisa)} hai.`;
   }
 
   if (/\b(udhaar|khata|balance|baqaya|baqi|baki|wasooli|overdue)\b/.test(q)) {

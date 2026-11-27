@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Check, ChevronDown, ChevronUp, ExternalLink, Link2, Phone, Printer, RotateCcw, Search, ShieldAlert, ShieldCheck, UserPlus, Volume2 } from "lucide-react";
+import { Calendar, Check, ChevronDown, ChevronUp, ExternalLink, Link2, Phone, Printer, QrCode, RotateCcw, Search, ShieldAlert, ShieldCheck, UserPlus, Volume2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "react-qr-code";
 import type { CommitResponse, StateCustomer } from "@/lib/api/contracts";
@@ -80,7 +80,7 @@ function useBharosa(): Record<string, BharosaItem> {
 }
 
 export function KhataTab() {
-  const { state, openSheet, lang } = useDukaan();
+  const { state, openSheet, lang, xrayOn, helperMode } = useDukaan();
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
@@ -113,7 +113,17 @@ export function KhataTab() {
   return (
     <div className="space-y-3 pb-24">
       <div className="surface-card p-4">
-        <div className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("totalReceivable", lang)}</div>
+        <div className="flex items-center justify-between gap-2">
+          <div className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("totalReceivable", lang)}</div>
+          <button
+            type="button"
+            aria-label="Kul udhaar sunein"
+            onClick={() => void speak(`Kul udhaar ${Math.round(receivable / 100)} rupay lena hai, ${active.length} logon par.`)}
+            className="tactile inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[11.5px] font-semibold text-ink-2"
+          >
+            <Volume2 size={12} strokeWidth={1.75} /> Suniye
+          </button>
+        </div>
         <Money paisa={receivable} className="mt-1 block text-[34px] font-bold leading-[38px] tracking-[-0.03em] text-udhaar" />
         <div className="hairline-t mt-3 flex justify-between pt-3 text-[14px]">
           <span className="text-ink-2" dir="auto">{active.length} {tr("activeAccounts", lang)}</span>
@@ -163,6 +173,15 @@ export function KhataTab() {
       <button onClick={() => setAdding(true)} className="tactile flex h-11 w-full items-center justify-center gap-2 rounded-[12px] border border-dashed border-black/20 text-[14px] font-semibold text-ink-2">
         <UserPlus size={16} strokeWidth={1.75} /> New customer
       </button>
+      {!xrayOn && !helperMode && (
+        <button
+          type="button"
+          onClick={() => openSheet({ type: "passport" })}
+          className="tactile flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-surface text-[13.5px] font-semibold text-ink-2 border border-black/10"
+        >
+          <QrCode size={15} strokeWidth={1.75} /> Bank / Karobar Summary (QR)
+        </button>
+      )}
       {adding && <NewCustomerSheet onClose={() => setAdding(false)} />}
     </div>
   );
@@ -298,6 +317,9 @@ function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: Bh
   const voice = useVoiceReminder();
   const msg = reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue });
   const od = (c.days_overdue ?? 0) > 15;
+  const latestRem = useMemo(() => readReminderLog(shopId, c.id)[0] ?? null, [shopId, c.id]);
+  const paidAfterRem = Boolean(latestRem && c.last_paid_at && new Date(c.last_paid_at).getTime() > latestRem.at);
+  const remindedRecently = Boolean(latestRem && !paidAfterRem && Date.now() - latestRem.at < 86_400_000);
 
   /** Mutual Khata: signed link + self-contained text; falls back to the plain reminder when offline. */
   const send = async (via: "wa" | "sms") => {
@@ -334,9 +356,12 @@ function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: Bh
           </div>
           <div className="mt-1 flex flex-wrap gap-1.5 empty:hidden">
             <BharosaBadges b={b} />
+            {paidAfterRem && <span className="rounded-[6px] bg-cash-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-cash-ink">Wasooli aa gayi ✓</span>}
+            {remindedRecently && <span className="rounded-[6px] bg-surface-sunken px-1.5 py-0.5 text-[11.5px] font-semibold text-ink-2">Aaj yaad dilaya ✓</span>}
           </div>
           <div className="text-[13px] text-ink-2">
             {c.role_tag ?? "Customer"} · Last paid {shortDate(c.last_paid_at)}
+            {!c.phone && c.balance_paisa > 0 ? " · Phone add karein" : ""}
           </div>
         </div>
         <Money paisa={c.balance_paisa} className={cx("text-[18px] font-bold", c.balance_paisa > 0 ? "text-udhaar" : "text-cash")} />
@@ -351,23 +376,19 @@ function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: Bh
         <button onClick={onWasooli} className="tactile h-9 rounded-full border border-cash/30 bg-cash-bg px-3.5 text-[13.5px] font-semibold text-cash-ink">
           Wasooli
         </button>
-        <button onClick={() => void send("wa")} disabled={sending !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
-          {sending === "wa" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />} WhatsApp
-        </button>
+        {c.balance_paisa > 0 && voice.ttsAvailable !== false ? (
+          <button onClick={() => void voice.run(c, shop, b)} disabled={voice.busyId !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
+            {voice.busyId === c.id ? <Spinner className="h-3.5 w-3.5" /> : <Volume2 size={14} strokeWidth={1.75} />}
+            Awaaz / WhatsApp
+          </button>
+        ) : (
+          <button onClick={() => void send("wa")} disabled={sending !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
+            {sending === "wa" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />} WhatsApp
+          </button>
+        )}
         <button onClick={() => void send("sms")} disabled={sending !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
           {sending === "sms" ? <Spinner className="h-3.5 w-3.5" /> : null} SMS (2G)
         </button>
-        {c.phone && (
-          <a href={`tel:${c.phone}`} className="tactile flex h-9 items-center gap-1 rounded-full border border-black/10 bg-surface-sunken px-3 text-[13.5px] font-semibold">
-            <Phone size={13} strokeWidth={1.75} /> Call
-          </a>
-        )}
-        {c.balance_paisa > 0 && voice.ttsAvailable !== false && (
-          <button onClick={() => void voice.run(c, shop, b)} disabled={voice.busyId !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
-            {voice.busyId === c.id ? <Spinner className="h-3.5 w-3.5" /> : <Volume2 size={14} strokeWidth={1.75} />}
-            Awaaz
-          </button>
-        )}
       </div>
     </div>
   );
@@ -411,7 +432,7 @@ function NewCustomerSheet({ onClose }: { onClose: () => void }) {
 }
 
 export function CustomerSheet({ customerId, onClose }: { customerId: string; onClose: () => void }) {
-  const { state, shopId, openSheet, xrayOn, refresh, toast } = useDukaan();
+  const { state, shopId, openSheet, xrayOn, helperMode, refresh, toast } = useDukaan();
   const c = state?.customers.find((x) => x.id === customerId);
   const [phone, setPhone] = useState(c?.phone ?? "");
   const [roleTag, setRoleTag] = useState(c?.role_tag ?? "");
@@ -618,13 +639,21 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
                 Copy Link
               </button>
             </div>
+            <a
+              href={`/report?customer_id=${c.id}`}
+              target="_blank"
+              rel="noreferrer"
+              className="tactile flex h-10 w-full items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface text-[13px] font-semibold text-ink"
+            >
+              <Printer size={14} strokeWidth={1.75} /> Print / PDF Dispute Statement
+            </a>
             {remLog.length > 0 && (
               <div className="rounded-[12px] bg-canvas px-3 py-2 text-[12px] text-ink-2">
                 <span className="font-semibold text-ink">Reminder history:</span>{" "}
                 {remLog.slice(0, 3).map((r) => `${r.channel.toUpperCase()} (${new Date(r.at).toLocaleDateString("en-PK", { day: "numeric", month: "short" })})`).join(" · ")}
               </div>
             )}
-            {c.balance_paisa > 0 && (
+            {c.balance_paisa > 0 && !helperMode && (
               <div className="surface-card p-3">
                 {!writeOffOpen ? (
                   <button
@@ -714,7 +743,7 @@ interface PassportResponse {
 }
 
 export function PassportSheet({ onClose }: { onClose: () => void }) {
-  const { toast } = useDukaan();
+  const { toast, xrayOn } = useDukaan();
   const [days, setDays] = useState<"7" | "30" | "90">("30");
   const [p, setP] = useState<PassportResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -746,7 +775,7 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
   const s = p?.summary;
   const pl = p?.payload;
   return (
-    <Sheet open onClose={onClose} title="SMEConnect Trade Passport" right={<button onClick={onClose} className="text-[16px] font-semibold">Done</button>}>
+    <Sheet open onClose={onClose} title={xrayOn ? "SMEConnect Trade Passport" : "Karobar Summary (QR)"} right={<button onClick={onClose} className="text-[16px] font-semibold">Done</button>}>
       <div className="space-y-3 px-4 pb-[max(16px,env(safe-area-inset-bottom))]">
         <Segmented<"7" | "30" | "90">
           value={days}
@@ -760,16 +789,16 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
         <div className="overflow-hidden rounded-[20px] border border-pass-emerald/30 bg-pass-bg text-pass-ink">
           <div className="h-[3px] bg-pass-emerald" />
           {!p ? (
-            <div className="flex h-[420px] items-center justify-center gap-2 text-pass-muted">{err ? err : <><Spinner /> Signing with Ed25519…</>}</div>
+            <div className="flex h-[420px] items-center justify-center gap-2 text-pass-muted">{err ? err : <><Spinner /> {xrayOn ? "Signing with Ed25519…" : "Summary tayyar ho rahi hai…"}</>}</div>
           ) : (
             <>
               <div className="px-5 pt-4">
                 <div className="flex items-center justify-between">
                   <span className="text-[15px]">
-                    <b>DukaanOS</b> <span className="text-pass-muted">SMEConnect</span>
+                    <b>DukaanOS</b> <span className="text-pass-muted">{xrayOn ? "SMEConnect" : "Karobar"}</span>
                   </span>
                   <span className="rounded-full border border-pass-emerald/50 px-2 py-0.5 font-mono text-[10.5px] tracking-wide text-pass-emerald">
-                    {sigOk === false ? "SIG INVALID" : "Ed25519 VERIFIED"}
+                    {sigOk === false ? "SIG INVALID" : xrayOn ? "Ed25519 VERIFIED" : "VERIFIED ✓"}
                   </span>
                 </div>
                 <div className="mt-3 text-[24px] font-bold tracking-[-0.02em]">{s!.shop_name}</div>
@@ -778,7 +807,7 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-2 border-t border-white/10 pt-3">
                   <div>
-                    <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-pass-muted">{pl!.pd}D GMV</div>
+                    <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-pass-muted">{xrayOn ? `${pl!.pd}D GMV` : `${pl!.pd}D Bikri`}</div>
                     <div className="num mt-0.5 text-[17px] font-bold">{formatRsCompact(s!.gmv_paisa)}</div>
                   </div>
                   <div>
@@ -796,36 +825,38 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
                   <div className="mt-3 flex items-center justify-between rounded-[12px] border border-pass-emerald/30 bg-pass-elevated px-3 py-2.5">
                     <div>
                       <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-pass-muted">Gahak-tasdeeq udhaar</div>
-                      <div className="text-[12px] text-pass-muted">{pl!.att ?? 0} attestations · {((pl!.dr_bp ?? 0) / 100).toFixed(1)}% disputed</div>
+                      <div className="text-[12px] text-pass-muted">{pl!.att ?? 0} confirmations · {((pl!.dr_bp ?? 0) / 100).toFixed(1)}% disputed</div>
                     </div>
                     <div className="num text-[22px] font-bold text-pass-emerald">{((pl!.vr_bp ?? 0) / 100).toFixed(0)}%</div>
                   </div>
                 )}
                 <div className="mt-3 flex items-center justify-between border-t border-white/10 py-3 font-mono text-[11.5px]">
                   <span className="text-pass-muted">
-                    SHA-256 {pl!.h.slice(0, 4)}…{pl!.h.slice(-4)} · {pl!.txn} links
+                    {xrayOn ? `SHA-256 ${pl!.h.slice(0, 4)}…${pl!.h.slice(-4)} · ${pl!.txn} links` : `Verified Record · ${pl!.txn} entries`}
                   </span>
-                  <span className={sigOk ? "text-pass-emerald" : "text-udhaar"}>{sigOk === null ? "VERIFYING…" : sigOk ? "SIG VALID ✓" : "SIG INVALID ✗"}</span>
+                  <span className={sigOk ? "text-pass-emerald" : "text-udhaar"}>{sigOk === null ? "VERIFYING…" : sigOk ? (xrayOn ? "SIG VALID ✓" : "VALID ✓") : "INVALID ✗"}</span>
                 </div>
               </div>
               <div className="flex flex-col items-center bg-pass-elevated px-5 py-5">
                 <div className="rounded-[16px] bg-white p-3">
                   <QRCode value={p.verify_url} size={168} level="M" fgColor="#0F172A" bgColor="#FFFFFF" />
                 </div>
-                <a href={`/verify#${p.token}`} target="_blank" rel="noreferrer" className="mt-4 flex items-center gap-1.5 rounded-[10px] border border-pass-emerald/50 bg-pass-emerald/10 px-3 py-2 font-mono text-[12px] text-pass-emerald">
-                  Simulate Judge Phone Scan (/verify) <ExternalLink size={12} strokeWidth={1.75} />
+                <a href={xrayOn ? `/verify?xray=1#${p.token}` : `/verify#${p.token}`} target="_blank" rel="noreferrer" className="mt-4 flex items-center gap-1.5 rounded-[10px] border border-pass-emerald/50 bg-pass-emerald/10 px-3 py-2 font-mono text-[12px] text-pass-emerald">
+                  {xrayOn ? "Simulate Judge Phone Scan (/verify)" : "Verify link kholein"} <ExternalLink size={12} strokeWidth={1.75} />
                 </a>
               </div>
-              <div className="px-5 py-3 text-center text-[11.5px] leading-[16px] text-pass-muted">{p.disclaimer}</div>
+              <div className="px-5 py-3 text-center text-[11.5px] leading-[16px] text-pass-muted">
+                {xrayOn ? p.disclaimer : "Sirf dukaandar ki marzi se share ki gayi karobari summary — loan ya tax faisla nahi."}
+              </div>
             </>
           )}
         </div>
         {p && (
           <div className="space-y-2.5">
             <div className="surface-card p-3.5 text-[12.5px] leading-[18px] text-ink-2">
-              <div className="font-semibold text-ink">What this QR shares (Owner-consented)</div>
-              <div className="mt-1">Shared: {days}-day GMV, cash/credit split, recovery %, active days, Bharosa attestation rate, SHA-256 head hash.</div>
-              <div className="mt-1 text-cash-ink">Never shared: CNIC, NTN/FBR data, customer names, phone numbers, or line-item receipts.</div>
+              <div className="font-semibold text-ink">Kya share hota hai (Owner-consented)</div>
+              <div className="mt-1">Share hota hai: {days}-din ki kul bikri, cash/udhaar hissa, wasooli %, active din, gahak-tasdeeq %.</div>
+              <div className="mt-1 text-cash-ink">Kabhi share nahi hota: CNIC, tax/FBR data, gahak ke naam/phone, ya bills ki tafseel.</div>
             </div>
             <div className="grid grid-cols-2 gap-2.5">
               <a href="/report" target="_blank" rel="noreferrer" className="tactile flex h-11 items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold">
@@ -848,7 +879,7 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
                 setRevoking(true);
                 try {
                   await api("/api/shop/passport-revoke", { json: {} });
-                  toast("Pichle sab Passport links revoke ho gaye — naya QR issue ho raha hai", "ok");
+                  toast("Purane sab QR links band ho gaye — naya QR tayyar ho raha hai", "ok");
                   loadPassport(days);
                 } catch (e) {
                   toast(friendlyError(e), "err");
@@ -858,11 +889,11 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
               }}
               className="tactile flex h-10 w-full items-center justify-center gap-1.5 rounded-[12px] bg-udhaar-bg text-[13px] font-semibold text-udhaar-ink disabled:opacity-50"
             >
-              <ShieldAlert size={14} strokeWidth={1.75} /> {revoking ? "Revoking…" : "Revoke previously shared Passports"}
+              <ShieldAlert size={14} strokeWidth={1.75} /> {revoking ? "Band ho raha hai…" : xrayOn ? "Revoke previously shared Passports" : "Purane shared QR links band karein"}
             </button>
           </div>
         )}
-        {p && <div className="mt-2 text-center text-[12px] text-ink-2">Receivable today {formatRs(s!.receivable_paisa)} · chain {p.chain.checked} links verified before signing</div>}
+        {p && <div className="mt-2 text-center text-[12px] text-ink-2">Receivable today {formatRs(s!.receivable_paisa)} · {p.chain.checked} entries verified</div>}
       </div>
     </Sheet>
   );

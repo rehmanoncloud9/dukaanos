@@ -217,7 +217,7 @@ export function MutualKhataClient() {
 
       <footer className="mt-8 flex items-start gap-2 px-1 text-[12.5px] leading-[18px] text-ink-2">
         <ShieldCheck size={16} strokeWidth={SW} className="mt-0.5 shrink-0 text-cash" aria-hidden />
-        <span>Har entry aur aap ka har jawab SHA-256 hash-chain mein mehfooz hai — koi baad mein badal nahi sakta. Yeh link sirf aap ke liye hai. · DukaanOS</span>
+        <span>Har entry aur aap ka har jawab mehfooz hai — koi baad mein badal nahi sakta. Yeh link sirf aap ke liye hai. · DukaanOS</span>
       </footer>
     </main>
   );
