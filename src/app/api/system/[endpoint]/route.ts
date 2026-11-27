@@ -71,8 +71,8 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     if (!memberships.some((shop) => shop.id === shopId)) throw new ApiError("FORBIDDEN", "Shop membership required");
     const { text } = await parseJson(req, z.object({ text: z.string().trim().min(1).max(400) }));
     const r = await synthesizeUrdu(text, shopId);
-    return new Response(new Uint8Array(r.wav), {
-      headers: { "content-type": "audio/wav", "x-model": r.model, "x-latency-ms": String(r.latency_ms), "cache-control": "no-store" },
+    return new Response(new Uint8Array(r.audio), {
+      headers: { "content-type": r.mimeType, "x-model": r.model, "x-latency-ms": String(r.latency_ms), "cache-control": "no-store" },
     });
   }
   if (endpoint === "shops") {
