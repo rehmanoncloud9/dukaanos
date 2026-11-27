@@ -80,10 +80,34 @@ function pcmToWav(pcm: Buffer, sampleRate = 24000, channels = 1, bits = 16): Buf
   return Buffer.concat([header, pcm]);
 }
 
+const TTS_CACHE_TTL_MS = 15 * 60 * 1000;
+const TTS_CACHE_MAX = 50;
+const ttsCache = new Map<string, { buf: Buffer; expiresAt: number }>();
+
+let warmEdgeClient: MsEdgeTTS | null = null;
+let warmEdgePromise: Promise<MsEdgeTTS> | null = null;
+
+async function getWarmEdgeClient(): Promise<MsEdgeTTS> {
+  if (warmEdgeClient) return warmEdgeClient;
+  if (!warmEdgePromise) {
+    warmEdgePromise = (async () => {
+      const tts = new MsEdgeTTS({ connectionTimeoutMs: 4000, synthesisTimeoutMs: 5000 });
+      await tts.setMetadata("ur-PK-AsadNeural", OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, { voiceLocale: "ur-PK" });
+      warmEdgeClient = tts;
+      return tts;
+    })().finally(() => {
+      warmEdgePromise = null;
+    });
+  }
+  return warmEdgePromise;
+}
+
 async function synthesizeEdgeUrdu(text: string): Promise<Buffer> {
-  const tts = new MsEdgeTTS({ connectionTimeoutMs: 4000, synthesisTimeoutMs: 5000 });
-  try {
-    await tts.setMetadata("ur-PK-AsadNeural", OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, { voiceLocale: "ur-PK" });
+  const cached = ttsCache.get(text);
+  if (cached && cached.expiresAt > Date.now()) return cached.buf;
+
+  const runOnce = async () => {
+    const tts = await getWarmEdgeClient();
     const { audioStream } = tts.toStream(text, { rate: "-4%", pitch: "+0Hz", volume: "+0%" });
     const chunks: Buffer[] = [];
     for await (const chunk of audioStream) {
@@ -92,9 +116,24 @@ async function synthesizeEdgeUrdu(text: string): Promise<Buffer> {
     const buf = Buffer.concat(chunks);
     if (!buf.length) throw new Error("Edge TTS returned empty audio");
     return buf;
-  } finally {
-    tts.close();
+  };
+
+  let buf: Buffer;
+  try {
+    buf = await runOnce();
+  } catch {
+    // Reconnect once if the warm WebSocket was closed by idle timeout.
+    try { warmEdgeClient?.close(); } catch { /* ignore */ }
+    warmEdgeClient = null;
+    buf = await runOnce();
   }
+
+  if (ttsCache.size >= TTS_CACHE_MAX) {
+    const oldest = ttsCache.keys().next().value;
+    if (oldest) ttsCache.delete(oldest);
+  }
+  ttsCache.set(text, { buf, expiresAt: Date.now() + TTS_CACHE_TTL_MS });
+  return buf;
 }
 
 export async function synthesizeUrdu(

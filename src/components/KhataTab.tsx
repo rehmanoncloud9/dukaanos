@@ -10,8 +10,7 @@ import { tr } from "@/lib/client/i18n";
 import { speak } from "@/lib/client/speak";
 import { useDukaan } from "@/lib/client/store";
 import { verifyPassport, type PassportPayload, type TradeSummary } from "@/lib/crypto/passport";
-import { rankReminders, reminderText, smsLink, voiceReminderScript, waLink } from "@/lib/domain/messages";
-import { sendVoiceNote } from "@/lib/client/voice-note";
+import { rankReminders, reminderText, smsLink, waLink } from "@/lib/domain/messages";
 import { formatRs, formatRsCompact, rupeesToPaisa } from "@/lib/domain/money";
 import { FeedRow } from "./MunshiTab";
 import { cx, Money, PrimaryButton, SecondaryButton, Segmented, Sheet, shortDate, Spinner } from "./ui";
@@ -183,69 +182,10 @@ function todayPkt(): string {
   return isoDate(pktToday());
 }
 
-let cachedTtsAvailable: boolean | null = null;
-let ttsCheckPromise: Promise<boolean> | null = null;
-
-function useTtsAvailable(): boolean | null {
-  const [avail, setAvail] = useState<boolean | null>(cachedTtsAvailable);
-  useEffect(() => {
-    if (cachedTtsAvailable !== null) return;
-    if (!ttsCheckPromise) {
-      ttsCheckPromise = api<{ ur_pk_tts?: boolean; models_available?: Record<string, boolean> | null }>("/api/system/health", { auth: false, shop: false })
-        .then((h) => h.ur_pk_tts === true || h.models_available?.tts === true)
-        .catch(() => false);
-    }
-    void ttsCheckPromise.then((v) => {
-      cachedTtsAvailable = v;
-      setAvail(v);
-    });
-  }, []);
-  return avail;
-}
-
-/** Voice-note reminder: TTS audio → share sheet; or explicit WhatsApp Text + Khata Link when TTS is disabled. */
-function useVoiceReminder() {
-  const { toast, shopId } = useDukaan();
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const ttsAvailable = useTtsAvailable();
-  const run = async (c: StateCustomer, shop: string, b?: BharosaItem) => {
-    setBusyId(c.id);
-    const fallbackText = reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue });
-    if (ttsAvailable === false) {
-      try {
-        const r = await api<{ wa: string }>("/api/khata/link", { json: { customer_id: c.id } });
-        logReminder(shopId, c.id, "wa");
-        window.open(r.wa, "_blank", "noopener,noreferrer");
-      } catch {
-        logReminder(shopId, c.id, "wa");
-        window.open(waLink(c.phone, fallbackText), "_blank", "noopener,noreferrer");
-      } finally {
-        setBusyId(null);
-      }
-      return;
-    }
-    const script = voiceReminderScript({
-      name: c.name, shop, balance_paisa: c.balance_paisa,
-      promise_label: b?.promise_date && b.promise_state !== "kept" ? wadaLabel(b.promise_date).split(",")[0] : null,
-    });
-    try {
-      const how = await sendVoiceNote(script, c.name, fallbackText);
-      logReminder(shopId, c.id, "voice");
-      toast(how === "shared" ? "Awaaz wali yaad-dihani bhej di" : "Voice note download ho gaya — WhatsApp par bhejein", "ok");
-    } catch {
-      toast("Awaaz abhi nahi bani — text yaad-dihani khul rahi hai", "warn");
-      logReminder(shopId, c.id, "wa");
-      window.open(waLink(c.phone, fallbackText), "_blank", "noopener,noreferrer");
-    } finally {
-      setBusyId(null);
-    }
-  };
-  return { busyId, run, ttsAvailable };
-}
-
 /** "Aaj kisko yaad dilana hai" — the app does the asking so the shopkeeper doesn't have to. */
 function RemindToday({ customers, bharosa, shop }: { customers: StateCustomer[]; bharosa: Record<string, BharosaItem>; shop: string }) {
-  const { busyId, run, ttsAvailable } = useVoiceReminder();
+  const { shopId } = useDukaan();
+  const [busyId, setBusyId] = useState<string | null>(null);
   const ranked = rankReminders(
     customers.map((c) => ({
       id: c.id, name: c.name, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue ?? null,
@@ -255,6 +195,21 @@ function RemindToday({ customers, bharosa, shop }: { customers: StateCustomer[];
   );
   if (ranked.length === 0) return null;
   const why = { wada_broken: "Wada toota", wada_due: "Aaj wada hai", overdue: "din se baqaya" } as const;
+
+  const sendReminder = async (c: StateCustomer) => {
+    setBusyId(c.id);
+    logReminder(shopId, c.id, "wa");
+    const fallbackText = reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue });
+    try {
+      const r = await api<{ wa: string }>("/api/khata/link", { json: { customer_id: c.id } });
+      window.open(r.wa, "_blank", "noopener,noreferrer");
+    } catch {
+      window.open(waLink(c.phone, fallbackText), "_blank", "noopener,noreferrer");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="surface-card overflow-hidden">
       <div className="flex items-center justify-between px-4 pt-3.5">
@@ -271,10 +226,10 @@ function RemindToday({ customers, bharosa, shop }: { customers: StateCustomer[];
                 {r.reason === "overdue" ? `${r.days_overdue} ${why.overdue}` : why[r.reason]} · {formatRs(r.balance_paisa)}
               </div>
             </div>
-            <button onClick={() => void run(c, shop, bharosa[c.id])} disabled={busyId !== null}
+            <button onClick={() => void sendReminder(c)} disabled={busyId !== null}
               className="tactile flex h-11 shrink-0 items-center gap-1.5 rounded-[12px] bg-ink px-3.5 text-[13.5px] font-semibold text-white disabled:opacity-60">
-              {busyId === c.id ? <Spinner className="h-4 w-4" /> : ttsAvailable === false ? <Link2 size={15} strokeWidth={1.75} /> : <Volume2 size={15} strokeWidth={1.75} />}
-              {ttsAvailable === false ? "WhatsApp" : "Awaaz bhejein"}
+              {busyId === c.id ? <Spinner className="h-4 w-4" /> : <Link2 size={15} strokeWidth={1.75} />}
+              WhatsApp
             </button>
           </div>
         );
@@ -319,7 +274,6 @@ function customerOverviewSpeech(c: StateCustomer, b?: BharosaItem): string {
 function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: BharosaItem; shop: string; onOpen: () => void; onWasooli: () => void }) {
   const { toast, confirmPayment, shopId, lang } = useDukaan();
   const [sending, setSending] = useState<"wa" | "sms" | null>(null);
-  const voice = useVoiceReminder();
   const msg = reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue });
   const od = (c.days_overdue ?? 0) > 15;
   const latestRem = useMemo(() => readReminderLog(shopId, c.id)[0] ?? null, [shopId, c.id]);
@@ -381,16 +335,9 @@ function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: Bh
         <button onClick={onWasooli} className="tactile h-9 rounded-full border border-cash/30 bg-cash-bg px-3.5 text-[13.5px] font-semibold text-cash-ink">
           Wasooli
         </button>
-        {c.balance_paisa > 0 && voice.ttsAvailable !== false ? (
-          <button onClick={() => void voice.run(c, shop, b)} disabled={voice.busyId !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
-            {voice.busyId === c.id ? <Spinner className="h-3.5 w-3.5" /> : <Volume2 size={14} strokeWidth={1.75} />}
-            Awaaz / WhatsApp
-          </button>
-        ) : (
-          <button onClick={() => void send("wa")} disabled={sending !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
-            {sending === "wa" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />} WhatsApp
-          </button>
-        )}
+        <button onClick={() => void send("wa")} disabled={sending !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
+          {sending === "wa" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />} WhatsApp
+        </button>
         <button onClick={() => void send("sms")} disabled={sending !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
           {sending === "sms" ? <Spinner className="h-3.5 w-3.5" /> : null} SMS (2G)
         </button>
