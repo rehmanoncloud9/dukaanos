@@ -24,16 +24,27 @@ function pcmToWav(pcm: Buffer, sampleRate = 24000, channels = 1, bits = 16): Buf
   return Buffer.concat([header, pcm]);
 }
 
+const URDU_DIGITS = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+
+function toUrduDigits(input: string): string {
+  return input.replace(/\d/g, (d) => URDU_DIGITS[Number(d)] ?? d);
+}
+
 function normalizeUrduSpeechText(text: string): string {
-  return text
+  const cleaned = text
     .replace(/\bRs\.?\s*/gi, "روپے ")
     .replace(/\brupay\b/gi, "روپے")
     .replace(/\budhaar\b/gi, "ادھار")
     .replace(/\bcash\b/gi, "نقد")
     .replace(/\bwasooli\b/gi, "وصولی")
     .replace(/\bkhata\b/gi, "کھاتہ")
+    .replace(/\bsales?\b/gi, "فروخت")
+    .replace(/\bitems?\b/gi, "اشیاء")
+    .replace(/\bbill\b/gi, "بل")
     .replace(/\s+/g, " ")
     .trim();
+  // Use Urdu-Indic digits so the voice stays in Pakistani Urdu cadence rather than switching to English for numbers.
+  return toUrduDigits(cleaned);
 }
 
 export async function synthesizeUrdu(text: string, shopId: string): Promise<{ wav: Buffer; model: string; latency_ms: number }> {

@@ -12,6 +12,7 @@ async function pickUrduVoice(): Promise<SpeechSynthesisVoice | null> {
     });
   }
   return (
+    voices.find((v) => /ur(-|_)?PK/i.test(v.lang) && /asad|uzma|google|natural/i.test(v.name)) ??
     voices.find((v) => /ur(-|_)?PK/i.test(v.lang)) ??
     voices.find((v) => /^ur/i.test(v.lang)) ??
     voices.find((v) => /hi(-|_)?IN/i.test(v.lang)) ??
@@ -35,8 +36,8 @@ export async function speak(text: string, budgetMs = 2500): Promise<"tts" | "bro
     const u = new SpeechSynthesisUtterance(text);
     u.voice = await pickUrduVoice();
     u.lang = u.voice?.lang ?? "ur-PK";
-    u.rate = 0.92;
-    u.pitch = 1.0;
+    u.rate = 0.9;
+    u.pitch = 0.98;
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
     return "browser";

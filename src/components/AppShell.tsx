@@ -222,21 +222,19 @@ function OfflineBanner() {
 }
 
 function PendingSyncBanner() {
-  const { online, pending, failedCount, flush, openSheet } = useDukaan();
-  if (!online || (pending === 0 && failedCount === 0)) return null;
+  const { online, failedCount, openSheet } = useDukaan();
+  if (!online || failedCount === 0) return null;
   return (
-    <div className={cx("mb-3 flex items-center gap-2 rounded-[12px] px-3 py-2 text-[13px] font-medium", failedCount > 0 ? "bg-udhaar-bg text-udhaar-ink" : "bg-amber-bg text-amber-ink")}>
+    <div className="mb-3 flex items-center gap-2 rounded-[12px] bg-udhaar-bg px-3 py-2 text-[13px] font-medium text-udhaar-ink">
       <span className="flex-1">
-        {failedCount > 0
-          ? `${failedCount} entry sync nahi ho saki — check karein`
-          : `${pending} entry phone par baqi hai — sync ho rahi hai`}
+        {`${failedCount} entry sync nahi ho saki — check karein`}
       </span>
       <button
         type="button"
-        onClick={() => (failedCount > 0 ? openSheet({ type: "settings" }) : void flush())}
+        onClick={() => openSheet({ type: "settings" })}
         className="tactile h-7 rounded-full bg-surface px-3 text-[12px] font-semibold text-ink"
       >
-        {failedCount > 0 ? "Check" : "Sync now"}
+        Check
       </button>
     </div>
   );

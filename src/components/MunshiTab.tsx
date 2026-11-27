@@ -129,7 +129,10 @@ export function MunshiTab() {
   const [stripOpen, setStripOpen] = useState(false);
   const [moreActions, setMoreActions] = useState(false);
   const [held, setHeld] = useState<HeldBill[]>([]);
-  const [showGuide, setShowGuide] = useState(false);
+  const [showGuide, setShowGuide] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("dukaanos.guide.dismissed") !== "1";
+  });
   const [typing, setTypingState] = useState(() =>
     typeof window !== "undefined" && sessionStorage.getItem("dukaanos.typing") === "1",
   );
@@ -330,7 +333,14 @@ export function MunshiTab() {
                 <button
                   type="button"
                   aria-label="Dismiss guide"
-                  onClick={() => setShowGuide(false)}
+                  onClick={() => {
+                    try {
+                      localStorage.setItem("dukaanos.guide.dismissed", "1");
+                    } catch {
+                      /* ignore */
+                    }
+                    setShowGuide(false);
+                  }}
                   className="grid h-7 w-7 place-items-center text-ink-3"
                 >
                   <X size={14} strokeWidth={SW} />
