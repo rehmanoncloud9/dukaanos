@@ -21,7 +21,42 @@ async function pickUrduVoice(): Promise<SpeechSynthesisVoice | null> {
 }
 
 const audioCache = new Map<string, Blob>();
+const inflight = new Map<string, Promise<Blob>>();
 let activeAudio: HTMLAudioElement | null = null;
+
+async function fetchTtsBlob(text: string, budgetMs: number): Promise<Blob> {
+  const key = text.trim();
+  const cached = audioCache.get(key);
+  if (cached) return cached;
+
+  let pending = inflight.get(key);
+  if (!pending) {
+    pending = Promise.race([
+      api<Response>("/api/system/tts", { json: { text: key }, raw: true, timeoutMs: budgetMs + 500 }),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("tts budget")), budgetMs)),
+    ])
+      .then((res) => res.blob())
+      .then((blob) => {
+        if (audioCache.size >= 30) {
+          const oldest = audioCache.keys().next().value;
+          if (oldest) audioCache.delete(oldest);
+        }
+        audioCache.set(key, blob);
+        return blob;
+      })
+      .finally(() => {
+        inflight.delete(key);
+      });
+    inflight.set(key, pending);
+  }
+  return pending;
+}
+
+/** Silently pre-warm Urdu audio in memory so Suniye plays in 0 ms when tapped. */
+export function prefetchSpeak(text: string): void {
+  if (typeof window === "undefined" || !text.trim()) return;
+  void fetchTtsBlob(text, 7000).catch(() => undefined);
+}
 
 async function playBlob(blob: Blob): Promise<void> {
   if (activeAudio) {
@@ -38,29 +73,12 @@ async function playBlob(blob: Blob): Promise<void> {
 /** F-12 query-only readout: server ur-PK neural TTS (with blob cache), else browser speechSynthesis (ur-PK). */
 export async function speak(text: string, budgetMs = 7000): Promise<"tts" | "browser" | "none"> {
   const key = text.trim();
-  const cached = audioCache.get(key);
-  if (cached) {
-    try {
-      await playBlob(cached);
-      return "tts";
-    } catch {
-      audioCache.delete(key);
-    }
-  }
   try {
-    const res = await Promise.race([
-      api<Response>("/api/system/tts", { json: { text }, raw: true, timeoutMs: budgetMs + 500 }),
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("tts budget")), budgetMs)),
-    ]);
-    const blob = await res.blob();
-    if (audioCache.size >= 30) {
-      const oldest = audioCache.keys().next().value;
-      if (oldest) audioCache.delete(oldest);
-    }
-    audioCache.set(key, blob);
+    const blob = await fetchTtsBlob(key, budgetMs);
     await playBlob(blob);
     return "tts";
   } catch {
+    audioCache.delete(key);
     if (typeof speechSynthesis === "undefined") return "none";
     const u = new SpeechSynthesisUtterance(text);
     u.voice = await pickUrduVoice();

@@ -6,7 +6,7 @@ import type { FeedTx, Pulse, StateProduct } from "@/lib/api/contracts";
 import { api, newKey } from "@/lib/client/api";
 import { HELD_EVENT, listHeldBills, removeHeldBill, type HeldBill } from "@/lib/client/held-bills";
 import { tr } from "@/lib/client/i18n";
-import { speak } from "@/lib/client/speak";
+import { prefetchSpeak, speak } from "@/lib/client/speak";
 import { useDukaan } from "@/lib/client/store";
 import { formatBaseQty } from "@/lib/domain/desi-units";
 import { formatRs } from "@/lib/domain/money";
@@ -168,6 +168,25 @@ export function MunshiTab() {
     setNextSeq(null);
   }, [head]);
 
+  const dailySummaryScript = state
+    ? (() => {
+        const cash = Math.round(state.today.cash_sales_paisa / 100);
+        const udhaar = Math.round(state.today.udhaar_paisa / 100);
+        const alerts = pulse && (pulse.overdue.count > 0 || pulse.stockout.count > 0)
+          ? ` ${pulse.overdue.count} کھاتے پندرہ دن سے پرانے ہیں، اور ${pulse.stockout.count} اشیاء کا اسٹاک کم ہے۔`
+          : "";
+        return `آج کا حساب: نقد فروخت ${cash} روپے، ادھار ${udhaar} روپے، اور کل ${state.today.sales_count} بل بنے۔${alerts}`;
+      })()
+    : "";
+
+  useEffect(() => {
+    if (dailySummaryScript) prefetchSpeak(dailySummaryScript);
+  }, [dailySummaryScript]);
+
+  useEffect(() => {
+    if (showGuide) prefetchSpeak("مائیک دبا کر بولیں: ایک کلو چینی نقد، یا علی کو پانچ سو ادھار، یا صبح کا حساب بتاؤ۔");
+  }, [showGuide]);
+
   const openBlankBill = () => {
     const emptyProposal: SaleProposal = {
       kind: "sale",
@@ -232,14 +251,7 @@ export function MunshiTab() {
             <button
               type="button"
               aria-label={tr("listen", lang)}
-              onClick={() => {
-                const cash = Math.round(today.cash_sales_paisa / 100);
-                const udhaar = Math.round(today.udhaar_paisa / 100);
-                const alerts = pulse && (pulse.overdue.count > 0 || pulse.stockout.count > 0)
-                  ? ` ${pulse.overdue.count} کھاتے پندرہ دن سے پرانے ہیں، اور ${pulse.stockout.count} اشیاء کا اسٹاک کم ہے۔`
-                  : "";
-                void speak(`آج کا حساب: نقد فروخت ${cash} روپے، ادھار ${udhaar} روپے، اور کل ${today.sales_count} بل بنے۔${alerts}`);
-              }}
+              onClick={() => void speak(dailySummaryScript)}
               className="tactile inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[11.5px] font-semibold text-ink-2"
             >
               <Volume2 size={12} strokeWidth={SW} /> {tr("listen", lang)}
