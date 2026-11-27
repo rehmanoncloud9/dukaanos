@@ -232,10 +232,17 @@ export function MunshiTab() {
             <button
               type="button"
               aria-label={tr("listen", lang)}
-              onClick={() => void speak(`آج کی نقد فروخت ${Math.round(today.cash_sales_paisa / 100)} روپے اور ادھار ${Math.round(today.udhaar_paisa / 100)} روپے ہے، کل ${today.sales_count} بل بنے۔`)}
-              className="tactile grid h-6 w-6 place-items-center rounded-full bg-surface-sunken text-ink-2"
+              onClick={() => {
+                const cash = Math.round(today.cash_sales_paisa / 100);
+                const udhaar = Math.round(today.udhaar_paisa / 100);
+                const alerts = pulse && (pulse.overdue.count > 0 || pulse.stockout.count > 0)
+                  ? ` ${pulse.overdue.count} کھاتے پندرہ دن سے پرانے ہیں، اور ${pulse.stockout.count} اشیاء کا اسٹاک کم ہے۔`
+                  : "";
+                void speak(`آج کا حساب: نقد فروخت ${cash} روپے، ادھار ${udhaar} روپے، اور کل ${today.sales_count} بل بنے۔${alerts}`);
+              }}
+              className="tactile inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[11.5px] font-semibold text-ink-2"
             >
-              <Volume2 size={12} strokeWidth={SW} />
+              <Volume2 size={12} strokeWidth={SW} /> {tr("listen", lang)}
             </button>
           </div>
           <Money paisa={today.cash_sales_paisa} className="mt-1.5 block text-[22px] font-bold leading-[26px] tracking-[-0.02em]" />
