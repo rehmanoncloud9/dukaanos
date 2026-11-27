@@ -415,7 +415,7 @@ export function SaleReviewSheet({ proposal: initial, idemKey, trace, onClose }: 
           type="button"
           onClick={() => {
             const cust = customers.find((c) => c.id === p.customer.selected_id)?.name;
-            const script = `${cust ? `${cust} ka ` : ""}kul bill ${Math.round(p.total_paisa / 100)} rupay hai${p.cash_paid_paisa > 0 ? `, cash ${Math.round(p.cash_paid_paisa / 100)} rupay` : ""}${p.credit_paisa > 0 ? `, udhaar ${Math.round(p.credit_paisa / 100)} rupay` : ""}.`;
+            const script = `${cust ? `${cust} کا ` : ""}کل بل ${Math.round(p.total_paisa / 100)} روپے ہے${p.cash_paid_paisa > 0 ? `، نقد ${Math.round(p.cash_paid_paisa / 100)} روپے` : ""}${p.credit_paisa > 0 ? `، ادھار ${Math.round(p.credit_paisa / 100)} روپے` : ""}۔`;
             void speak(script);
           }}
           className="tactile ml-auto inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[12px] font-semibold text-ink"
@@ -652,7 +652,7 @@ export function PaymentSheet({ proposal, customerId, idemKey, trace, onClose }: 
       right={
         <button
           type="button"
-          onClick={() => void speak(`${cust ? `${cust.name} se ` : ""}${Math.round(amt / 100)} rupay wasooli${cust ? `, baqi ${Math.round((cust.balance_paisa - amt) / 100)} rupay` : ""}.`)}
+          onClick={() => void speak(`${cust ? `${cust.name} سے ` : ""}${Math.round(amt / 100)} روپے وصولی${cust ? `، باقی ${Math.round((cust.balance_paisa - amt) / 100)} روپے` : ""}۔`)}
           className="tactile inline-flex h-8 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[12px] font-semibold text-ink"
         >
           <Volume2 size={13} strokeWidth={SW} /> Suniye
@@ -835,7 +835,7 @@ export function ReceiptSheet({ commit, proposal, customerPhone, onClose }: { com
           type="button"
           onClick={() =>
             void speak(
-              `${commit.customer?.name ? `${commit.customer.name} ka ` : ""}${isPayment ? "wasooli " : "bill "}${Math.round((t.total_paisa ?? 0) / 100)} rupay mehfooz ho gaya${commit.customer ? `, naya baqaya ${Math.round(commit.customer.balance_paisa / 100)} rupay` : ""}.`,
+              `${commit.customer?.name ? `${commit.customer.name} کا ` : ""}${isPayment ? "وصولی " : "بل "}${Math.round((t.total_paisa ?? 0) / 100)} روپے محفوظ ہو گیا${commit.customer ? `، نیا بقایا ${Math.round(commit.customer.balance_paisa / 100)} روپے` : ""}۔`,
             )
           }
           className="tactile inline-flex h-8 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[12px] font-semibold text-ink"

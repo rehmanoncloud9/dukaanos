@@ -2,6 +2,23 @@
 
 import { api } from "./api";
 
+async function pickUrduVoice(): Promise<SpeechSynthesisVoice | null> {
+  let voices = speechSynthesis.getVoices();
+  if (!voices.length) {
+    voices = await new Promise<SpeechSynthesisVoice[]>((resolve) => {
+      const done = () => resolve(speechSynthesis.getVoices());
+      speechSynthesis.addEventListener("voiceschanged", done, { once: true });
+      setTimeout(done, 300);
+    });
+  }
+  return (
+    voices.find((v) => /ur(-|_)?PK/i.test(v.lang)) ??
+    voices.find((v) => /^ur/i.test(v.lang)) ??
+    voices.find((v) => /hi(-|_)?IN/i.test(v.lang)) ??
+    null
+  );
+}
+
 /** F-12 query-only readout: server TTS if it answers within budget, else browser speechSynthesis (ur-PK). */
 export async function speak(text: string, budgetMs = 2500): Promise<"tts" | "browser" | "none"> {
   try {
@@ -16,10 +33,10 @@ export async function speak(text: string, budgetMs = 2500): Promise<"tts" | "bro
   } catch {
     if (typeof speechSynthesis === "undefined") return "none";
     const u = new SpeechSynthesisUtterance(text);
-    const voices = speechSynthesis.getVoices();
-    u.voice = voices.find((v) => /ur(-|_)?PK/i.test(v.lang)) ?? voices.find((v) => /^ur/i.test(v.lang)) ?? voices.find((v) => /hi(-|_)?IN/i.test(v.lang)) ?? null;
+    u.voice = await pickUrduVoice();
     u.lang = u.voice?.lang ?? "ur-PK";
-    u.rate = 0.95;
+    u.rate = 0.92;
+    u.pitch = 1.0;
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
     return "browser";

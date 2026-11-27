@@ -973,10 +973,10 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => void speak(`${supplierName} ki parchi mein ${lines.length} items hain, kul bill ${Math.round(total / 100)} rupay.`)}
+                onClick={() => void speak(`${supplierName} کی پرچی میں ${lines.length} اشیاء ہیں، کل بل ${Math.round(total / 100)} روپے ہے۔`)}
                 className="tactile inline-flex h-8 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[12px] font-semibold text-ink"
               >
-                <Volume2 size={13} strokeWidth={SW} /> Suniye
+                <Volume2 size={13} strokeWidth={SW} /> سنیں
               </button>
               <Money paisa={total} className="text-[22px] font-bold" />
             </div>

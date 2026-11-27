@@ -24,11 +24,24 @@ function pcmToWav(pcm: Buffer, sampleRate = 24000, channels = 1, bits = 16): Buf
   return Buffer.concat([header, pcm]);
 }
 
+function normalizeUrduSpeechText(text: string): string {
+  return text
+    .replace(/\bRs\.?\s*/gi, "روپے ")
+    .replace(/\brupay\b/gi, "روپے")
+    .replace(/\budhaar\b/gi, "ادھار")
+    .replace(/\bcash\b/gi, "نقد")
+    .replace(/\bwasooli\b/gi, "وصولی")
+    .replace(/\bkhata\b/gi, "کھاتہ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export async function synthesizeUrdu(text: string, shopId: string): Promise<{ wav: Buffer; model: string; latency_ms: number }> {
+  const cleanText = normalizeUrduSpeechText(text);
   const call = await generateContentOnce(env.ttsModel(), {
     // 3.8 TTS treats `text` as a verbatim transcript — an inline "read this softly" prefix gets spoken
     // aloud, so only the words to say go here (tone comes from the voice choice).
-    contents: [{ role: "user", parts: [{ text }] }],
+    contents: [{ role: "user", parts: [{ text: cleanText }] }],
     config: {
       responseModalities: ["AUDIO"],
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } },
