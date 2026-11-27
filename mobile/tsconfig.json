@@ -11,6 +11,7 @@
       "@contracts": ["../src/lib/api/contracts.ts"],
       "@passport": ["../src/lib/crypto/passport.ts"],
       "@/lib/domain/*": ["../src/lib/domain/*"],
+      "@/lib/api/*": ["../src/lib/api/*"],
       "@noble/ed25519": ["./node_modules/@noble/ed25519"],
       "@/*": ["./src/*"],
       "@/assets/*": ["./assets/*"]
