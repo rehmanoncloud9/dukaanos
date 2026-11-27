@@ -405,7 +405,7 @@ function NewCustomerSheet({ onClose }: { onClose: () => void }) {
 }
 
 export function CustomerSheet({ customerId, onClose }: { customerId: string; onClose: () => void }) {
-  const { state, shopId, openSheet, refresh, toast } = useDukaan();
+  const { state, shopId, openSheet, xrayOn, refresh, toast } = useDukaan();
   const c = state?.customers.find((x) => x.id === customerId);
   const [phone, setPhone] = useState(c?.phone ?? "");
   const [roleTag, setRoleTag] = useState(c?.role_tag ?? "");
@@ -617,7 +617,7 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
                     onClick={async () => {
                       setWriteOffBusy(true);
                       try {
-                        const res = await api<CommitResponse>("/api/transactions/write-off", {
+                        await api<CommitResponse>("/api/transactions/write-off", {
                           json: {
                             idempotency_key: newKey("wo"),
                             customer_id: c.id,
@@ -628,8 +628,7 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
                         });
                         await refresh();
                         setWriteOffOpen(false);
-                        toast("Write-off darj ho gaya", "ok");
-                        openSheet({ type: "xray", txId: res.transaction_id });
+                        toast("Write-off darj ho gaya ✓", "ok");
                       } catch (e) {
                         toast(friendlyError(e), "err");
                       } finally {
@@ -645,12 +644,12 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
             )}
           </div>
         )}
-        <div className="section-label pt-1">Khata history (SHA-256 chained)</div>
+        <div className="section-label pt-1">Khata history</div>
         <div className="surface-card overflow-hidden">
           {items === null && <div className="flex items-center justify-center p-4 text-[13px] text-ink-2"><Spinner /></div>}
           {items !== null && history.length === 0 && <div className="px-4 py-4 text-[13px] text-ink-2">Koi entry nahi</div>}
           {history.map((t) => (
-            <FeedRow key={t.id} t={t} onOpen={() => openSheet({ type: "xray", txId: t.id })} />
+            <FeedRow key={t.id} t={t} onOpen={() => openSheet(xrayOn && t.seq >= 0 ? { type: "xray", txId: t.id } : { type: "entry", tx: t, txId: t.id })} />
           ))}
           {nextSeq !== null && (
             <button onClick={() => void loadMore()} disabled={loadingMore} className="hairline-t tactile flex h-11 w-full items-center justify-center text-[13px] font-semibold text-ink-2">

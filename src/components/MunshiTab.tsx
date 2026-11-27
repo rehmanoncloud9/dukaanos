@@ -40,16 +40,16 @@ export function feedSummary(t: FeedTx): string {
 }
 
 function feedTag(t: FeedTx): string {
-  if (t.audit_meta?.pending_sync) return "Pending Sync";
+  if (t.audit_meta?.pending_sync) return "Offline";
   if (t.type === "payment") return "Wasooli";
-  if (t.type === "purchase") return t.credit_paisa > 0 ? "Restock · A/P" : "Restock";
-  if (t.type === "reversal") return "Reversal";
+  if (t.type === "purchase") return t.credit_paisa > 0 ? "Restock · Udhaar" : "Restock";
+  if (t.type === "reversal") return "Undone";
   if (t.type === "return") return t.credit_paisa > 0 ? "Return · Khata" : "Return · Cash";
   if (t.type === "adjustment") return "Adjustment";
   if (t.type === "writeoff") return "Write-off";
   if (t.credit_paisa !== 0 && t.cash_paid_paisa > 0) return "Split · Khata";
   if (t.credit_paisa > 0) return "Udhaar";
-  return t.audit_meta?.channel === "tier1-auto" ? "Cash · Tier 1" : "Cash";
+  return "Cash";
 }
 
 export function FeedRow({ t, onOpen, flash }: { t: FeedTx; onOpen: () => void; flash?: boolean }) {
@@ -127,7 +127,7 @@ function QuickSellStrip({ products }: { products: StateProduct[] }) {
 }
 
 export function MunshiTab() {
-  const { state, shop, shopId, openSheet, submitTurn, thinking, toast, highlightTx, refresh, lang } = useDukaan();
+  const { state, shop, shopId, xrayOn, openSheet, submitTurn, thinking, toast, highlightTx, refresh, lang } = useDukaan();
   const [pulse, setPulse] = useState<Pulse | null>(null);
   const [stripOpen, setStripOpen] = useState(false);
   const [held, setHeld] = useState<HeldBill[]>([]);
@@ -398,7 +398,7 @@ export function MunshiTab() {
       <div className="surface-card overflow-hidden">
         {thinking && (
           <div className="hairline-b flex h-[60px] items-center gap-3 px-4 text-[14px] text-ink-2">
-            <Spinner className="text-cash" /> <span dir="auto">{tr("listening", lang)}</span> <span className="font-mono text-[11px]">audio → JSON</span>
+            <Spinner className="text-cash" /> <span dir="auto">{tr("listening", lang)}</span>
           </div>
         )}
         {list.length === 0 && !thinking && <div className={cx("px-4 py-6 text-center text-[14px] text-ink-2", lang === "ur" && "urdu-ui")} dir="auto">{tr("emptyMunshi", lang)}</div>}
@@ -408,9 +408,9 @@ export function MunshiTab() {
             t={t}
             flash={highlightTx === t.id}
             onOpen={() =>
-              t.seq < 0
-                ? toast("Pending sync — hash will be assigned when online", "info")
-                : openSheet({ type: "xray", txId: t.id })
+              xrayOn && t.seq >= 0
+                ? openSheet({ type: "xray", txId: t.id })
+                : openSheet({ type: "entry", tx: t, txId: t.id })
             }
           />
         ))}

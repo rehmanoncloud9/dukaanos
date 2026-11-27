@@ -268,7 +268,7 @@ function NewProductSheet({ initialSku, onClose, onSaved }: { initialSku: string;
 }
 
 export function ProductSheet({ productId, onClose }: { productId: string; onClose: () => void }) {
-  const { state, refresh, toast, openSheet } = useDukaan();
+  const { state, refresh, toast, openSheet, xrayOn } = useDukaan();
   const p = state?.products.find((x) => x.id === productId);
   const [price, setPrice] = useState(p ? String(p.unit_price_paisa / 100) : "");
   const [alias, setAlias] = useState("");
@@ -296,7 +296,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
     if (adjBaseUnits <= 0) return;
     setAdjBusy(true);
     try {
-      const res = await api<CommitResponse>("/api/transactions/adjust", {
+      await api<CommitResponse>("/api/transactions/adjust", {
         json: {
           idempotency_key: newKey("adj"),
           product_id: p.id,
@@ -307,8 +307,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
       });
       setAdjQty("");
       await refresh();
-      toast("Stock adjustment darj ho gaya", "ok");
-      openSheet({ type: "xray", txId: res.transaction_id });
+      toast("Stock update ho gaya ✓", "ok");
     } catch (e) {
       toast(friendlyError(e), "err");
     } finally {
@@ -396,7 +395,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
             <div className="section-label mb-1.5 pt-1">Supplier purchase history</div>
             <div className="surface-card overflow-hidden">
               {supplierHistory.map((s) => (
-                <button key={s.id} type="button" onClick={() => openSheet({ type: "xray", txId: s.id })} className="hairline-b flex w-full items-center justify-between px-3.5 py-2.5 text-left text-[13px] last:border-b-0">
+                <button key={s.id} type="button" onClick={() => openSheet({ type: xrayOn ? "xray" : "entry", txId: s.id })} className="hairline-b flex w-full items-center justify-between px-3.5 py-2.5 text-left text-[13px] last:border-b-0">
                   <div>
                     <div className="font-semibold">{s.supplier}</div>
                     <div className="text-[11.5px] text-ink-2">{shortDate(s.date)} · {formatBaseQty(s.qty, p.base_unit)}</div>
@@ -408,7 +407,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
           </div>
         )}
 
-        <div className="section-label pt-1">Dialect aliases (PakPhone + pg_trgm)</div>
+        <div className="section-label pt-1">Local names / aliases</div>
         <div className="flex flex-wrap gap-1.5">
           {p.aliases.map((a) => (
             <Pill key={a} dir-auto="true">

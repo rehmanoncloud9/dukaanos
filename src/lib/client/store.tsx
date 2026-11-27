@@ -25,6 +25,7 @@ export type Sheet =
   | { type: "pulse"; pulse: Pulse }
   | { type: "answer"; answer: string; proposal: SaleProposal | PaymentProposal | null; trace: TurnTrace; tools: Array<{ name: string; ms: number }> }
   | { type: "xray"; txId?: string | null }
+  | { type: "entry"; tx?: FeedTx; txId?: string | null }
   | { type: "parchi"; autoSample?: boolean }
   | { type: "passport" }
   | { type: "wasooli"; customerId: string }
@@ -351,7 +352,6 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     if (isOffline() && shop) {
       await enqueueCommit({ idempotency_key: idempotencyKey, shop_id: shop, endpoint, payload, optimistic });
       await updatePending();
-      toast("Saved offline · Pending Sync", "warn");
       return { res: makeOfflineResponse(), queued: true };
     }
     try {
@@ -361,12 +361,11 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       if (shop && e instanceof ClientApiError && e.network) {
         await enqueueCommit({ idempotency_key: idempotencyKey, shop_id: shop, endpoint, payload, optimistic });
         await updatePending();
-        toast("Network down · saved offline (Pending Sync)", "warn");
         return { res: makeOfflineResponse(), queued: true };
       }
       throw e;
     }
-  }, [toast, updatePending]);
+  }, [updatePending]);
 
   const confirmSale = useCallback(async (p: SaleProposal, key: string, trace: TurnTrace | null, opts?: { auto?: boolean }) => {
     const base = toCommitInput(p, key, {});
@@ -487,7 +486,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     try {
       await reverse(u.txId, "undo-5s");
       navigator.vibrate?.(12);
-      toast("Undone — stock, cash & chain restored", "ok");
+      toast("Entry wapas ho gayi ✓", "ok");
     } catch (e) {
       toast(friendlyError(e), "err");
     }
@@ -566,10 +565,10 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     const shop = shopRef.current;
     if (!shop) return;
     const key = givenKey ?? newKey("turn");
-    const queueIt = async (why: string) => {
+    const queueIt = async () => {
       await enqueue({ idempotency_key: key, shop_id: shop, kind: input.blob ? "audio" : "text", blob: input.blob, mime: input.mime, text: input.text });
       await updatePending();
-      toast(`${why} · saved to IndexedDB (Pending Sync)`, "warn");
+      if (input.blob) toast("Internet band hai — awaz phone par mehfooz ho gayi", "info");
     };
     if (isOffline()) {
       if (input.text && !input.blob) {
@@ -588,7 +587,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
           return;
         }
       }
-      await queueIt("Offline");
+      await queueIt();
       return;
     }
     if (input.text && !input.blob) {
@@ -604,11 +603,11 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       if (input.blob && res.trace.transcript) {
         void saveReplay({ id: key, blob: input.blob, mime: input.mime ?? input.blob.type, transcript: res.trace.transcript, created_at: Date.now() });
       }
-      if (res.trace.source === "rules") toast("Model busy — rule-based parse, please review", "info");
       await handleTurn(res, key);
     } catch (e) {
       if (e instanceof ClientApiError && (e.network || ["AI_TIMEOUT", "AI_UNAVAILABLE", "RATE_LIMITED", "AUTH_REQUIRED"].includes(e.code))) {
-        await queueIt(e.code === "AUTH_REQUIRED" ? "Session expired" : e.network ? "Network down" : "Munshi busy");
+        if (e.code === "AUTH_REQUIRED") toast("Session khatam — dobara sign in karein", "warn");
+        await queueIt();
       } else {
         toast(friendlyError(e), "err");
       }
@@ -655,7 +654,6 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       const [beforeTurns, queuedCommits] = await Promise.all([pendingCount(shop), listCommits(shop)]);
       const pendingCommits = queuedCommits.filter((c) => c.status === "pending").length;
       if (!beforeTurns && !pendingCommits) return;
-      const t0 = performance.now();
       const cRes = await flushCommits(shop, (c) => api<CommitResponse>(c.endpoint, { json: c.payload }));
       const r = await flushQueue(shop, async (q) => {
         const res = await postTurn({ blob: q.blob, mime: q.mime, text: q.text });
@@ -663,17 +661,14 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       });
       await updatePending();
       await refresh();
-      const totalDone = cRes.done + r.done;
-      if (totalDone || r.review) {
-        toast(`Synced ${totalDone}${r.review ? ` · ${r.review} need review` : ""} in ${((performance.now() - t0) / 1000).toFixed(1)}s · 0 duplicates`, "ok");
-      }
+      void cRes;
       if (r.review > 0 && !sheetRef.current) {
         await openQueuedReview();
       }
     } finally {
       flushing.current = false;
     }
-  }, [postTurn, handleTurn, refresh, updatePending, openQueuedReview, toast]);
+  }, [postTurn, handleTurn, refresh, updatePending, openQueuedReview]);
 
   /* ── connectivity ─────────────────────────────────────────── */
   useEffect(() => {
@@ -789,8 +784,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   const setSimulatedOffline = useCallback((v: boolean) => {
     setSimOffline(v);
     setSimulatedOfflineState(v);
-    toast(v ? "Simulate Offline ON — Wi-Fi OFF behaviour" : "Back online — flushing queue", v ? "warn" : "ok");
-  }, [toast]);
+  }, []);
 
   const setLang = useCallback((l: Lang) => {
     localStorage.setItem(LANG_KEY, l);

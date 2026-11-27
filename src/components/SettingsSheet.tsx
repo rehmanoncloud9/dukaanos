@@ -1,7 +1,7 @@
 "use client";
 
 import { clearAppLock, isAppLockEnabled, setAppLockPin } from "./AppLock";
-import { Download, FileAudio, LogOut, Play, RefreshCw, ShieldAlert, ShieldCheck, Trash2, Upload, UserX, Volume2, WifiOff } from "lucide-react";
+import { ChevronDown, ChevronUp, Code2, Download, FileAudio, LogOut, Play, RefreshCw, ShieldAlert, ShieldCheck, Trash2, Upload, UserX, Volume2, WifiOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, friendlyError } from "@/lib/client/api";
 import { downloadCsv, exportKhataCsv, exportMaalCsv } from "@/lib/client/csv-export";
@@ -23,11 +23,12 @@ interface Health {
 }
 
 export function SettingsSheet({ onClose }: { onClose: () => void }) {
-  const { shops, shop, setShopId, state, pending, queue, flush, openQueuedReview, discardQueued, simulatedOffline, setSimulatedOffline, refresh, toast, signOut, openSheet, submitTurn, session, lang, setLang } = useDukaan();
+  const { shops, shop, setShopId, state, pending, queue, flush, openQueuedReview, discardQueued, simulatedOffline, setSimulatedOffline, xrayOn, setXrayOn, refresh, toast, signOut, openSheet, submitTurn, session, lang, setLang } = useDukaan();
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [chain, setChain] = useState<{ ok: boolean; code: string; checked: number; ms: number; first_broken_seq?: number } | null>(null);
+  const [showDevTools, setShowDevTools] = useState(xrayOn);
   // Shift Handover — Galla Count
   const [gallaInput, setGallaInput] = useState("");
   const [raastId, setRaastId] = useState("");
@@ -193,255 +194,277 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
           </form>
         </section>
 
-        <section>
-          <div className="section-label mb-2">Offline sync</div>
-          <div className="surface-card space-y-3 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <Pill tone={pending ? "amber" : "cash"}>{pending} Pending Sync</Pill>
-                {storageInfo && <div className="mt-1 text-[11.5px] text-ink-2">Device storage: {storageInfo}</div>}
-              </div>
-              <button onClick={() => void act("flush", flush)} className="tactile flex h-8 items-center gap-1.5 rounded-full bg-surface-sunken px-3 text-[13px] font-semibold">
-                {busy === "flush" ? <Spinner /> : <RefreshCw size={13} strokeWidth={SW} />} Flush now
-              </button>
-            </div>
-            <button onClick={() => setSimulatedOffline(!simulatedOffline)} className={cx("tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] text-[14px] font-semibold", simulatedOffline ? "bg-amber-bg text-amber-ink" : "bg-surface-sunken")}>
-              <WifiOff size={15} strokeWidth={SW} /> Simulate Offline: {simulatedOffline ? "ON" : "OFF"}
-            </button>
-            {queue.map((q) => (
-              <div key={q.idempotency_key} className="flex items-center gap-2 text-[13px]">
-                <FileAudio size={14} strokeWidth={SW} className="text-ink-2" />
-                <span className="min-w-0 flex-1 truncate">{q.kind === "text" ? q.text : `Voice clip · ${new Date(q.created_at).toLocaleTimeString()}`}</span>
-                <Pill tone={q.status === "review" ? "maal" : q.status === "failed" ? "udhaar" : "amber"}>{q.status}</Pill>
-                {q.status !== "pending" && (
-                  <button
-                    className="tactile min-h-[36px] px-2 text-[12.5px] font-semibold text-cash"
-                    onClick={() =>
-                      q.status === "review"
-                        ? void openQueuedReview(q.idempotency_key)
-                        : void submitTurn({ blob: q.blob, mime: q.mime, text: q.text }, q.idempotency_key)
-                    }
-                  >
-                    Open
-                  </button>
-                )}
-                <button aria-label="Discard" onClick={() => void discardQueued(q.idempotency_key)} className="grid h-9 w-9 place-items-center text-ink-3">
-                  <Trash2 size={14} strokeWidth={SW} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <div className="section-label mb-2">Judge proof tools</div>
-          <div className="surface-card space-y-2.5 p-4">
-            <button
-              onClick={() => void act("chain", async () => setChain(await api("/api/shop/chain")))}
-              className="tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold"
-            >
-              {busy === "chain" ? <Spinner /> : <ShieldCheck size={15} strokeWidth={SW} />} Verify SHA-256 chain
-            </button>
-            {chain && (
-              <div className={cx("rounded-[10px] px-3 py-2 font-mono text-[12px]", chain.ok ? "bg-cash-bg text-cash-ink" : "bg-udhaar-bg text-udhaar-ink")}>
-                {chain.ok ? `CHAIN_OK · ${chain.checked} links · ${chain.ms}ms` : `CHAIN_BROKEN at #${chain.first_broken_seq} (${chain.code})`}
-              </div>
-            )}
-            {shop?.is_demo_shop && (
-              <>
-                {shop.is_stage_shop && (
-                  <input value={secret} onChange={(e) => setSecret(e.target.value)} type="password" placeholder="DEMO_RESET_SECRET (stage shop)" className="h-10 w-full rounded-[10px] bg-canvas px-3 text-[14px] outline-none" />
-                )}
-                <div className="grid grid-cols-2 gap-2">
-                  <SecondaryButton onClick={() => void demoCall("tamper")} className="flex h-10 items-center justify-center gap-1.5 text-[13px]">
-                    {busy === "tamper" ? <Spinner /> : <ShieldAlert size={14} strokeWidth={SW} />} Tamper test
-                  </SecondaryButton>
-                  <PrimaryButton onClick={() => void demoCall("reset")} busy={busy === "reset"} className="h-10 text-[13px]">
-                    Judge Demo Reset
-                  </PrimaryButton>
-                </div>
-                <p className="text-[12px] text-ink-2">Tamper test edits one historical ledger row behind the app’s back (balanced, so SUM=0 still holds) — the hash chain catches it. Reset restores the shop.</p>
-              </>
-            )}
-            <button onClick={() => openSheet({ type: "replays" })} className="tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold">
-              <Play size={14} strokeWidth={SW} /> Real-audio replay library
-            </button>
-          </div>
-        </section>
-
-        <section>
-          <div className="section-label mb-2">Health · Dec 1 cutover audit</div>
-          <div className="surface-card p-4">
-            <button onClick={() => void act("health", async () => setHealth(await api<Health>("/api/system/health", { shop: false })))} className="tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold">
-              {busy === "health" && <Spinner />} Run health check
-            </button>
-            {health && (
-              <div className="mt-3 space-y-1 font-mono text-[11.5px]">
-                {Object.entries(health.pinned_models).map(([k, v]) => (
-                  <div key={k} className="flex justify-between">
-                    <span>{k}: {v ?? "—"}</span>
-                    <span className={health.models_available?.[k] ? "text-cash" : health.models_available ? "text-udhaar" : "text-ink-2"}>
-                      {health.models_available ? (health.models_available[k] ? "live ✓" : v ? "missing ✗" : "") : "?"}
-                    </span>
-                  </div>
-                ))}
-                <div className={health.cutover_audit.ok ? "text-cash" : "text-udhaar"}>gemini-2.5 refs: {health.cutover_audit.gemini_2_5_references}</div>
-                {health.missing_env.length > 0 && <div className="text-udhaar">missing env: {health.missing_env.join(", ")}</div>}
-                {health.model_check_error && <div className="text-ink-2">model list: {health.model_check_error.slice(0, 120)}</div>}
-              </div>
-            )}
-          </div>
-        </section>
-
-        <div className="grid grid-cols-2 gap-2">
-          <a href="/verify" target="_blank" rel="noreferrer" className="tactile flex h-11 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
-            /verify
+        <div className="grid grid-cols-3 gap-2">
+          <a href="/privacy" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
+            {tr("privacy", lang)}
           </a>
-          <a href="/report" target="_blank" rel="noreferrer" className="tactile flex h-11 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
-            SMEConnect report
+          <a href="/terms" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
+            {tr("terms", lang)}
+          </a>
+          <a href="/delete-account" className="tactile flex h-10 items-center justify-center gap-1 rounded-[12px] bg-udhaar-bg text-[12.5px] font-semibold text-udhaar-ink">
+            <UserX size={13} strokeWidth={SW} /> Delete
           </a>
         </div>
 
-        <section>
-          <div className="section-label mb-2">Data rights &amp; legal</div>
-          <div className="space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() =>
-                  void act("export", async () => {
-                    const data = await api<Record<string, unknown>>("/api/account/export");
-                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = `dukaanos-export-${new Date().toISOString().slice(0, 10)}.json`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    toast("Shop data exported (JSON)", "ok");
-                  })
-                }
-                className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[13px] font-semibold"
-              >
-                {busy === "export" ? <Spinner /> : <Download size={14} strokeWidth={SW} />} {tr("exportData", lang)}
-              </button>
-              <button
-                onClick={() =>
-                  void act("audit", async () => {
-                    const bundle = await api<Record<string, unknown>>("/api/shop/audit-bundle");
-                    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = `dukaanos-audit-proof-${new Date().toISOString().slice(0, 10)}.json`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    toast("Signed Audit Bundle exported", "ok");
-                  })
-                }
-                className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] bg-cash-bg text-[13px] font-semibold text-cash-ink"
-              >
-                {busy === "audit" ? <Spinner /> : <ShieldCheck size={14} strokeWidth={SW} />} Signed Audit Bundle
-              </button>
-            </div>
-            {state && (
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => {
-                    downloadCsv(`dukaanos-khata-${new Date().toISOString().slice(0, 10)}.csv`, exportKhataCsv(state.customers));
-                    toast("Khata CSV downloaded", "ok");
+        <button onClick={() => void signOut()} className="tactile flex h-12 w-full items-center justify-center gap-2 rounded-[12px] bg-surface text-[14px] font-semibold text-udhaar-ink">
+          <LogOut size={15} strokeWidth={SW} /> {tr("signOut", lang)}
+        </button>
+
+        {/* Collapsed by default so normal shopkeepers never see dev/export/audit clutter */}
+        <button
+          type="button"
+          onClick={() => setShowDevTools((v) => !v)}
+          className="tactile flex h-10 w-full items-center justify-between rounded-[12px] px-3 text-[12.5px] font-medium text-ink-3"
+        >
+          <span className="flex items-center gap-1.5"><Code2 size={14} strokeWidth={SW} /> Advanced · Backup &amp; Developer Tools</span>
+          {showDevTools ? <ChevronUp size={15} strokeWidth={SW} /> : <ChevronDown size={15} strokeWidth={SW} />}
+        </button>
+
+        {showDevTools && (
+          <div className="space-y-4 border-t border-black/10 pt-3">
+            <section>
+              <div className="section-label mb-2">Backup &amp; CSV</div>
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() =>
+                      void act("export", async () => {
+                        const data = await api<Record<string, unknown>>("/api/account/export");
+                        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `dukaanos-export-${new Date().toISOString().slice(0, 10)}.json`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        toast("Shop data exported (JSON)", "ok");
+                      })
+                    }
+                    className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[13px] font-semibold"
+                  >
+                    {busy === "export" ? <Spinner /> : <Download size={14} strokeWidth={SW} />} {tr("exportData", lang)}
+                  </button>
+                  <button
+                    onClick={() =>
+                      void act("audit", async () => {
+                        const bundle = await api<Record<string, unknown>>("/api/shop/audit-bundle");
+                        const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `dukaanos-audit-proof-${new Date().toISOString().slice(0, 10)}.json`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        toast("Signed Audit Bundle exported", "ok");
+                      })
+                    }
+                    className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] bg-cash-bg text-[13px] font-semibold text-cash-ink"
+                  >
+                    {busy === "audit" ? <Spinner /> : <ShieldCheck size={14} strokeWidth={SW} />} Signed Audit Bundle
+                  </button>
+                </div>
+                {state && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => {
+                        downloadCsv(`dukaanos-khata-${new Date().toISOString().slice(0, 10)}.csv`, exportKhataCsv(state.customers));
+                        toast("Khata CSV downloaded", "ok");
+                      }}
+                      className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[13px] font-semibold"
+                    >
+                      <Download size={13} strokeWidth={SW} /> Khata CSV
+                    </button>
+                    <button
+                      onClick={() => {
+                        downloadCsv(`dukaanos-maal-${new Date().toISOString().slice(0, 10)}.csv`, exportMaalCsv(state.products));
+                        toast("Maal (Stock) CSV downloaded", "ok");
+                      }}
+                      className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[13px] font-semibold"
+                    >
+                      <Download size={13} strokeWidth={SW} /> Stock CSV
+                    </button>
+                  </div>
+                )}
+                <input
+                  ref={csvRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!f) return;
+                    void act("import", async () => {
+                      const list = parseCustomerCsv(await f.text());
+                      if (list.length === 0) throw new Error("CSV mein koi customer nahi mila");
+                      let added = 0;
+                      for (const c of list.slice(0, 100)) {
+                        await api("/api/shop/customer", { json: { name: c.name, phone: c.phone ?? undefined } });
+                        added++;
+                      }
+                      await refresh();
+                      toast(`${added} customers import ho gaye`, "ok");
+                    });
                   }}
-                  className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[13px] font-semibold"
+                />
+                <input
+                  ref={prodCsvRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!f) return;
+                    void act("import-prod", async () => {
+                      const list = parseProductCsv(await f.text());
+                      if (list.length === 0) throw new Error("CSV mein koi item nahi mila");
+                      let added = 0;
+                      for (const p of list.slice(0, 100)) {
+                        await api("/api/shop/product", { json: p });
+                        added++;
+                      }
+                      await refresh();
+                      toast(`${added} items Maal mein import ho gaye`, "ok");
+                    });
+                  }}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => csvRef.current?.click()}
+                    disabled={busy === "import"}
+                    className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[12.5px] font-semibold"
+                  >
+                    {busy === "import" ? <Spinner /> : <Upload size={13} strokeWidth={SW} />} Import Customers CSV
+                  </button>
+                  <button
+                    onClick={() => prodCsvRef.current?.click()}
+                    disabled={busy === "import-prod"}
+                    className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[12.5px] font-semibold"
+                  >
+                    {busy === "import-prod" ? <Spinner /> : <Upload size={13} strokeWidth={SW} />} Import Products CSV
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <div className="section-label mb-2">Offline Queue &amp; Storage</div>
+              <div className="surface-card space-y-3 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <Pill tone={pending ? "amber" : "cash"}>{pending} queued</Pill>
+                    {storageInfo && <div className="mt-1 text-[11.5px] text-ink-2">Device storage: {storageInfo}</div>}
+                  </div>
+                  <button onClick={() => void act("flush", flush)} className="tactile flex h-8 items-center gap-1.5 rounded-full bg-surface-sunken px-3 text-[13px] font-semibold">
+                    {busy === "flush" ? <Spinner /> : <RefreshCw size={13} strokeWidth={SW} />} Sync now
+                  </button>
+                </div>
+                <button onClick={() => setSimulatedOffline(!simulatedOffline)} className={cx("tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] text-[14px] font-semibold", simulatedOffline ? "bg-amber-bg text-amber-ink" : "bg-surface-sunken")}>
+                  <WifiOff size={15} strokeWidth={SW} /> Simulate Offline: {simulatedOffline ? "ON" : "OFF"}
+                </button>
+                {queue.map((q) => (
+                  <div key={q.idempotency_key} className="flex items-center gap-2 text-[13px]">
+                    <FileAudio size={14} strokeWidth={SW} className="text-ink-2" />
+                    <span className="min-w-0 flex-1 truncate">{q.kind === "text" ? q.text : `Voice clip · ${new Date(q.created_at).toLocaleTimeString()}`}</span>
+                    <Pill tone={q.status === "review" ? "maal" : q.status === "failed" ? "udhaar" : "amber"}>{q.status}</Pill>
+                    {q.status !== "pending" && (
+                      <button
+                        className="tactile min-h-[36px] px-2 text-[12.5px] font-semibold text-cash"
+                        onClick={() =>
+                          q.status === "review"
+                            ? void openQueuedReview(q.idempotency_key)
+                            : void submitTurn({ blob: q.blob, mime: q.mime, text: q.text }, q.idempotency_key)
+                        }
+                      >
+                        Open
+                      </button>
+                    )}
+                    <button aria-label="Discard" onClick={() => void discardQueued(q.idempotency_key)} className="grid h-9 w-9 place-items-center text-ink-3">
+                      <Trash2 size={14} strokeWidth={SW} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <div className="section-label mb-2">Developer &amp; Judge Proof Tools</div>
+              <div className="surface-card space-y-2.5 p-4">
+                <button
+                  type="button"
+                  onClick={() => setXrayOn(!xrayOn)}
+                  className="tactile flex h-10 w-full items-center justify-between rounded-[12px] bg-surface-sunken px-3.5 text-[13.5px] font-semibold"
                 >
-                  <Download size={13} strokeWidth={SW} /> Khata CSV
+                  <span className="font-mono">{"</>"} X-Ray Inspector Mode</span>
+                  <Pill tone={xrayOn ? "cash" : "neutral"}>{xrayOn ? "ON" : "OFF"}</Pill>
                 </button>
                 <button
-                  onClick={() => {
-                    downloadCsv(`dukaanos-maal-${new Date().toISOString().slice(0, 10)}.csv`, exportMaalCsv(state.products));
-                    toast("Maal (Stock) CSV downloaded", "ok");
-                  }}
-                  className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[13px] font-semibold"
+                  onClick={() => void act("chain", async () => setChain(await api("/api/shop/chain")))}
+                  className="tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold"
                 >
-                  <Download size={13} strokeWidth={SW} /> Stock CSV
+                  {busy === "chain" ? <Spinner /> : <ShieldCheck size={15} strokeWidth={SW} />} Verify SHA-256 chain
+                </button>
+                {chain && (
+                  <div className={cx("rounded-[10px] px-3 py-2 font-mono text-[12px]", chain.ok ? "bg-cash-bg text-cash-ink" : "bg-udhaar-bg text-udhaar-ink")}>
+                    {chain.ok ? `CHAIN_OK · ${chain.checked} links · ${chain.ms}ms` : `CHAIN_BROKEN at #${chain.first_broken_seq} (${chain.code})`}
+                  </div>
+                )}
+                {shop?.is_demo_shop && (
+                  <>
+                    {shop.is_stage_shop && (
+                      <input value={secret} onChange={(e) => setSecret(e.target.value)} type="password" placeholder="DEMO_RESET_SECRET (stage shop)" className="h-10 w-full rounded-[10px] bg-canvas px-3 text-[14px] outline-none" />
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <SecondaryButton onClick={() => void demoCall("tamper")} className="flex h-10 items-center justify-center gap-1.5 text-[13px]">
+                        {busy === "tamper" ? <Spinner /> : <ShieldAlert size={14} strokeWidth={SW} />} Tamper test
+                      </SecondaryButton>
+                      <PrimaryButton onClick={() => void demoCall("reset")} busy={busy === "reset"} className="h-10 text-[13px]">
+                        Judge Demo Reset
+                      </PrimaryButton>
+                    </div>
+                  </>
+                )}
+                <button onClick={() => openSheet({ type: "replays" })} className="tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold">
+                  <Play size={14} strokeWidth={SW} /> Real-audio replay library
                 </button>
               </div>
-            )}
-            <input
-              ref={csvRef}
-              type="file"
-              accept=".csv,text/csv"
-              hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (!f) return;
-                void act("import", async () => {
-                  const list = parseCustomerCsv(await f.text());
-                  if (list.length === 0) throw new Error("CSV mein koi customer nahi mila");
-                  let added = 0;
-                  for (const c of list.slice(0, 100)) {
-                    await api("/api/shop/customer", { json: { name: c.name, phone: c.phone ?? undefined } });
-                    added++;
-                  }
-                  await refresh();
-                  toast(`${added} customers import ho gaye`, "ok");
-                });
-              }}
-            />
-            <input
-              ref={prodCsvRef}
-              type="file"
-              accept=".csv,text/csv"
-              hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (!f) return;
-                void act("import-prod", async () => {
-                  const list = parseProductCsv(await f.text());
-                  if (list.length === 0) throw new Error("CSV mein koi item nahi mila");
-                  let added = 0;
-                  for (const p of list.slice(0, 100)) {
-                    await api("/api/shop/product", { json: p });
-                    added++;
-                  }
-                  await refresh();
-                  toast(`${added} items Maal mein import ho gaye`, "ok");
-                });
-              }}
-            />
+            </section>
+
+            <section>
+              <div className="section-label mb-2">System Health Audit</div>
+              <div className="surface-card p-4">
+                <button onClick={() => void act("health", async () => setHealth(await api<Health>("/api/system/health", { shop: false })))} className="tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold">
+                  {busy === "health" && <Spinner />} Run health check
+                </button>
+                {health && (
+                  <div className="mt-3 space-y-1 font-mono text-[11.5px]">
+                    {Object.entries(health.pinned_models).map(([k, v]) => (
+                      <div key={k} className="flex justify-between">
+                        <span>{k}: {v ?? "—"}</span>
+                        <span className={health.models_available?.[k] ? "text-cash" : health.models_available ? "text-udhaar" : "text-ink-2"}>
+                          {health.models_available ? (health.models_available[k] ? "live ✓" : v ? "missing ✗" : "") : "?"}
+                        </span>
+                      </div>
+                    ))}
+                    <div className={health.cutover_audit.ok ? "text-cash" : "text-udhaar"}>gemini-2.5 refs: {health.cutover_audit.gemini_2_5_references}</div>
+                    {health.missing_env.length > 0 && <div className="text-udhaar">missing env: {health.missing_env.join(", ")}</div>}
+                    {health.model_check_error && <div className="text-ink-2">model list: {health.model_check_error.slice(0, 120)}</div>}
+                  </div>
+                )}
+              </div>
+            </section>
+
             <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => csvRef.current?.click()}
-                disabled={busy === "import"}
-                className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[12.5px] font-semibold"
-              >
-                {busy === "import" ? <Spinner /> : <Upload size={13} strokeWidth={SW} />} Import Customers CSV
-              </button>
-              <button
-                onClick={() => prodCsvRef.current?.click()}
-                disabled={busy === "import-prod"}
-                className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[12.5px] font-semibold"
-              >
-                {busy === "import-prod" ? <Spinner /> : <Upload size={13} strokeWidth={SW} />} Import Products CSV
-              </button>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <a href="/privacy" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
-                {tr("privacy", lang)}
+              <a href="/verify" target="_blank" rel="noreferrer" className="tactile flex h-11 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
+                /verify
               </a>
-              <a href="/terms" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
-                {tr("terms", lang)}
-              </a>
-              <a href="/delete-account" className="tactile flex h-10 items-center justify-center gap-1 rounded-[12px] bg-udhaar-bg text-[12.5px] font-semibold text-udhaar-ink">
-                <UserX size={13} strokeWidth={SW} /> Delete
+              <a href="/report" target="_blank" rel="noreferrer" className="tactile flex h-11 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
+                SMEConnect report
               </a>
             </div>
           </div>
-        </section>
-
-        <button onClick={() => void signOut()} className="tactile flex h-12 w-full items-center justify-center gap-2 rounded-[12px] text-[14px] font-semibold text-udhaar-ink">
-          <LogOut size={15} strokeWidth={SW} /> {tr("signOut", lang)}
-        </button>
+        )}
       </div>
     </Sheet>
   );

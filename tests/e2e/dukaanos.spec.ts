@@ -26,7 +26,7 @@ test.describe("DukaanOS Web PWA E2E", () => {
     page.on("response", (r) => {
       if (r.status() >= 400) errors.push(`HTTP ${r.status()} ${r.url()}`);
     });
-    await page.goto("/");
+    await page.goto("/?xray=1");
 
     // 1. Sandbox sign-in
     await Promise.all([
@@ -64,7 +64,7 @@ test.describe("DukaanOS Web PWA E2E", () => {
 
     await input.fill("Ek kilo cheeni cash");
     await page.getByRole("button", { name: "Send" }).click();
-    await expect(page.getByText(/1 Pending Sync/i)).toBeVisible();
+    await expect(page.getByText(/Internet band hai/i)).toBeVisible();
 
     await page.getByRole("button", { name: /Reconnect/i }).click();
     // If model fell back to Tier-2 rule parse, confirm the queued review sheet; otherwise Tier-1 auto-commits
@@ -80,7 +80,7 @@ test.describe("DukaanOS Web PWA E2E", () => {
     // Close X-Ray if Judge Mode auto-opened it
     const xrayClose = page.getByRole("button", { name: "Close" }).last();
     if (await xrayClose.isVisible().catch(() => false)) await page.keyboard.press("Escape");
-    await expect(page.getByText(/1 Pending Sync/i)).toBeHidden({ timeout: 25_000 });
+    await expect(page.getByText(/Internet band hai/i)).toBeHidden({ timeout: 25_000 });
 
     // 4. Pulse via "Subah ka hisaab batao"
     await input.fill("Subah ka hisaab batao");

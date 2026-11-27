@@ -49,7 +49,7 @@ function editLine(line: ParchiReviewLine): EditLine {
 }
 
 export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; autoSample?: boolean }) {
-  const { state, commitPurchase, toast, openSheet } = useDukaan();
+  const { state, commitPurchase, toast, openSheet, xrayOn } = useDukaan();
   const [stage, setStage] = useState<Stage>("capture");
   const [img, setImg] = useState<PreparedImage | null>(null);
   const [res, setRes] = useState<(ParchiParseResult & { api_ms: number }) | null>(null);
@@ -607,11 +607,19 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
           <div className="surface-card p-4">
             <div className="text-[15px] font-semibold">{supplierName || res?.supplier_name}</div>
             <Money paisa={done.totals.total_paisa ?? 0} className="mt-1 block text-[26px] font-bold" />
-            <div className="mt-2 flex flex-wrap gap-1.5"><Pill tone="cash" mono>Δ = 0 ✓</Pill><Pill mono>#{done.seq} {done.entry_hash.slice(0, 10)}…</Pill>{done.math_check && <Pill tone={done.math_check.passed ? "cash" : "amber"} mono>{done.math_check.passed ? "MATH OK" : "MATH_MISMATCH reviewed"}</Pill>}</div>
-            <div className="mt-3 rounded-[10px] bg-canvas p-2.5 font-mono text-[11.5px]">{done.journal.map((entry, index) => <div key={index} className="flex justify-between"><span>{entry.side} {entry.account_code} {entry.account_name}</span><span>{formatJournal(entry.amount_paisa)}</span></div>)}</div>
+            <div className="mt-1 text-[13px] font-medium text-cash-ink">Stock &amp; khata update ho gaya ✓</div>
+            {xrayOn && (
+              <>
+                <div className="mt-2 flex flex-wrap gap-1.5"><Pill tone="cash" mono>Δ = 0 ✓</Pill><Pill mono>#{done.seq} {done.entry_hash.slice(0, 10)}…</Pill>{done.math_check && <Pill tone={done.math_check.passed ? "cash" : "amber"} mono>{done.math_check.passed ? "MATH OK" : "MATH_MISMATCH reviewed"}</Pill>}</div>
+                <div className="mt-3 rounded-[10px] bg-canvas p-2.5 font-mono text-[11.5px]">{done.journal.map((entry, index) => <div key={index} className="flex justify-between"><span>{entry.side} {entry.account_code} {entry.account_name}</span><span>{formatJournal(entry.amount_paisa)}</span></div>)}</div>
+              </>
+            )}
           </div>
           <PriceMemoryCard />
-          <div className="flex gap-3"><SecondaryButton className="flex-1" onClick={() => openSheet({ type: "xray", txId: done.transaction_id })}>{"</>"} X-Ray</SecondaryButton><PrimaryButton className="flex-1" onClick={onClose}>Done</PrimaryButton></div>
+          <div className="flex gap-3">
+            {xrayOn && <SecondaryButton className="flex-1" onClick={() => openSheet({ type: "xray", txId: done.transaction_id })}>{"</>"} X-Ray</SecondaryButton>}
+            <PrimaryButton className="flex-1" onClick={onClose}>Done</PrimaryButton>
+          </div>
         </div>
       )}
     </Sheet>

@@ -12,7 +12,7 @@ import { MunshiTab } from "./MunshiTab";
 import { CreateShop, Loading, SetupNeeded, Splash } from "./Onboarding";
 import { InsightsSheet } from "./InsightsSheet";
 import { PulseSheet } from "./PulseSheet";
-import { AnswerSheet, PaymentSheet, PromiseSheet, ReceiptSheet, ReturnSheet, ReversalSheet, SaleReviewSheet } from "./ReviewSheets";
+import { AnswerSheet, EntryDetailSheet, PaymentSheet, PromiseSheet, ReceiptSheet, ReturnSheet, ReversalSheet, SaleReviewSheet } from "./ReviewSheets";
 import { AppLockGate } from "./AppLock";
 import { ReplaysSheet, SettingsSheet } from "./SettingsSheet";
 import { cx, SW } from "./ui";
@@ -146,20 +146,20 @@ function Header() {
               Review {reviewCount}
             </button>
           )}
-          <button
-            aria-label="Toggle X-Ray Judge Mode"
-            aria-pressed={xrayOn}
-            onClick={() => {
-              const next = !xrayOn;
-              setXrayOn(next);
-              if (next) openSheet({ type: "xray" });
-            }}
-            className={cx("tactile ml-auto h-7 shrink-0 rounded-full border px-2.5 font-mono text-[12.5px] font-semibold", xrayOn ? "border-ink bg-ink text-white" : "border-black/15 bg-white",
-              // Demo isolation: hide X-Ray pill on live shops unless already active (7I requirement)
-              !xrayOn && !(shop?.is_demo_shop || shop?.is_stage_shop) && "hidden")}
-          >
-            {"</>"} X-Ray
-          </button>
+          {xrayOn && (
+            <button
+              aria-label="Toggle X-Ray Judge Mode"
+              aria-pressed={xrayOn}
+              onClick={() => {
+                const next = !xrayOn;
+                setXrayOn(next);
+                if (next) openSheet({ type: "xray" });
+              }}
+              className="tactile ml-auto h-7 shrink-0 rounded-full border border-ink bg-ink px-2.5 font-mono text-[12.5px] font-semibold text-white"
+            >
+              {"</>"} X-Ray
+            </button>
+          )}
         </>
       )}
       {tab === "khata" && (
@@ -196,20 +196,22 @@ function JudgeBanner() {
 }
 
 function OfflineBanner() {
-  const { online, pending, simulatedOffline, setSimulatedOffline, flush } = useDukaan();
-  if (online && pending === 0) return null;
+  const { online, pending, simulatedOffline, setSimulatedOffline } = useDukaan();
+  if (online) return null;
   return (
     <div className="mb-3 flex items-center gap-2 rounded-[12px] bg-amber-bg px-3 py-2 text-[13.5px] font-medium text-amber-ink">
       <WifiOff size={15} strokeWidth={SW} />
       <span className="flex-1">
-        {online ? `Online · ${pending} Pending Sync (IndexedDB)` : `Net/bijli gayi? Sab mehfooz hai · ${pending} Pending Sync`}
+        Internet band hai — hisaab phone par mehfooz hai{pending > 0 ? ` (${pending})` : ""}
       </span>
-      <button
-        onClick={() => (simulatedOffline ? setSimulatedOffline(false) : void flush())}
-        className="tactile h-7 rounded-full bg-surface px-3 text-[12.5px] font-semibold"
-      >
-        {online ? "Sync now" : "Reconnect"}
-      </button>
+      {simulatedOffline && (
+        <button
+          onClick={() => setSimulatedOffline(false)}
+          className="tactile h-7 rounded-full bg-surface px-3 text-[12.5px] font-semibold"
+        >
+          Reconnect
+        </button>
+      )}
     </div>
   );
 }
@@ -305,6 +307,8 @@ function SheetRouter() {
       return <AnswerSheet answer={sheet.answer} proposal={sheet.proposal} trace={sheet.trace} tools={sheet.tools} onClose={closeSheet} />;
     case "xray":
       return <XRaySheet key={sheet.txId ?? "latest"} txId={sheet.txId} onClose={closeSheet} />;
+    case "entry":
+      return <EntryDetailSheet key={sheet.tx?.id ?? sheet.txId ?? "entry"} tx={sheet.tx} txId={sheet.txId} onClose={closeSheet} />;
     case "parchi":
       return <ParchiSheet autoSample={sheet.autoSample} onClose={closeSheet} />;
     case "passport":

@@ -1,23 +1,23 @@
 "use client";
 
-import { Check, ImageDown, MessageSquare, Pause, Plus, RotateCcw, Search, Trash2, Volume2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Check, ImageDown, MessageSquare, Pause, Pencil, Plus, RotateCcw, Search, Trash2, Volume2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import type { CommitResponse, FeedTx, PromiseProposal, TurnTrace } from "@/lib/api/contracts";
 import { api, ClientApiError, friendlyError, newKey } from "@/lib/client/api";
 import { renderReceiptPng, shareOrDownload } from "@/lib/client/canvas";
 import { holdBill, removeHeldBill } from "@/lib/client/held-bills";
 import { speak } from "@/lib/client/speak";
 import { useDukaan } from "@/lib/client/store";
-import { recalcCatalogLine, recalcNewSkuLine, resettle, setLineQty, summarizeLines } from "@/lib/domain/bill";
+import { buildSaleProposal, recalcCatalogLine, recalcNewSkuLine, resettle, setLineQty, summarizeLines } from "@/lib/domain/bill";
 import { quickSuggest } from "@/lib/domain/cooccurrence";
 import { describeQty, formatBaseQty, formatUnitPrice, parseQuantityPhrase, type BaseUnit } from "@/lib/domain/desi-units";
 import { paymentReceiptText, receiptText, smsLink, waLink } from "@/lib/domain/messages";
 import { formatRs, rupeesToPaisa } from "@/lib/domain/money";
 import { quickWadaOptions, wadaLabel } from "@/lib/domain/wada";
 import { dequeue } from "@/lib/client/queue";
-import type { CustomerRow, PaymentProposal, ProposalLine, SaleProposal } from "@/lib/domain/types";
+import type { CustomerRow, ParsedTurn, PaymentProposal, ProposalLine, SaleProposal } from "@/lib/domain/types";
 import { feedSummary } from "./MunshiTab";
-import { cx, Money, Pill, PrimaryButton, SecondaryButton, Sheet, SW } from "./ui";
+import { cx, Money, Pill, PrimaryButton, SecondaryButton, Sheet, Spinner, SW } from "./ui";
 
 const REASON_LABEL: Record<string, string> = {
   UDHAAR: "Udhaar",
@@ -631,7 +631,7 @@ export function PaymentSheet({ proposal, customerId, idemKey, trace, onClose }: 
 /* ───────────────────────────── reversal ───────────────────────────── */
 
 export function ReversalSheet({ target, onClose }: { target: FeedTx | null; onClose: () => void }) {
-  const { reverse, toast } = useDukaan();
+  const { reverse, toast, xrayOn } = useDukaan();
   const [busy, setBusy] = useState(false);
   return (
     <Sheet open onClose={onClose} title="Pichli entry wapas?">
@@ -641,12 +641,12 @@ export function ReversalSheet({ target, onClose }: { target: FeedTx | null; onCl
             <div className="text-[15px] font-semibold">{target.customer_name ?? target.supplier_name ?? "Walk-in Cash"}</div>
             <div className="text-[13px] text-ink-2">{feedSummary(target)}</div>
             <Money paisa={target.total_paisa} className="mt-2 block text-[22px] font-bold" />
-            <div className="mt-2 font-mono text-[11px] text-ink-2">#{target.seq} · {target.entry_hash.slice(0, 12)}…</div>
+            {xrayOn && <div className="mt-2 font-mono text-[11px] text-ink-2">#{target.seq} · {target.entry_hash.slice(0, 12)}…</div>}
           </div>
         ) : (
           <div className="text-[15px] text-ink-2">Wapas karne ke liye koi entry nahi.</div>
         )}
-        <p className="mt-3 text-[13px] text-ink-2">reverse_transaction mirrors every ledger row and stock movement and appends a new SHA-256 link — history is never deleted.</p>
+        <p className="mt-3 text-[13px] text-ink-2">Stock aur khata balance khud durust ho jayega — purana record bhi mehfooz rahega.</p>
       </div>
       <div className="flex gap-3 px-5 pb-[max(16px,env(safe-area-inset-bottom))]">
         <SecondaryButton onClick={onClose} className="w-[92px]">Cancel</SecondaryButton>
@@ -658,7 +658,7 @@ export function ReversalSheet({ target, onClose }: { target: FeedTx | null; onCl
             setBusy(true);
             try {
               await reverse(target!.id, "voice-wapas");
-              toast("Entry reversed — Δ = 0, chain extended", "ok");
+              toast("Entry wapas ho gayi ✓", "ok");
               onClose();
             } catch (e) {
               toast(friendlyError(e), "err");
@@ -677,20 +677,22 @@ export function ReversalSheet({ target, onClose }: { target: FeedTx | null; onCl
 /* ───────────────────────────── agent answer ───────────────────────────── */
 
 export function AnswerSheet({ answer, proposal, trace, tools, onClose }: { answer: string; proposal: SaleProposal | PaymentProposal | null; trace: TurnTrace; tools: Array<{ name: string; ms: number }>; onClose: () => void }) {
-  const { openSheet } = useDukaan();
+  const { openSheet, xrayOn } = useDukaan();
   return (
     <Sheet open onClose={onClose} title="Munshi ka jawab">
       <div className="px-5 pb-5">
         <div className="mb-3 rounded-[12px] bg-canvas px-3.5 py-2.5 text-[14px] text-ink-2" dir="auto">“{trace.transcript}”</div>
         <p className="text-[18px] font-medium leading-7" dir="auto">{answer || "—"}</p>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <Pill mono>{trace.model}</Pill>
-          {tools.map((t, i) => (
-            <Pill key={i} tone="maal" mono>
-              {t.name} {t.ms}ms
-            </Pill>
-          ))}
-        </div>
+        {xrayOn && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <Pill mono>{trace.model}</Pill>
+            {tools.map((t, i) => (
+              <Pill key={i} tone="maal" mono>
+                {t.name} {t.ms}ms
+              </Pill>
+            ))}
+          </div>
+        )}
         <div className="mt-4 flex gap-3">
           <SecondaryButton onClick={() => void speak(answer)} className="flex items-center gap-2">
             <Volume2 size={16} strokeWidth={SW} /> Suniye
@@ -716,7 +718,7 @@ export function AnswerSheet({ answer, proposal, trace, tools, onClose }: { answe
 /* ───────────────────────────── post-commit receipt (wa.me ping) ───────────────────────────── */
 
 export function ReceiptSheet({ commit, proposal, customerPhone, onClose }: { commit: CommitResponse; proposal: SaleProposal | null; customerPhone: string | null; onClose: () => void }) {
-  const { state, toast, openSheet } = useDukaan();
+  const { state, toast, openSheet, xrayOn } = useDukaan();
   const shop = state?.shop.name ?? "DukaanOS";
   const lines = (commit.lines ?? []) as Array<{ name: string; qty_base_units: number; base_unit: BaseUnit; line_total_paisa: number }>;
   const t = commit.totals ?? {};
@@ -757,11 +759,13 @@ export function ReceiptSheet({ commit, proposal, customerPhone, onClose }: { com
           </div>
           {proposal && <div className="mt-1 text-[13px] text-ink-2">{proposal.lines.map((l) => l.name).join(", ")}</div>}
           {commit.customer && <div className="mt-1 text-[13px] text-ink-2">New khata balance: <b className="text-udhaar">{formatRs(commit.customer.balance_paisa)}</b></div>}
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <Pill tone="cash" mono>Δ = 0 ✓</Pill>
-            <Pill mono>#{commit.seq} {commit.entry_hash.slice(0, 10)}…</Pill>
-            <Pill mono>{commit.rpc_ms}ms RPC</Pill>
-          </div>
+          {xrayOn && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Pill tone="cash" mono>Δ = 0 ✓</Pill>
+              <Pill mono>#{commit.seq} {commit.entry_hash.slice(0, 10)}…</Pill>
+              <Pill mono>{commit.rpc_ms}ms RPC</Pill>
+            </div>
+          )}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2.5 px-5 pb-2 pt-2">
@@ -806,9 +810,11 @@ export function ReceiptSheet({ commit, proposal, customerPhone, onClose }: { com
         </button>
       </div>
       <div className="flex gap-3 px-5 pb-[max(16px,env(safe-area-inset-bottom))] pt-1">
-        <SecondaryButton className="flex-1" onClick={() => openSheet({ type: "xray", txId: commit.transaction_id })}>
-          {"</>"} X-Ray
-        </SecondaryButton>
+        {xrayOn && (
+          <SecondaryButton className="flex-1" onClick={() => openSheet({ type: "xray", txId: commit.transaction_id })}>
+            {"</>"} X-Ray
+          </SecondaryButton>
+        )}
         <PrimaryButton className="flex-1" onClick={onClose}>
           Done
         </PrimaryButton>
@@ -893,7 +899,7 @@ export function PromiseSheet({ proposal, idemKey, trace, onClose }: { proposal: 
 /* ───────────────────────────── item return / exchange (wapasi) ───────────────────────────── */
 
 export function ReturnSheet({ customerId, onClose }: { customerId?: string | null; onClose: () => void }) {
-  const { state, refresh, openSheet, toast } = useDukaan();
+  const { state, refresh, toast } = useDukaan();
   const products = state?.products ?? [];
   const customers = state?.customers ?? [];
   const [prodId, setProdId] = useState<string>(products[0]?.id ?? "");
@@ -923,7 +929,7 @@ export function ReturnSheet({ customerId, onClose }: { customerId?: string | nul
     if (!prod || qtyBase <= 0 || refundPaisa <= 0) return;
     setBusy(true);
     try {
-      const res = await api<CommitResponse>("/api/transactions/return", {
+      await api<CommitResponse>("/api/transactions/return", {
         json: {
           idempotency_key: newKey("ret"),
           customer_id: custId || null,
@@ -934,8 +940,8 @@ export function ReturnSheet({ customerId, onClose }: { customerId?: string | nul
         },
       });
       await refresh();
-      toast(`Return darj: ${formatRs(refundPaisa)} · stock & chain updated`, "ok");
-      openSheet({ type: "xray", txId: res.transaction_id });
+      toast(`Return darj: ${formatRs(refundPaisa)} ✓`, "ok");
+      onClose();
     } catch (e) {
       toast(friendlyError(e), "err");
     } finally {
@@ -996,6 +1002,257 @@ export function ReturnSheet({ customerId, onClose }: { customerId?: string | nul
             <span className="flex items-center justify-center gap-1.5"><RotateCcw size={15} strokeWidth={SW} /> Record Return</span>
           </PrimaryButton>
         </div>
+      </div>
+    </Sheet>
+  );
+}
+
+/* ───────────────────────────── human-friendly entry detail sheet ───────────────────────────── */
+
+const ENTRY_TYPE_LABEL: Record<string, string> = {
+  sale: "Sale Receipt",
+  payment: "Wasooli Receipt",
+  purchase: "Wholesale Restock",
+  reversal: "Reversed Entry",
+  return: "Item Return",
+  adjustment: "Stock Adjustment",
+  writeoff: "Khata Write-off",
+};
+
+interface FetchedTxDoc {
+  transaction: {
+    id: string;
+    seq: number;
+    type: string;
+    total_paisa: number;
+    discount_paisa: number;
+    entry_hash: string;
+    created_at: string;
+  };
+  reversed_by: string | null;
+}
+
+export function EntryDetailSheet({ tx: initialTx, txId, onClose }: { tx?: FeedTx; txId?: string | null; onClose: () => void }) {
+  const { state, xrayOn, reverse, openSheet, toast } = useDukaan();
+  const [fetched, setFetched] = useState<FetchedTxDoc | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState<"undo" | "edit" | null>(null);
+
+  const tx = useMemo(
+    () => initialTx ?? state?.feed.find((f) => f.id === txId) ?? null,
+    [initialTx, state?.feed, txId],
+  );
+
+  useEffect(() => {
+    if (tx || !txId) return;
+    setLoading(true);
+    api<FetchedTxDoc>(`/api/shop/xray?id=${txId}`)
+      .then(setFetched)
+      .catch(() => setFetched(null))
+      .finally(() => setLoading(false));
+  }, [tx, txId]);
+
+  const txType = tx?.type ?? fetched?.transaction.type ?? "sale";
+  const totalPaisa = tx?.total_paisa ?? fetched?.transaction.total_paisa ?? 0;
+  const discountPaisa = tx?.discount_paisa ?? fetched?.transaction.discount_paisa ?? 0;
+  const createdAt = tx?.created_at ?? fetched?.transaction.created_at ?? null;
+  const isReversed = Boolean(tx?.is_reversed || fetched?.reversed_by);
+  const isQueuedOffline = Boolean(tx && tx.seq < 0);
+  const title = ENTRY_TYPE_LABEL[txType] ?? "Entry Details";
+  const party =
+    txType === "purchase"
+      ? tx?.supplier_name ?? "Wholesale"
+      : tx?.customer_name ?? (txType === "adjustment" ? "Store Stock" : "Walk-in Cash");
+  const customer = tx?.customer_id ? state?.customers.find((c) => c.id === tx.customer_id) ?? null : null;
+  const shopName = state?.shop.name ?? "DukaanOS";
+
+  const canModify = Boolean(tx && tx.seq > 0 && !isReversed && (tx.type === "sale" || tx.type === "payment") && state);
+
+  const waHref = useMemo(() => {
+    if (!tx || (tx.type !== "sale" && tx.type !== "payment")) return null;
+    const msg =
+      tx.type === "payment"
+        ? paymentReceiptText({
+            shop: shopName,
+            customer: party,
+            amount_paisa: tx.total_paisa,
+            new_balance_paisa: customer?.balance_paisa ?? 0,
+            entry_hash: tx.entry_hash,
+          })
+        : receiptText({
+            shop: shopName,
+            customer: tx.customer_name ?? undefined,
+            lines: tx.lines.map((l) => ({
+              name: l.name,
+              qty_base_units: l.qty_base_units,
+              base_unit: l.base_unit as BaseUnit,
+              line_total_paisa: l.line_total_paisa,
+            })),
+            discount_paisa: tx.discount_paisa,
+            total_paisa: tx.total_paisa,
+            cash_paid_paisa: tx.cash_paid_paisa,
+            credit_paisa: tx.credit_paisa,
+            new_balance_paisa: customer?.balance_paisa ?? null,
+            entry_hash: tx.entry_hash,
+          });
+    return waLink(customer?.phone ?? null, msg);
+  }, [tx, shopName, party, customer]);
+
+  const handleEdit = async () => {
+    if (!tx || !state) return;
+    setBusy("edit");
+    try {
+      await reverse(tx.id, "compensate-edit");
+      toast("Purani entry wapas — ab sahi entry save karein", "info");
+      if (tx.type === "payment" && tx.customer_id) {
+        openSheet({
+          type: "payment",
+          key: newKey("editpay"),
+          trace: null,
+          proposal: {
+            kind: "payment",
+            amount_paisa: tx.total_paisa,
+            customer: {
+              mention: customer?.name ?? null,
+              candidates: customer ? [{ id: customer.id, name: customer.name, role_tag: customer.role_tag ?? null, balance_paisa: customer.balance_paisa, score: 1 }] : [],
+              selected_id: tx.customer_id,
+              ambiguous: false,
+              match_ms: 0,
+            },
+            new_balance_paisa: customer ? customer.balance_paisa - tx.total_paisa : null,
+            tier: 2,
+            tier_reasons: [],
+          },
+        });
+      } else {
+        const parsed: ParsedTurn = {
+          intent: "sale",
+          transcript: `Edit #${tx.seq}`,
+          customer_mention: tx.customer_name,
+          items: tx.lines.map((l) => ({
+            spoken: l.name,
+            quantity_phrase: formatBaseQty(l.qty_base_units, l.base_unit as BaseUnit),
+            value_rupees: l.value_first ? l.line_total_paisa / 100 : null,
+            is_loose: false,
+            confidence: 1,
+          })),
+          discount_rupees: tx.discount_paisa > 0 ? tx.discount_paisa / 100 : null,
+          cash_paid_rupees: tx.cash_paid_paisa / 100,
+          payment_mode: tx.credit_paisa > 0 && tx.cash_paid_paisa > 0 ? "split" : tx.credit_paisa > 0 ? "udhaar" : "cash",
+          payment_amount_rupees: null,
+          question: null,
+          confidence: 1,
+        };
+        const prop = buildSaleProposal(parsed, { products: state.products, customers: state.customers });
+        openSheet({ type: "review", proposal: { ...prop, tier: 2 }, key: newKey("editsale"), trace: null });
+      }
+    } catch (e) {
+      toast(friendlyError(e), "err");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleUndo = async () => {
+    if (!tx) return;
+    setBusy("undo");
+    try {
+      await reverse(tx.id, "manual-undo");
+      toast("Entry wapas ho gayi ✓", "ok");
+      onClose();
+    } catch (e) {
+      toast(friendlyError(e), "err");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Sheet open onClose={onClose} title={title}>
+      <div className="space-y-3 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">
+        {loading && !tx ? (
+          <div className="flex items-center justify-center py-6 text-ink-2">
+            <Spinner />
+          </div>
+        ) : (
+          <>
+            <div className="surface-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-[17px] font-bold">{party}</div>
+                  {createdAt && (
+                    <div className="text-[12.5px] text-ink-2">
+                      {new Date(createdAt).toLocaleString("en-PK", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+                    </div>
+                  )}
+                </div>
+                <Money paisa={Math.abs(totalPaisa)} className={cx("text-[24px] font-bold", isReversed && "line-through opacity-50")} />
+              </div>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {isReversed && <Pill tone="udhaar">Undone</Pill>}
+                {isQueuedOffline && <Pill tone="amber">Phone par mehfooz (offline)</Pill>}
+                {tx?.type === "sale" && tx.cash_paid_paisa > 0 && <Pill tone="cash">Cash {formatRs(tx.cash_paid_paisa)}</Pill>}
+                {tx?.type === "sale" && tx.credit_paisa > 0 && <Pill tone="udhaar">Udhaar {formatRs(tx.credit_paisa)}</Pill>}
+                {discountPaisa > 0 && <Pill>Chhoot {formatRs(discountPaisa)}</Pill>}
+              </div>
+            </div>
+
+            {tx && tx.lines.length > 0 && (
+              <div className="surface-card overflow-hidden">
+                {tx.lines.map((l, idx) => (
+                  <div key={idx} className="hairline-b flex items-center justify-between gap-2 px-4 py-3 text-[14.5px] last:border-b-0">
+                    <span className="min-w-0 flex-1 font-medium">
+                      {formatBaseQty(l.qty_base_units, l.base_unit as BaseUnit)} · {l.name.replace(/\s*\(.*\)/, "")}
+                    </span>
+                    <span className="num font-semibold">{formatRs(l.line_total_paisa)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {waHref && (
+              <a
+                href={waHref}
+                target="_blank"
+                rel="noreferrer"
+                className="tactile flex h-12 w-full items-center justify-center gap-2 rounded-[14px] bg-cash text-[15px] font-semibold text-white"
+              >
+                <MessageSquare size={17} strokeWidth={SW} /> WhatsApp Receipt
+              </a>
+            )}
+
+            {canModify && (
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void handleEdit()}
+                  className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[14px] font-semibold disabled:opacity-50"
+                >
+                  {busy === "edit" ? <Spinner /> : <Pencil size={15} strokeWidth={SW} />} Edit
+                </button>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void handleUndo()}
+                  className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] bg-udhaar-bg text-[14px] font-semibold text-udhaar-ink disabled:opacity-50"
+                >
+                  {busy === "undo" ? <Spinner /> : <RotateCcw size={15} strokeWidth={SW} />} Undo Entry
+                </button>
+              </div>
+            )}
+
+            {xrayOn && (tx?.id ?? txId) && (
+              <button
+                type="button"
+                onClick={() => openSheet({ type: "xray", txId: tx?.id ?? txId })}
+                className="tactile flex h-10 w-full items-center justify-center rounded-[12px] border border-black/15 font-mono text-[12.5px] font-semibold text-ink-2"
+              >
+                {"</>"} Open X-Ray Proof
+              </button>
+            )}
+          </>
+        )}
       </div>
     </Sheet>
   );
