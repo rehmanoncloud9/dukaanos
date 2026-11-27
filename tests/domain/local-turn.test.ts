@@ -115,4 +115,18 @@ describe("tryLocalTurn", () => {
     const res = tryLocalTurn("aaj kitna munafa hua?", makeState(), { offline: false });
     expect(res).toBeNull();
   });
+
+  it("answers customer balance, stock, and weekly report queries deterministically offline", () => {
+    const q1 = tryLocalTurn("Bilal ka kitna baqaya hai?", makeState(), { offline: true });
+    expect(q1?.kind).toBe("answer");
+    if (q1?.kind === "answer") expect(q1.answer).toContain("500");
+
+    const q2 = tryLocalTurn("cheeni kitna stock hai?", makeState(), { offline: true });
+    expect(q2?.kind).toBe("answer");
+    if (q2?.kind === "answer") expect(q2.answer).toContain("15kg");
+
+    const nav = tryLocalTurn("stock dikhao", makeState(), { offline: true });
+    expect(nav?.kind).toBe("navigate");
+    if (nav?.kind === "navigate") expect(nav.tab).toBe("maal");
+  });
 });

@@ -24,6 +24,7 @@ export interface TradeSummary {
   ledger_balanced: boolean;
   tx_count_total: number;
   head_entry_hash: string;
+  passport_nonce?: number;
   /** Mutual Khata: what CUSTOMERS attested (two-party evidence). Absent before migration 20261126101. */
   bharosa?: {
     credit_entries: number;
@@ -62,6 +63,7 @@ export interface PassportPayload {
   lb: 0 | 1; // ledger balanced
   txn: number; // chain length
   h: string; // head SHA-256 entry_hash
+  pn?: number; // passport revocation nonce
   iat: number; // issued at (unix s)
 }
 
@@ -136,6 +138,7 @@ export function toPayload(s: TradeSummary, now = new Date()): PassportPayload {
     lb: s.ledger_balanced ? 1 : 0,
     txn: Number(s.tx_count_total),
     h: s.head_entry_hash,
+    ...(s.passport_nonce !== undefined ? { pn: Number(s.passport_nonce) } : {}),
     iat: Math.floor(now.getTime() / 1000),
   };
 }

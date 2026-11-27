@@ -69,7 +69,11 @@ begin
 
   for v_ev, v_at in
     select e,
-           case when (e->'at') ? 'ago' then now() - make_interval(mins => (e->'at'->>'ago')::int)
+           case when (e->'at') ? 'ago' then
+                  greatest(
+                    now() - make_interval(mins => (e->'at'->>'ago')::int),
+                    (v_day0 at time zone 'Asia/Karachi') + make_interval(secs => greatest(1, 200 - (e->'at'->>'ago')::int))
+                  )
                 else ((v_day0 - make_interval(days => (e->'at'->>'d')::int) + make_interval(mins => (e->'at'->>'m')::int))
                       at time zone 'Asia/Karachi') end
     from jsonb_array_elements(private.demo_history()) e

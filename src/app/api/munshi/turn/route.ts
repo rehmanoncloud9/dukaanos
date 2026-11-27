@@ -2,12 +2,12 @@ import { z } from "zod";
 import { runAgent } from "@/lib/ai/agent";
 import { parseTurn } from "@/lib/ai/munshi";
 import { ApiError, handle, ok, parseJson } from "@/lib/api/http";
-import type { PakPhoneTrace, Pulse, ShopState, TurnResponse, TurnTrace } from "@/lib/api/contracts";
+import type { PakPhoneTrace, Pulse, TurnResponse, TurnTrace } from "@/lib/api/contracts";
 import { loadCatalog, numify } from "@/lib/api/shop";
 import { buildPaymentProposal, buildSaleProposal, settle } from "@/lib/domain/bill";
-import { formatBaseQty, parseQuantityPhrase, resolveLine } from "@/lib/domain/desi-units";
-import { PULSE_REGEX } from "@/lib/domain/fallback-parser";
-import { formatRs } from "@/lib/domain/money";
+import { parseQuantityPhrase, resolveLine } from "@/lib/domain/desi-units";
+import { PULSE_REGEX, detectViewCommand } from "@/lib/domain/fallback-parser";
+import { answerQuestionFromState } from "@/lib/domain/qa";
 import { detectWadaUtterance } from "@/lib/domain/wada";
 import { requireShopContext } from "@/lib/server/auth";
 import { enforceRateLimit } from "@/lib/server/ratelimit";
@@ -104,6 +104,11 @@ export const POST = handle(async (req: Request) => {
     return ok<TurnResponse>({ kind: "promise", proposal: { customer: block, promise_date: wadaDate }, trace: { ...baseTrace(null), intent: "promise" } });
   }
 
+  const nav = detectViewCommand((p as { transcript_roman?: string }).transcript_roman || p.transcript);
+  if (nav) {
+    return ok<TurnResponse>({ kind: "navigate", ...nav, trace: { ...baseTrace(null), intent: "navigate" } });
+  }
+
   switch (p.intent) {
     case "pulse": {
       const pulse = numify(await rpc<Pulse>(sb, "get_munshi_pulse", { p_shop_id: shopId }));
@@ -132,9 +137,8 @@ export const POST = handle(async (req: Request) => {
       try {
         r = await runAgent({ question: p.question || p.transcript, sb, shopId, shopName: state.shop.name, catalog });
       } catch (agentErr) {
-        // Deterministic Q&A fallback: answer balance/stock queries without AI
-        const q = (p.question || p.transcript).toLowerCase();
-        const deterministicAnswer = buildLocalPulse(q, catalog, state);
+        // Deterministic Q&A fallback: answer balance/stock/report queries without AI
+        const deterministicAnswer = answerQuestionFromState(p.question || p.transcript, state);
         return ok<TurnResponse>({
           kind: "answer",
           answer: deterministicAnswer,
@@ -242,51 +246,4 @@ async function upgradeWithTrgm(proposal: SaleProposal, sb: SupabaseClient, shopI
     customers: catalog.customers,
     confidence: proposal.confidence,
   });
-}
-
-/**
- * Deterministic Q&A fallback: when runAgent is unavailable (503/504/timeout),
- * answer common questions from local catalog data only. Zero LLM tokens.
- * Returns a plain-language Urdu/English answer string.
- */
-function buildLocalPulse(question: string, catalog: Catalog, state: ShopState): string {
-  const q = question.toLowerCase();
-
-  // Customer balance lookup
-  if (/balance|udhaar|baqi|khata|kharcha/.test(q)) {
-    const customerWithBalance = catalog.customers
-      .filter((c) => c.balance_paisa > 0)
-      .sort((a, b) => b.balance_paisa - a.balance_paisa);
-    if (customerWithBalance.length === 0) {
-      return "Abhi koi udhaar nahi hai. Sab clear hai.";
-    }
-    const lines = customerWithBalance
-      .slice(0, 5)
-      .map((c) => `${c.name}: ${formatRs(c.balance_paisa)}`);
-    return `Top udhaar:\n${lines.join("\n")}${customerWithBalance.length > 5 ? `\n...aur ${customerWithBalance.length - 5} aur.` : ""}`;
-  }
-
-  // Stock lookup
-  if (/stock|maal|kitna|bacha|inventory/.test(q)) {
-    const lowStock = catalog.products
-      .filter((p) => p.stock_base_units <= (p.reorder_level_base_units ?? p.pack_size_base_units))
-      .sort((a, b) => a.stock_base_units - b.stock_base_units)
-      .slice(0, 5);
-    if (lowStock.length === 0) {
-      return "Tamam items ka stock theek hai.";
-    }
-    const lines = lowStock.map((p) => `${p.name}: ${formatBaseQty(p.stock_base_units, p.base_unit)} bacha hai`);
-    return `Kam stock items:\n${lines.join("\n")}`;
-  }
-
-  // Today summary
-  const galla = state.today;
-  if (galla && /aaj|today|galla|sales|hisaab|haal/.test(q)) {
-    return [
-      `Aaj ka galla: ${formatRs(galla.cash_in_galla_paisa)}.`,
-      `Sales: ${galla.sales_count}, Udhaar: ${formatRs(galla.udhaar_paisa)}.`,
-    ].join(" ");
-  }
-
-  return "AI abhi available nahi hai. Baad mein koshish karein, ya WhatsApp par message karein.";
 }

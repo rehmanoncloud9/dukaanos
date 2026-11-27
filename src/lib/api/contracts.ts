@@ -16,7 +16,7 @@ export interface CommitResponse {
   deduplicated: boolean;
   duplicate_rows: number;
   rows_for_key: number;
-  type: "sale" | "payment" | "purchase" | "reversal";
+  type: "sale" | "payment" | "purchase" | "reversal" | "return" | "adjustment" | "writeoff";
   transaction_id: string;
   seq: number;
   prev_hash: string;
@@ -39,7 +39,7 @@ export interface CommitResponse {
 export interface FeedTx {
   id: string;
   seq: number;
-  type: "sale" | "payment" | "purchase" | "reversal";
+  type: "sale" | "payment" | "purchase" | "reversal" | "return" | "adjustment" | "writeoff";
   customer_id: string | null;
   customer_name: string | null;
   customer_role: string | null;
@@ -139,6 +139,7 @@ export type TurnResponse =
   | { kind: "answer"; answer: string; proposal: SaleProposal | PaymentProposal | null; tools: Array<{ name: string; ms: number }>; trace: TurnTrace }
   | { kind: "purchase"; trace: TurnTrace }
   | { kind: "promise"; proposal: PromiseProposal; trace: TurnTrace }
+  | { kind: "navigate"; tab: "munshi" | "khata" | "maal"; filter?: string; sheet?: "insights" | "parchi" | "return"; trace: TurnTrace }
   | { kind: "unknown"; trace: TurnTrace };
 
 /** Mutual Khata wada spoken by the shopkeeper ("Ali ne Jumme ka wada kiya"); date resolved deterministically. */

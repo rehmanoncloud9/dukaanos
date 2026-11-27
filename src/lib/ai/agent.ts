@@ -214,7 +214,7 @@ export async function runAgent(opts: {
     }
     return { answer: "Maaf kijiye, jawab mukammal nahi ho saka. Dobara poochein.", proposal, tool_calls: toolLog, model, latency_ms: Date.now() - t0, rounds };
   } catch {
-    return runDeterministicQaFallback(opts.question, opts.catalog, tools, toolLog, t0);
+    return runDeterministicQaFallback(opts.question, opts.catalog, tools, toolLog, t0, loadState);
   }
 }
 
@@ -224,6 +224,7 @@ async function runDeterministicQaFallback(
   tools: Record<string, (a: Record<string, unknown>) => Promise<unknown>>,
   toolLog: AgentResult["tool_calls"],
   t0: number,
+  loadState: () => Promise<ShopState>,
 ): Promise<AgentResult> {
   const q = question.toLowerCase();
   const runTool = async <T>(name: string, args: Record<string, unknown>): Promise<T> => {
@@ -233,7 +234,38 @@ async function runDeterministicQaFallback(
     return res;
   };
 
-  if (/\b(pulse|hisaab|hisab|galla|aaj|kamai|munafa|margin|overdue)\b/.test(q)) {
+  if (/\b(hafta|haftay|week|mahina|mahinay|month|munafa|profit|fayda|zyada|top|slow)\b/.test(q)) {
+    const s = await loadState();
+    const days = /\b(mahina|mahinay|month|30)\b/.test(q) ? 30 : 7;
+    if (/\b(zyada|top|best|fast|bikne|slow|kam\s+bik)\b/.test(q)) {
+      const slow = /\b(slow|kam\s+bik)\b/.test(q);
+      const sorted = s.products.slice().sort((a, b) => (slow ? a.sold_7d - b.sold_7d : b.sold_7d - a.sold_7d)).slice(0, 3);
+      return {
+        answer: sorted.length
+          ? `${slow ? "Kam bikne wale" : "Sab se zyada bikne wale"} items (7d): ${sorted.map((p) => `${p.name} (${formatBaseQty(p.sold_7d, p.base_unit)})`).join(", ")}.`
+          : "Abhi sales history kam hai.",
+        proposal: null,
+        tool_calls: toolLog,
+        model: "rules-fallback",
+        latency_ms: Date.now() - t0,
+        rounds: 1,
+      };
+    }
+    const cutoff = Date.now() - days * 86_400_000;
+    const recent = s.feed.filter((t) => new Date(t.created_at).getTime() >= cutoff);
+    const sales = recent.filter((t) => t.type === "sale");
+    const total = sales.reduce((sum, t) => sum + Number(t.total_paisa ?? 0), 0);
+    return {
+      answer: `${days === 30 ? "Is mahinay" : "Is haftay"} ${sales.length} sales mein kul ${formatRs(total)} ki bikri hui.`,
+      proposal: null,
+      tool_calls: toolLog,
+      model: "rules-fallback",
+      latency_ms: Date.now() - t0,
+      rounds: 1,
+    };
+  }
+
+  if (/\b(pulse|hisaab|hisab|galla|aaj|kamai|overdue)\b/.test(q)) {
     const pulse = await runTool<{
       today?: { sales_paisa?: number; cash_paisa?: number; udhaar_paisa?: number };
       overdue_udhaar?: Array<unknown>;

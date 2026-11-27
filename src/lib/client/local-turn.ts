@@ -6,7 +6,8 @@
 
 import { stateToCatalog, type PakPhoneTrace, type Pulse, type ShopState, type TurnResponse, type TurnTrace } from "@/lib/api/contracts";
 import { buildPaymentProposal, buildSaleProposal } from "@/lib/domain/bill";
-import { parseFallback } from "@/lib/domain/fallback-parser";
+import { detectViewCommand, parseFallback } from "@/lib/domain/fallback-parser";
+import { answerQuestionFromState } from "@/lib/domain/qa";
 import { detectWadaUtterance } from "@/lib/domain/wada";
 
 export function buildLocalPulse(state: ShopState): Pulse {
@@ -86,6 +87,10 @@ export function tryLocalTurn(
   };
 
   if (opts.offline) {
+    const nav = detectViewCommand(text);
+    if (nav) {
+      return { kind: "navigate", ...nav, trace: makeTrace("navigate", null) };
+    }
     if (wadaDate && parsed.intent !== "pulse" && parsed.intent !== "reversal") {
       const block = buildPaymentProposal(parsed, catalog.customers).customer;
       return {
@@ -123,7 +128,13 @@ export function tryLocalTurn(
       case "purchase":
         return { kind: "purchase", trace: makeTrace("purchase", null) };
       case "question":
-        return null;
+        return {
+          kind: "answer",
+          answer: answerQuestionFromState(parsed.question || text, state),
+          proposal: null,
+          tools: [],
+          trace: makeTrace("question", null),
+        };
       case "sale": {
         const proposal = buildSaleProposal(parsed, catalog, { tier1EvidenceVerified: false });
         if (proposal.lines.length === 0) return null;
@@ -154,6 +165,8 @@ export function tryLocalTurn(
   }
 
   // Online strict confidence gate: never bypass Gemini on ambiguity, questions, wada, or partial matches.
+  const onlineNav = detectViewCommand(text);
+  if (onlineNav) return { kind: "navigate", ...onlineNav, trace: makeTrace("navigate", null) };
   if (wadaDate) return null;
 
   if (parsed.intent === "payment") {

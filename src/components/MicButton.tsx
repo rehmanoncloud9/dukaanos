@@ -130,16 +130,15 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
 
   const beginRecording = async (isToggle: boolean) => {
     if (busy || rec.current) return;
-    // Offline assist: use SpeechRecognition when offline or Recorder unsupported
-    if (!Recorder.supported() || (typeof navigator !== "undefined" && !navigator.onLine)) {
-      if (!navigator.onLine && onOfflineTranscript) {
+    // Record real audio whenever MediaRecorder is supported (even offline — submitTurn queues the Blob to IndexedDB for auto-sync).
+    // Fall back to SpeechRecognition only when MediaRecorder is unavailable.
+    if (!Recorder.supported()) {
+      if (onOfflineTranscript) {
         beginOfflineRecognition();
         return;
       }
-      if (!Recorder.supported()) {
-        onDenied("Is browser mein mic nahi — neeche type karein");
-        return;
-      }
+      onDenied("Is browser mein mic nahi — neeche type karein");
+      return;
     }
     const r = new Recorder();
     rec.current = r;

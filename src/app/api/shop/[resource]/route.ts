@@ -1,9 +1,11 @@
 import { z } from "zod";
 import { ApiError, handle, ok, parseJson } from "@/lib/api/http";
 import { loadState, numify } from "@/lib/api/shop";
+import { signPassport, toPayload, type TradeSummary } from "@/lib/crypto/passport";
+import { env } from "@/lib/env";
 import { requireShopContext } from "@/lib/server/auth";
 import { enforceRateLimit } from "@/lib/server/ratelimit";
-import { adminClient, rpc } from "@/lib/supabase/server";
+import { rpc } from "@/lib/supabase/server";
 
 export const maxDuration = 60;
 
@@ -64,6 +66,38 @@ export const GET = handle(async (req: Request, ctx: Ctx) => {
       const items = numify(await rpc<unknown[]>(sb, "get_price_memory", { p_shop_id: shopId, p_min_change_bp: min }));
       return ok({ items, api_ms: Date.now() - t0 });
     }
+    case "insights": {
+      const days = [1, 7, 30, 90].includes(Number(url.searchParams.get("days"))) ? Number(url.searchParams.get("days")) : 7;
+      const data = numify(await rpc<Record<string, unknown>>(sb, "get_shop_insights", { p_shop_id: shopId, p_days: days }));
+      return ok({ ...data, api_ms: Date.now() - t0 });
+    }
+    case "audit-bundle": {
+      const [exported, chain, attestChain, summary] = await Promise.all([
+        rpc<Record<string, unknown>>(sb, "export_shop_data", { p_shop_id: shopId }),
+        rpc<Record<string, unknown>>(sb, "verify_ledger_chain", { p_shop_id: shopId }),
+        rpc<Record<string, unknown>>(sb, "verify_attestation_chain", { p_shop_id: shopId }),
+        rpc<TradeSummary>(sb, "get_trade_summary", { p_shop_id: shopId, p_days: 30 }).then(numify),
+      ]);
+      const priv = env.ed25519PrivateKey();
+      let certificate: { token: string; signature_hex: string; public_key_hex: string } | null = null;
+      if (priv) {
+        const signed = await signPassport(toPayload(summary), priv);
+        certificate = signed;
+      } else {
+        const pub = process.env.NEXT_PUBLIC_ED25519_PUBLIC_KEY || null;
+        if (pub) certificate = { token: "", signature_hex: "", public_key_hex: pub };
+      }
+      return ok({
+        format: "dukaanos-audit-bundle-v1",
+        exported_at: new Date().toISOString(),
+        shop_id: shopId,
+        ledger_chain: chain,
+        attestation_chain: attestChain,
+        certificate,
+        data: exported,
+        api_ms: Date.now() - t0,
+      });
+    }
     default:
       throw new ApiError("BAD_REQUEST", `Unknown resource "${resource}"`, undefined, 404);
   }
@@ -76,11 +110,15 @@ const Price = z.object({ product_id: z.string().uuid(), unit_price_paisa: z.numb
 const Alias = z.object({ product_id: z.string().uuid(), alias: z.string().trim().min(1).max(60) });
 const AddProduct = z.object({
   name: z.string().trim().min(1).max(80),
+  name_ur: z.string().trim().max(80).optional(),
   sku_code: z.string().trim().max(40).optional(),
   base_unit: z.enum(["g", "ml", "pcs"]).default("pcs"),
   pack_size_base_units: z.number().int().positive().max(100_000).default(1),
   unit_price_paisa: z.number().int().min(0).max(100_000_000),
   cost_price_paisa: z.number().int().min(0).max(100_000_000).optional(),
+  reorder_level_base_units: z.number().int().min(0).max(100_000_000).optional(),
+  opening_stock_base_units: z.number().int().min(0).max(100_000_000).optional(),
+  aliases: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
 });
 
 /** Non-financial shop admin (still RPC-only, still membership-checked in Postgres). */
@@ -117,24 +155,10 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     }
     case "product": {
       const b = await parseJson(req, AddProduct);
-      const sku = b.sku_code?.trim() || `SKU-${Date.now().toString(36).toUpperCase()}`;
-      const { data, error } = await adminClient()
-        .from("products")
-        .insert({
-          shop_id: shopId,
-          name: b.name,
-          sku_code: sku,
-          aliases: [b.name.toLowerCase(), ...(b.sku_code ? [b.sku_code] : [])],
-          base_unit: b.base_unit,
-          pack_size_base_units: b.pack_size_base_units,
-          unit_price_paisa: b.unit_price_paisa,
-          cost_price_paisa: b.cost_price_paisa ?? Math.round(b.unit_price_paisa * 0.85),
-          stock_base_units: 0,
-        })
-        .select("id, name, sku_code")
-        .single();
-      if (error) throw new ApiError("DB_ERROR", error.message);
-      return ok(data);
+      return ok(await rpc(sb, "add_product", { p_shop_id: shopId, p_payload: b }));
+    }
+    case "passport-revoke": {
+      return ok(await rpc(sb, "rotate_passport_tokens", { p_shop_id: shopId }));
     }
     default:
       throw new ApiError("BAD_REQUEST", `Unknown resource "${resource}"`, undefined, 404);

@@ -66,3 +66,39 @@ export function parseCustomerCsv(text: string): ImportedCustomer[] {
   }
   return out;
 }
+
+export interface ImportedProduct {
+  name: string;
+  base_unit: "g" | "ml" | "pcs";
+  pack_size_base_units: number;
+  unit_price_paisa: number;
+  cost_price_paisa: number;
+  opening_stock_base_units: number;
+}
+
+export function parseProductCsv(text: string): ImportedProduct[] {
+  const rows = parseCsvRows(text);
+  if (rows.length === 0) return [];
+  const first = rows[0].map((c) => c.toLowerCase());
+  const hasHeader = first.some((c) => /name|item|product|naam/.test(c));
+  const data = hasHeader ? rows.slice(1) : rows;
+
+  const out: ImportedProduct[] = [];
+  for (const r of data) {
+    const name = (r[0] ?? "").trim();
+    if (!name) continue;
+    const rawUnit = (r[1] ?? "pcs").trim().toLowerCase();
+    const base_unit: "g" | "ml" | "pcs" = rawUnit === "kg" || rawUnit === "g" ? "g" : rawUnit === "l" || rawUnit === "litre" || rawUnit === "ml" ? "ml" : "pcs";
+    const pack_size_base_units = base_unit === "pcs" ? 1 : 1000;
+    const sellRs = Number(String(r[2] ?? "0").replace(/[^\d.-]/g, ""));
+    const costRs = Number(String(r[3] ?? "").replace(/[^\d.-]/g, ""));
+    const openQty = Number(String(r[4] ?? "0").replace(/[^\d.-]/g, ""));
+    const unit_price_paisa = Number.isFinite(sellRs) && sellRs > 0 ? rupeesToPaisa(sellRs) : 0;
+    const cost_price_paisa = Number.isFinite(costRs) && costRs > 0 ? rupeesToPaisa(costRs) : Math.round(unit_price_paisa * 0.85);
+    const opening_stock_base_units = Number.isFinite(openQty) && openQty > 0
+      ? Math.round(openQty * (rawUnit === "kg" || rawUnit === "l" || rawUnit === "litre" ? 1000 : 1))
+      : 0;
+    out.push({ name, base_unit, pack_size_base_units, unit_price_paisa, cost_price_paisa, opening_stock_base_units });
+  }
+  return out;
+}

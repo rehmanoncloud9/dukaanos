@@ -209,3 +209,80 @@ describe("tamper evidence", () => {
     expect(v2.ok).toBe(true);
   }, 120_000);
 });
+
+describe("gap closures — returns, adjustments, write-offs, add_product, insights, passport revocation", () => {
+  it("records item return, wastage adjustment, bad-debt write-off, add_product, insights, and passport revocation while keeping SHA-256 chain valid", async () => {
+    // 1. add_product with opening stock
+    const created = await asUser(db, JUDGE, () =>
+      rpc("add_product", shop, {
+        name: "Rooh Afza 800ml",
+        base_unit: "pcs",
+        pack_size_base_units: 1,
+        unit_price_paisa: 45000,
+        cost_price_paisa: 39000,
+        opening_stock_base_units: 10,
+        reorder_level_base_units: 4,
+      }),
+    );
+    expect(created.stock_base_units).toBe(10);
+
+    // 2. adjust_stock (-2 pcs wastage)
+    const adj = await asUser(db, JUDGE, () =>
+      rpc("adjust_stock", shop, {
+        idempotency_key: "adj-test-0001",
+        product_id: created.id,
+        delta_base_units: -2,
+        reason: "wastage",
+      }),
+    );
+    expect(adj.delta).toBe(0);
+    const prodAfterAdj = await one<{ stock_base_units: string }>(db, "select stock_base_units from public.products where id=$1", [created.id]);
+    expect(Number(prodAfterAdj.stock_base_units)).toBe(8);
+
+    // 3. record_return (customer Chhote Ali returns 1 Rooh Afza to khata)
+    const chhoteAliId = (await one<{ id: string }>(db, "select id from public.customers where shop_id=$1 and code='CHHOTE_ALI'", [shop])).id;
+    const aliBefore = await one<{ balance_paisa: string }>(db, "select balance_paisa from public.customers where id=$1", [chhoteAliId]);
+    const ret = await asUser(db, JUDGE, () =>
+      rpc("record_return", shop, {
+        idempotency_key: "ret-test-0001",
+        customer_id: chhoteAliId,
+        cash_refund_paisa: 0,
+        lines: [{ product_id: created.id, qty_base_units: 1 }],
+      }),
+    );
+    expect(ret.delta).toBe(0);
+    const aliAfterRet = await one<{ balance_paisa: string }>(db, "select balance_paisa from public.customers where id=$1", [chhoteAliId]);
+    expect(Number(aliAfterRet.balance_paisa)).toBe(Number(aliBefore.balance_paisa) - 45000);
+    const prodAfterRet = await one<{ stock_base_units: string }>(db, "select stock_base_units from public.products where id=$1", [created.id]);
+    expect(Number(prodAfterRet.stock_base_units)).toBe(9);
+
+    // 4. write_off_udhaar (Rs. 100 maafi for Chhote Ali)
+    const wo = await asUser(db, JUDGE, () =>
+      rpc("write_off_udhaar", shop, {
+        idempotency_key: "wo-test-0001",
+        customer_id: chhoteAliId,
+        amount_paisa: 10000,
+        reason: "bad-debt-maaf",
+      }),
+    );
+    expect(wo.delta).toBe(0);
+    const aliAfterWo = await one<{ balance_paisa: string }>(db, "select balance_paisa from public.customers where id=$1", [chhoteAliId]);
+    expect(Number(aliAfterWo.balance_paisa)).toBe(Number(aliAfterRet.balance_paisa) - 10000);
+
+    // 5. get_shop_insights (7d P&L)
+    const insights = await asUser(db, JUDGE, () => rpc("get_shop_insights", shop, 7));
+    expect(Number(insights.summary.net_revenue_paisa)).toBeGreaterThan(0);
+    expect(Number(insights.summary.returns_paisa)).toBe(45000);
+    expect(Number(insights.summary.writeoff_paisa)).toBe(10000);
+    expect(insights.top_products.length).toBeGreaterThan(0);
+
+    // 6. rotate_passport_tokens increments passport_nonce
+    const rot = await asUser(db, JUDGE, () => rpc("rotate_passport_tokens", shop));
+    expect(rot.passport_nonce).toBe(1);
+
+    // 7. Full SHA-256 chain & SUM(ledger)=0 hold
+    const v = await rpc("verify_ledger_chain", shop);
+    expect(v.ok).toBe(true);
+    expect(Number(v.ledger_sum_paisa)).toBe(0);
+  });
+});

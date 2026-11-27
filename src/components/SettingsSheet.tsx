@@ -1,11 +1,11 @@
 "use client";
 
 import { clearAppLock, isAppLockEnabled, setAppLockPin } from "./AppLock";
-import { Download, FileAudio, LogOut, Play, RefreshCw, ShieldAlert, ShieldCheck, Trash2, Upload, UserX, WifiOff } from "lucide-react";
+import { Download, FileAudio, LogOut, Play, RefreshCw, ShieldAlert, ShieldCheck, Trash2, Upload, UserX, Volume2, WifiOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, friendlyError } from "@/lib/client/api";
 import { downloadCsv, exportKhataCsv, exportMaalCsv } from "@/lib/client/csv-export";
-import { parseCustomerCsv } from "@/lib/client/csv-import";
+import { parseCustomerCsv, parseProductCsv } from "@/lib/client/csv-import";
 import { tr, type Lang } from "@/lib/client/i18n";
 import { listReplays, type ReplayClip } from "@/lib/client/queue";
 import { useDukaan } from "@/lib/client/store";
@@ -31,10 +31,25 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
   // Shift Handover — Galla Count
   const [gallaInput, setGallaInput] = useState("");
   const [raastId, setRaastId] = useState("");
+  const [autoSpeak, setAutoSpeak] = useState(() => typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") === "1");
+  const [storageInfo, setStorageInfo] = useState<string | null>(null);
   const csvRef = useRef<HTMLInputElement>(null);
+  const prodCsvRef = useRef<HTMLInputElement>(null);
   const gallaActual = rupeesToPaisa(Number(gallaInput || 0));
   const gallaSystem = state?.today.cash_in_galla_paisa ?? 0;
   const gallaDiff = gallaActual - gallaSystem;
+
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.storage?.estimate) {
+      navigator.storage.estimate().then((est) => {
+        if (est.usage !== undefined && est.quota) {
+          const mb = (est.usage / (1024 * 1024)).toFixed(1);
+          const pct = Math.max(1, Math.round((est.usage / est.quota) * 100));
+          setStorageInfo(`${mb} MB used (${pct}%)`);
+        }
+      }).catch(() => undefined);
+    }
+  }, []);
 
   const act = async (name: string, fn: () => Promise<void>) => {
     setBusy(name);
@@ -73,6 +88,23 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
               { value: "ur", label: "اردو" },
             ]}
           />
+          <button
+            type="button"
+            onClick={() => {
+              const next = !autoSpeak;
+              setAutoSpeak(next);
+              try {
+                localStorage.setItem("dukaanos.autoSpeak", next ? "1" : "0");
+              } catch {
+                /* ignore */
+              }
+              toast(next ? "Urdu audio confirmations ON" : "Audio confirmations OFF", "info");
+            }}
+            className="tactile mt-2 flex h-10 w-full items-center justify-between rounded-[12px] bg-surface px-3.5 text-[13.5px] font-medium"
+          >
+            <span className="flex items-center gap-2"><Volume2 size={15} strokeWidth={SW} /> {tr("autoSpeak", lang)}</span>
+            <Pill tone={autoSpeak ? "cash" : "neutral"}>{autoSpeak ? "ON" : "OFF"}</Pill>
+          </button>
         </section>
 
         <section>
@@ -164,8 +196,11 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
         <section>
           <div className="section-label mb-2">Offline sync</div>
           <div className="surface-card space-y-3 p-4">
-            <div className="flex items-center justify-between">
-              <Pill tone={pending ? "amber" : "cash"}>{pending} Pending Sync</Pill>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <Pill tone={pending ? "amber" : "cash"}>{pending} Pending Sync</Pill>
+                {storageInfo && <div className="mt-1 text-[11.5px] text-ink-2">Device storage: {storageInfo}</div>}
+              </div>
               <button onClick={() => void act("flush", flush)} className="tactile flex h-8 items-center gap-1.5 rounded-full bg-surface-sunken px-3 text-[13px] font-semibold">
                 {busy === "flush" ? <Spinner /> : <RefreshCw size={13} strokeWidth={SW} />} Flush now
               </button>
@@ -270,24 +305,44 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
         <section>
           <div className="section-label mb-2">Data rights &amp; legal</div>
           <div className="space-y-2">
-            <button
-              onClick={() =>
-                void act("export", async () => {
-                  const data = await api<Record<string, unknown>>("/api/account/export");
-                  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `dukaanos-export-${new Date().toISOString().slice(0, 10)}.json`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                  toast("Shop data exported (JSON)", "ok");
-                })
-              }
-              className="tactile flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold"
-            >
-              {busy === "export" ? <Spinner /> : <Download size={15} strokeWidth={SW} />} {tr("exportData", lang)}
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() =>
+                  void act("export", async () => {
+                    const data = await api<Record<string, unknown>>("/api/account/export");
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `dukaanos-export-${new Date().toISOString().slice(0, 10)}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    toast("Shop data exported (JSON)", "ok");
+                  })
+                }
+                className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[13px] font-semibold"
+              >
+                {busy === "export" ? <Spinner /> : <Download size={14} strokeWidth={SW} />} {tr("exportData", lang)}
+              </button>
+              <button
+                onClick={() =>
+                  void act("audit", async () => {
+                    const bundle = await api<Record<string, unknown>>("/api/shop/audit-bundle");
+                    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `dukaanos-audit-proof-${new Date().toISOString().slice(0, 10)}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    toast("Signed Audit Bundle exported", "ok");
+                  })
+                }
+                className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] bg-cash-bg text-[13px] font-semibold text-cash-ink"
+              >
+                {busy === "audit" ? <Spinner /> : <ShieldCheck size={14} strokeWidth={SW} />} Signed Audit Bundle
+              </button>
+            </div>
             {state && (
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -332,13 +387,44 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
                 });
               }}
             />
-            <button
-              onClick={() => csvRef.current?.click()}
-              disabled={busy === "import"}
-              className="tactile flex h-10 w-full items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[13px] font-semibold"
-            >
-              {busy === "import" ? <Spinner /> : <Upload size={13} strokeWidth={SW} />} Import Customers CSV (Udhaar Book / Excel)
-            </button>
+            <input
+              ref={prodCsvRef}
+              type="file"
+              accept=".csv,text/csv"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (!f) return;
+                void act("import-prod", async () => {
+                  const list = parseProductCsv(await f.text());
+                  if (list.length === 0) throw new Error("CSV mein koi item nahi mila");
+                  let added = 0;
+                  for (const p of list.slice(0, 100)) {
+                    await api("/api/shop/product", { json: p });
+                    added++;
+                  }
+                  await refresh();
+                  toast(`${added} items Maal mein import ho gaye`, "ok");
+                });
+              }}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => csvRef.current?.click()}
+                disabled={busy === "import"}
+                className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[12.5px] font-semibold"
+              >
+                {busy === "import" ? <Spinner /> : <Upload size={13} strokeWidth={SW} />} Import Customers CSV
+              </button>
+              <button
+                onClick={() => prodCsvRef.current?.click()}
+                disabled={busy === "import-prod"}
+                className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] bg-surface-sunken text-[12.5px] font-semibold"
+              >
+                {busy === "import-prod" ? <Spinner /> : <Upload size={13} strokeWidth={SW} />} Import Products CSV
+              </button>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               <a href="/privacy" target="_blank" rel="noreferrer" className="tactile flex h-10 items-center justify-center rounded-[12px] bg-surface-sunken text-[13px] font-semibold">
                 {tr("privacy", lang)}

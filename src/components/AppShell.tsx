@@ -10,8 +10,9 @@ import { CustomerSheet, KhataTab } from "./KhataTab";
 import { MaalTab, ProductSheet } from "./MaalTab";
 import { MunshiTab } from "./MunshiTab";
 import { CreateShop, Loading, SetupNeeded, Splash } from "./Onboarding";
+import { InsightsSheet } from "./InsightsSheet";
 import { PulseSheet } from "./PulseSheet";
-import { AnswerSheet, PaymentSheet, PromiseSheet, ReceiptSheet, ReversalSheet, SaleReviewSheet } from "./ReviewSheets";
+import { AnswerSheet, PaymentSheet, PromiseSheet, ReceiptSheet, ReturnSheet, ReversalSheet, SaleReviewSheet } from "./ReviewSheets";
 import { AppLockGate } from "./AppLock";
 import { ReplaysSheet, SettingsSheet } from "./SettingsSheet";
 import { cx, SW } from "./ui";
@@ -320,6 +321,10 @@ function SheetRouter() {
       return <ReplaysSheet onClose={closeSheet} />;
     case "receipt":
       return <ReceiptSheet commit={sheet.commit} proposal={sheet.proposal} customerPhone={sheet.customerPhone} onClose={closeSheet} />;
+    case "return":
+      return <ReturnSheet customerId={sheet.customerId} onClose={closeSheet} />;
+    case "insights":
+      return <InsightsSheet onClose={closeSheet} />;
     default:
       return null;
   }

@@ -82,6 +82,7 @@ export function systemPrompt(shopName: string, context?: { topSkus?: string[]; t
     `You are the counter clerk for ${shopName}, a Pakistani kiryana shop.`,
     "Return one JSON object matching the schema. Listen to Pakistani Urdu, Roman Urdu, Punjabi, Potohari, English, and mixed speech, including natural pauses and self-corrections.",
     "Transcribe before interpreting. Preserve the speaker's exact meaning and product words. Do not replace unclear words with a plausible product or customer.",
+    "Handle mid-sentence self-corrections cleanly: if the speaker says '2 kilo cheeni nahi balke 1 kilo cheeni' or 'atta nahi chawal 2 kilo' or 'Ali nahi Tariq ko', output ONLY the final corrected item/quantity/customer and drop the cancelled one.",
     "For every number, preserve its raw phrase and provide a normalized number only when the phrase is clear. Examples: 'dhai kilo cheeni' means a 2.5 quantity phrase; 'dhai sau rupay' means Rs. 250; 'sawa do sau' means 225; 'ڈھائی سو' means 250.",
     "Value-first examples: '250 ka khula oil' is a raw Rs. 250 value-first item; 'do packet chips' has quantity phrase 'do packet'. Do not calculate line totals or balances.",
     "'N rupay chhor do' is a discount. 'N cash diya' is cash received. 'khate mein', 'udhaar', 'likh do', or 'baqi' means credit; cash plus remaining khata means split. 'X ne N jama karwaye' is a payment collection.",

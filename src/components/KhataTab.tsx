@@ -1,9 +1,9 @@
 "use client";
 
-import { Check, ExternalLink, Link2, Printer, Search, ShieldCheck, UserPlus, Volume2 } from "lucide-react";
+import { Calendar, Check, ExternalLink, Link2, Printer, RotateCcw, Search, ShieldAlert, ShieldCheck, UserPlus, Volume2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "react-qr-code";
-import type { StateCustomer } from "@/lib/api/contracts";
+import type { CommitResponse, StateCustomer } from "@/lib/api/contracts";
 import { api, friendlyError, newKey } from "@/lib/client/api";
 import { isoDate, pktToday, wadaLabel } from "@/lib/domain/wada";
 import { tr } from "@/lib/client/i18n";
@@ -11,9 +11,35 @@ import { useDukaan } from "@/lib/client/store";
 import { verifyPassport, type PassportPayload, type TradeSummary } from "@/lib/crypto/passport";
 import { rankReminders, reminderText, smsLink, voiceReminderScript, waLink } from "@/lib/domain/messages";
 import { sendVoiceNote } from "@/lib/client/voice-note";
-import { formatRs, formatRsCompact } from "@/lib/domain/money";
+import { formatRs, formatRsCompact, rupeesToPaisa } from "@/lib/domain/money";
 import { FeedRow } from "./MunshiTab";
-import { cx, Money, PrimaryButton, Segmented, Sheet, shortDate, Spinner } from "./ui";
+import { cx, Money, PrimaryButton, SecondaryButton, Segmented, Sheet, shortDate, Spinner } from "./ui";
+
+interface ReminderLogEntry {
+  at: number;
+  channel: "wa" | "sms" | "voice" | "statement";
+}
+
+function logReminder(shopId: string | null | undefined, customerId: string, channel: ReminderLogEntry["channel"]) {
+  if (typeof window === "undefined" || !shopId) return;
+  const k = `dukaanos.remlog.${shopId}.${customerId}`;
+  try {
+    const cur = JSON.parse(localStorage.getItem(k) ?? "[]") as ReminderLogEntry[];
+    localStorage.setItem(k, JSON.stringify([{ at: Date.now(), channel }, ...cur].slice(0, 10)));
+  } catch {
+    /* ignore */
+  }
+}
+
+function readReminderLog(shopId: string | null | undefined, customerId: string): ReminderLogEntry[] {
+  if (typeof window === "undefined" || !shopId) return [];
+  try {
+    const cur = JSON.parse(localStorage.getItem(`dukaanos.remlog.${shopId}.${customerId}`) ?? "[]");
+    return Array.isArray(cur) ? (cur as ReminderLogEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 type Filter = "all" | "overdue" | "wada" | "settled";
 
@@ -168,7 +194,7 @@ function useTtsAvailable(): boolean | null {
 
 /** Voice-note reminder: TTS audio → share sheet; or explicit WhatsApp Text + Khata Link when TTS is disabled. */
 function useVoiceReminder() {
-  const { toast } = useDukaan();
+  const { toast, shopId } = useDukaan();
   const [busyId, setBusyId] = useState<string | null>(null);
   const ttsAvailable = useTtsAvailable();
   const run = async (c: StateCustomer, shop: string, b?: BharosaItem) => {
@@ -177,8 +203,10 @@ function useVoiceReminder() {
     if (ttsAvailable === false) {
       try {
         const r = await api<{ wa: string }>("/api/khata/link", { json: { customer_id: c.id } });
+        logReminder(shopId, c.id, "wa");
         window.open(r.wa, "_blank", "noopener,noreferrer");
       } catch {
+        logReminder(shopId, c.id, "wa");
         window.open(waLink(c.phone, fallbackText), "_blank", "noopener,noreferrer");
       } finally {
         setBusyId(null);
@@ -191,9 +219,11 @@ function useVoiceReminder() {
     });
     try {
       const how = await sendVoiceNote(script, c.name, fallbackText);
+      logReminder(shopId, c.id, "voice");
       toast(how === "shared" ? "Awaaz wali yaad-dihani bhej di" : "Voice note download ho gaya — WhatsApp par bhejein", "ok");
     } catch {
       toast("Awaaz abhi nahi bani — text yaad-dihani khul rahi hai", "warn");
+      logReminder(shopId, c.id, "wa");
       window.open(waLink(c.phone, fallbackText), "_blank", "noopener,noreferrer");
     } finally {
       setBusyId(null);
@@ -262,7 +292,7 @@ function BharosaBadges({ b }: { b?: BharosaItem }) {
 }
 
 function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: BharosaItem; shop: string; onOpen: () => void; onWasooli: () => void }) {
-  const { toast, confirmPayment } = useDukaan();
+  const { toast, confirmPayment, shopId } = useDukaan();
   const [sending, setSending] = useState<"wa" | "sms" | null>(null);
   const voice = useVoiceReminder();
   const msg = reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue });
@@ -271,6 +301,7 @@ function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: Bh
   /** Mutual Khata: signed link + self-contained text; falls back to the plain reminder when offline. */
   const send = async (via: "wa" | "sms") => {
     setSending(via);
+    logReminder(shopId, c.id, via);
     try {
       const r = await api<{ wa: string; sms: string }>("/api/khata/link", { json: { customer_id: c.id } });
       if (via === "wa") window.open(r.wa, "_blank", "noopener,noreferrer");
@@ -374,20 +405,30 @@ function NewCustomerSheet({ onClose }: { onClose: () => void }) {
 }
 
 export function CustomerSheet({ customerId, onClose }: { customerId: string; onClose: () => void }) {
-  const { state, openSheet, refresh, toast } = useDukaan();
+  const { state, shopId, openSheet, refresh, toast } = useDukaan();
   const c = state?.customers.find((x) => x.id === customerId);
   const [phone, setPhone] = useState(c?.phone ?? "");
+  const [roleTag, setRoleTag] = useState(c?.role_tag ?? "");
+  const [limitRs, setLimitRs] = useState(c?.credit_limit_paisa ? String(c.credit_limit_paisa / 100) : "");
+  const [writeOffOpen, setWriteOffOpen] = useState(false);
+  const [writeOffRs, setWriteOffRs] = useState("");
+  const [writeOffBusy, setWriteOffBusy] = useState(false);
   const [items, setItems] = useState<import("@/lib/api/contracts").FeedTx[] | null>(null);
   const [nextSeq, setNextSeq] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [linkBusy, setLinkBusy] = useState<"open" | "copy" | null>(null);
+  const [linkBusy, setLinkBusy] = useState<"open" | "copy" | "wa" | null>(null);
+  const [remLog, setRemLog] = useState<ReminderLogEntry[]>(() => readReminderLog(shopId, customerId));
 
-  const handleKhataLink = async (mode: "open" | "copy") => {
+  const handleKhataLink = async (mode: "open" | "copy" | "wa") => {
     setLinkBusy(mode);
     try {
-      const r = await api<{ url: string; token: string }>("/api/khata/link", { json: { customer_id: c!.id } });
+      const r = await api<{ url: string; token: string; wa: string }>("/api/khata/link", { json: { customer_id: c!.id } });
       if (mode === "open") {
         window.open(`/k/${r.token}`, "_blank", "noopener,noreferrer");
+      } else if (mode === "wa") {
+        logReminder(shopId, c!.id, "statement");
+        setRemLog(readReminderLog(shopId, c!.id));
+        window.open(r.wa, "_blank", "noopener,noreferrer");
       } else {
         await navigator.clipboard?.writeText(r.url);
         toast("Mutual Khata link copied", "ok");
@@ -437,31 +478,90 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
             {c.days_overdue ? ` · oldest unpaid ${c.days_overdue}d` : ""}
           </div>
         </div>
-        <div className="flex gap-2">
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" inputMode="tel" className="h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
-          <button
-            onClick={async () => {
-              try {
-                await api("/api/shop/customer-update", { json: { customer_id: c.id, phone } });
-                await refresh();
-                toast("Phone saved", "ok");
-              } catch (e) {
-                toast(friendlyError(e), "err");
-              }
-            }}
-            className="tactile h-11 rounded-[12px] bg-ink px-4 text-[14px] font-semibold text-white"
-          >
-            Save
-          </button>
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone (03xx…)" inputMode="tel" className="h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
+            <input value={roleTag} onChange={(e) => setRoleTag(e.target.value)} placeholder="Tag / Family" className="h-11 w-[130px] rounded-[12px] bg-canvas px-3 text-[14px] outline-none" />
+            <button
+              onClick={async () => {
+                try {
+                  await api("/api/shop/customer-update", { json: { customer_id: c.id, phone, role_tag: roleTag } });
+                  await refresh();
+                  toast("Customer details saved", "ok");
+                } catch (e) {
+                  toast(friendlyError(e), "err");
+                }
+              }}
+              className="tactile h-11 rounded-[12px] bg-ink px-4 text-[14px] font-semibold text-white"
+            >
+              Save
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              inputMode="numeric"
+              value={limitRs}
+              onChange={(e) => setLimitRs(e.target.value.replace(/[^\d]/g, ""))}
+              placeholder="Udhaar limit (Rs. — blank = none)"
+              className="num h-10 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[14px] outline-none"
+            />
+            <button
+              onClick={async () => {
+                try {
+                  const val = limitRs.trim() ? rupeesToPaisa(Number(limitRs)) : null;
+                  await api("/api/shop/customer-credit-limit", { json: { customer_id: c.id, credit_limit_paisa: val } });
+                  await refresh();
+                  toast(val !== null ? `Credit limit ${formatRs(val)} set` : "Credit limit cleared", "ok");
+                } catch (e) {
+                  toast(friendlyError(e), "err");
+                }
+              }}
+              className="tactile h-10 rounded-[12px] bg-surface-sunken px-3 text-[13px] font-semibold"
+            >
+              Set Limit
+            </button>
+          </div>
         </div>
-        <PrimaryButton tone="cash" className="w-full" onClick={() => openSheet({ type: "wasooli", customerId: c.id })}>
-          Wasooli
-        </PrimaryButton>
         <div className="grid grid-cols-2 gap-2">
+          <PrimaryButton tone="cash" onClick={() => openSheet({ type: "wasooli", customerId: c.id })}>
+            Wasooli
+          </PrimaryButton>
+          <SecondaryButton
+            onClick={() =>
+              openSheet({
+                type: "promise",
+                key: newKey("wada"),
+                trace: null,
+                proposal: {
+                  customer: {
+                    mention: c.name,
+                    candidates: [{ id: c.id, name: c.name, role_tag: c.role_tag ?? null, balance_paisa: c.balance_paisa, score: 1 }],
+                    selected_id: c.id,
+                    ambiguous: false,
+                    match_ms: 0,
+                  },
+                  promise_date: isoDate(pktToday()),
+                },
+              })
+            }
+            className="flex items-center justify-center gap-1.5"
+          >
+            <Calendar size={14} strokeWidth={1.75} /> Set Wada Date
+          </SecondaryButton>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => void handleKhataLink("wa")}
+            disabled={linkBusy !== null}
+            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-cash/30 bg-cash-bg px-3 text-[13px] font-semibold text-cash-ink"
+          >
+            {linkBusy === "wa" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />}
+            Share Mini-Statement
+          </button>
           <button
             onClick={() => void handleKhataLink("open")}
             disabled={linkBusy !== null}
-            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13.5px] font-semibold"
+            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13px] font-semibold"
           >
             {linkBusy === "open" ? <Spinner className="h-3.5 w-3.5" /> : <ExternalLink size={14} strokeWidth={1.75} />}
             Preview Khata Link
@@ -469,12 +569,82 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
           <button
             onClick={() => void handleKhataLink("copy")}
             disabled={linkBusy !== null}
-            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13.5px] font-semibold"
+            className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13px] font-semibold"
           >
             {linkBusy === "copy" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />}
-            Copy Khata Link
+            Copy Link
+          </button>
+          <button
+            onClick={() => openSheet({ type: "return", customerId: c.id })}
+            className="tactile flex h-10 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13px] font-semibold"
+          >
+            <RotateCcw size={14} strokeWidth={1.75} /> Item Return
           </button>
         </div>
+        {remLog.length > 0 && (
+          <div className="rounded-[12px] bg-canvas px-3 py-2 text-[12px] text-ink-2">
+            <span className="font-semibold text-ink">Reminder history:</span>{" "}
+            {remLog.slice(0, 3).map((r) => `${r.channel.toUpperCase()} (${new Date(r.at).toLocaleDateString("en-PK", { day: "numeric", month: "short" })})`).join(" · ")}
+          </div>
+        )}
+        {c.balance_paisa > 0 && (
+          <div className="surface-card p-3">
+            {!writeOffOpen ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setWriteOffRs(String(c.balance_paisa / 100));
+                  setWriteOffOpen(true);
+                }}
+                className="flex w-full items-center justify-between text-[13px] font-semibold text-udhaar-ink"
+              >
+                <span>Maaf / Write-off Bad Debt</span>
+                <span className="text-[12px] text-ink-2">Balanced A/R adjustment</span>
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-[12.5px] font-semibold text-udhaar-ink">Write-off amount (max {formatRs(c.balance_paisa)})</div>
+                <div className="flex gap-2">
+                  <input
+                    inputMode="numeric"
+                    value={writeOffRs}
+                    onChange={(e) => setWriteOffRs(e.target.value.replace(/[^\d]/g, ""))}
+                    className="num h-10 min-w-0 flex-1 rounded-[10px] bg-canvas px-3 text-[15px] font-semibold outline-none"
+                  />
+                  <button
+                    type="button"
+                    disabled={writeOffBusy || Number(writeOffRs) <= 0}
+                    onClick={async () => {
+                      setWriteOffBusy(true);
+                      try {
+                        const res = await api<CommitResponse>("/api/transactions/write-off", {
+                          json: {
+                            idempotency_key: newKey("wo"),
+                            customer_id: c.id,
+                            amount_paisa: rupeesToPaisa(Number(writeOffRs)),
+                            reason: "bad-debt-maaf",
+                            audit_meta: { channel: "khata-writeoff" },
+                          },
+                        });
+                        await refresh();
+                        setWriteOffOpen(false);
+                        toast("Write-off darj ho gaya", "ok");
+                        openSheet({ type: "xray", txId: res.transaction_id });
+                      } catch (e) {
+                        toast(friendlyError(e), "err");
+                      } finally {
+                        setWriteOffBusy(false);
+                      }
+                    }}
+                    className="tactile h-10 rounded-[10px] bg-udhaar px-3 text-[13px] font-semibold text-white disabled:opacity-50"
+                  >
+                    {writeOffBusy ? <Spinner /> : "Confirm Write-off"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div className="section-label pt-1">Khata history (SHA-256 chained)</div>
         <div className="surface-card overflow-hidden">
           {items === null && <div className="flex items-center justify-center p-4 text-[13px] text-ink-2"><Spinner /></div>}
@@ -507,12 +677,17 @@ interface PassportResponse {
 
 export function PassportSheet({ onClose }: { onClose: () => void }) {
   const { toast } = useDukaan();
+  const [days, setDays] = useState<"7" | "30" | "90">("30");
   const [p, setP] = useState<PassportResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [sigOk, setSigOk] = useState<boolean | null>(null);
+  const [revoking, setRevoking] = useState(false);
 
-  useEffect(() => {
-    api<PassportResponse>("/api/reports/trade-summary?days=30")
+  const loadPassport = (d: "7" | "30" | "90") => {
+    setP(null);
+    setErr(null);
+    setSigOk(null);
+    api<PassportResponse>(`/api/reports/trade-summary?days=${d}`)
       .then(async (r) => {
         setP(r);
         const pinned = process.env.NEXT_PUBLIC_ED25519_PUBLIC_KEY || r.public_key_hex;
@@ -523,13 +698,27 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
         setErr(friendlyError(e));
         toast(friendlyError(e), "err");
       });
-  }, [toast]);
+  };
+
+  useEffect(() => {
+    loadPassport(days);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [days]);
 
   const s = p?.summary;
   const pl = p?.payload;
   return (
     <Sheet open onClose={onClose} title="SMEConnect Trade Passport" right={<button onClick={onClose} className="text-[16px] font-semibold">Done</button>}>
-      <div className="px-4 pb-[max(16px,env(safe-area-inset-bottom))]">
+      <div className="space-y-3 px-4 pb-[max(16px,env(safe-area-inset-bottom))]">
+        <Segmented<"7" | "30" | "90">
+          value={days}
+          onChange={setDays}
+          options={[
+            { value: "7", label: "7 Days" },
+            { value: "30", label: "30 Days" },
+            { value: "90", label: "90 Days" },
+          ]}
+        />
         <div className="overflow-hidden rounded-[20px] border border-pass-emerald/30 bg-pass-bg text-pass-ink">
           <div className="h-[3px] bg-pass-emerald" />
           {!p ? (
@@ -594,18 +783,44 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
           )}
         </div>
         {p && (
-          <div className="mt-3 grid grid-cols-2 gap-2.5">
-            <a href="/report" target="_blank" rel="noreferrer" className="tactile flex h-11 items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold">
-              <Printer size={15} strokeWidth={1.75} /> Full report / PDF
-            </a>
+          <div className="space-y-2.5">
+            <div className="surface-card p-3.5 text-[12.5px] leading-[18px] text-ink-2">
+              <div className="font-semibold text-ink">What this QR shares (Owner-consented)</div>
+              <div className="mt-1">Shared: {days}-day GMV, cash/credit split, recovery %, active days, Bharosa attestation rate, SHA-256 head hash.</div>
+              <div className="mt-1 text-cash-ink">Never shared: CNIC, NTN/FBR data, customer names, phone numbers, or line-item receipts.</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5">
+              <a href="/report" target="_blank" rel="noreferrer" className="tactile flex h-11 items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold">
+                <Printer size={15} strokeWidth={1.75} /> Full report / PDF
+              </a>
+              <button
+                onClick={() => {
+                  void navigator.clipboard?.writeText(p.verify_url);
+                  toast("Verify link copied", "ok");
+                }}
+                className="tactile h-11 rounded-[12px] bg-surface-sunken text-[14px] font-semibold"
+              >
+                Copy verify link
+              </button>
+            </div>
             <button
-              onClick={() => {
-                void navigator.clipboard?.writeText(p.verify_url);
-                toast("Verify link copied", "ok");
+              type="button"
+              disabled={revoking}
+              onClick={async () => {
+                setRevoking(true);
+                try {
+                  await api("/api/shop/passport-revoke", { json: {} });
+                  toast("Pichle sab Passport links revoke ho gaye — naya QR issue ho raha hai", "ok");
+                  loadPassport(days);
+                } catch (e) {
+                  toast(friendlyError(e), "err");
+                } finally {
+                  setRevoking(false);
+                }
               }}
-              className="tactile h-11 rounded-[12px] bg-surface-sunken text-[14px] font-semibold"
+              className="tactile flex h-10 w-full items-center justify-center gap-1.5 rounded-[12px] bg-udhaar-bg text-[13px] font-semibold text-udhaar-ink disabled:opacity-50"
             >
-              Copy verify link
+              <ShieldAlert size={14} strokeWidth={1.75} /> {revoking ? "Revoking…" : "Revoke previously shared Passports"}
             </button>
           </div>
         )}

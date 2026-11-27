@@ -12,7 +12,7 @@ export const PULSE_REGEX = /\b(subah?|subha|subuh)\s+(ka|ki)\s+(hisaa?b|hisab)\b
 const REVERSAL_REGEX = /\b(wapas|wapis|waapas)\s+(kar|kr)|\bcancel\b|\bundo\b|\bgalat\s+entry\b|\bpichli\s+entry\b|\bentry\s+(hata|mita|delete)/i;
 const PAYMENT_REGEX = /\b(jama|jamaa|jmaa)\b|\bwasooli\b|\bwasool\b|\bpayment\b|\bada\s+(kiye|kiya|kar)/i;
 const PURCHASE_REGEX = /\bmaal\s+aaya\b|\bkhareed(a|e)\b|\bpurchase\b|\brestock\b/i;
-const QUESTION_REGEX = /\?\s*$|^(kitna|kitne|kitni|kya|kaun|kab|kahan|how|what|which|who|when|batao\s+ke)\b/i;
+const QUESTION_REGEX = /\?\s*$|^(kitna|kitne|kitni|kya|kaun|kab|kahan|how|what|which|who|when|batao\s+ke)\b|\b(baqaya|kitna\s+(?:udhaar|stock|maal|munafa|becha)|is\s+haftay|is\s+mahinay|sab\s+se\s+zyada)\b/i;
 const UDHAAR_REGEX = /\bkhate\s+(mein|mai|me|main)\b|\bkhaate\b|\bkhata\b|\budhaa?r\b|\blikh\s+(do|lo|dein|den)\b|\bbaqi\b|\bbaaqi\b|\bbaki\b|\bbaaki\b|\bcredit\b/i;
 const CASH_WORD = /\bcash\b|\bnaqd\b|\bnakad\b/i;
 const LOOSE_WORD = /\b(khula|khuli|khule|loose)\b/i;
@@ -45,6 +45,68 @@ function cut(text: string, re: RegExp): { text: string; match: RegExpMatchArray 
   const match = text.match(re);
   if (!match || match.index === undefined) return { text, match: null };
   return { text: (text.slice(0, match.index) + " " + text.slice(match.index + match[0].length)).replace(/\s+/g, " ").trim(), match };
+}
+
+export interface ViewCommand {
+  tab: "munshi" | "khata" | "maal";
+  filter?: string;
+  sheet?: "insights" | "parchi" | "return";
+}
+
+/** Detect non-sale navigation/report commands such as "stock dikhao", "khata dikhao", "return entry". */
+export function detectViewCommand(input: string): ViewCommand | null {
+  const t = transliterate(normalizeUrduNumberWords(input)).toLowerCase().trim();
+  if (/\b(return|wapasi|wapsi)\b/.test(t) && /\b(entry|item|maal|bill|kholo|dikhao|karna)\b/.test(t)) {
+    return { tab: "munshi", sheet: "return" };
+  }
+  if (/\b(kam\s+stock|low\s+stock|khatam\s+hone)\b/.test(t) && /\b(dikhao|batao|kholo|list|show)\b/.test(t)) {
+    return { tab: "maal", filter: "low" };
+  }
+  if (/^(?:stock|maal|inventory)\s+(?:dikhao|kholo|list|show)\b|\b(?:dikhao|kholo)\s+(?:stock|maal)\b/.test(t)) {
+    return { tab: "maal" };
+  }
+  if (/^(?:overdue|baqi)\s+(?:dikhao|list)\b/.test(t)) {
+    return { tab: "khata", filter: "overdue" };
+  }
+  if (/^(?:khata|udhaar)\s+(?:dikhao|kholo|list|show)\b/.test(t)) {
+    return { tab: "khata" };
+  }
+  if (/^(?:parchi)\s+(?:dikhao|scan|kholo)\b|\bscan\s+parchi\b/.test(t)) {
+    return { tab: "maal", sheet: "parchi" };
+  }
+  if (/^(?:munafa|profit|p&l|insights|report)\s*(?:dikhao|kholo|batao)?$/.test(t)) {
+    return { tab: "munshi", sheet: "insights" };
+  }
+  return null;
+}
+
+/**
+ * Resolve mid-sentence Urdu/Roman-Urdu self-corrections before chunking:
+ * e.g. "2 kilo cheeni nahi balke 1 kilo cheeni", "atta nahi chawal 2 kilo",
+ *      "Ali nahi Tariq ko 500 udhaar", "2 kilo cheeni, nahi 1 kilo cheeni".
+ */
+export function applySelfCorrections(raw: string): string {
+  // Explicit "X nahi balke Y" or "X woh nahi Y" on customer / whole prefix
+  let s = raw.replace(
+    /\b([a-z0-9.\s]+?)\s+(?:nahi|nahin|galat|sorry)\s*,?\s*(?:balke|balkay|balki|matlab|woh\s+nahi|wo\s+nahi)\s+/gi,
+    " ",
+  );
+  // Comma/clause boundary followed by "nahi <replacement>" drops the immediately prior clause
+  const clauses = s.split(/\s*,\s*/);
+  const kept: string[] = [];
+  for (const c of clauses) {
+    const m = c.match(/^(?:nahi|nahin|sorry|galat|woh\s+nahi|wo\s+nahi)\s+(.+)$/i);
+    if (m && kept.length > 0) {
+      kept.pop();
+      kept.push(m[1].trim());
+    } else {
+      kept.push(c);
+    }
+  }
+  s = kept.join(", ");
+  // Inline "<word> nahi <replacement>" within a short phrase (e.g. "atta nahi chawal 2 kilo")
+  s = s.replace(/\b(\S+(?:\s+\S+)?)\s+(?:nahi|nahin)\s+(?:balke|balkay|balki\s+)?(?=[a-z0-9])/gi, "");
+  return s.replace(/\s+/g, " ").trim();
 }
 
 /** Classify common counter utterances without a model call. */
@@ -131,7 +193,8 @@ function parseItemChunk(chunk: string): ParsedItem | null {
 export function parseFallback(input: string): ParsedTurn {
   const transcript = input.trim();
   const intent = detectIntent(transcript);
-  let text = transliterate(normalizeUrduNumberWords(transcript))
+  const corrected = intent === "sale" || intent === "payment" ? applySelfCorrections(transcript) : transcript;
+  let text = transliterate(normalizeUrduNumberWords(corrected))
     .toLowerCase()
     .replace(/[“”"'`]/g, "")
     .replace(/rs\.?\s*(\d)/g, "$1")

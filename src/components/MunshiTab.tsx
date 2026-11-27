@@ -1,13 +1,16 @@
 "use client";
 
-import { Camera, ChevronDown, ChevronUp, Keyboard, Plus, RefreshCw, SendHorizontal, Zap } from "lucide-react";
+import { BarChart3, Camera, ChevronDown, ChevronUp, HelpCircle, Keyboard, PauseCircle, Plus, RefreshCw, RotateCcw, SendHorizontal, Volume2, X, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FeedTx, Pulse, StateProduct } from "@/lib/api/contracts";
-import { api } from "@/lib/client/api";
+import { api, newKey } from "@/lib/client/api";
+import { HELD_EVENT, listHeldBills, removeHeldBill, type HeldBill } from "@/lib/client/held-bills";
 import { tr } from "@/lib/client/i18n";
+import { speak } from "@/lib/client/speak";
 import { useDukaan } from "@/lib/client/store";
 import { formatBaseQty } from "@/lib/domain/desi-units";
 import { formatRs } from "@/lib/domain/money";
+import type { SaleProposal } from "@/lib/domain/types";
 import { MicButton } from "./MicButton";
 import { cx, Money, Pill, relTime, Spinner, SW } from "./ui";
 export const DEMO_UTTERANCES = [
@@ -27,7 +30,13 @@ export function goFilter(tab: "khata" | "maal", filter: string) {
 export function feedSummary(t: FeedTx): string {
   if (t.type === "payment") return "Wasooli · cash received";
   if (t.type === "reversal") return `Undo · ${t.audit_meta?.reversed_type ?? "entry"} reversed`;
-  return t.lines.map((l) => (l.value_first ? `${l.name} (Rs. ${l.line_total_paisa / 100})` : `${formatBaseQty(l.qty_base_units, l.base_unit)} ${l.name.replace(/\s*\(.*\)/, "")}`)).join(", ");
+  if (t.type === "writeoff") return "Maaf / Bad-debt write-off";
+  if (t.type === "adjustment") {
+    const r = String(t.audit_meta?.reason ?? t.supplier_name ?? "stock adjust");
+    return `${r} · ${t.lines.map((l) => `${formatBaseQty(l.qty_base_units, l.base_unit)} ${l.name.replace(/\s*\(.*\)/, "")}`).join(", ")}`;
+  }
+  const items = t.lines.map((l) => (l.value_first ? `${l.name} (Rs. ${l.line_total_paisa / 100})` : `${formatBaseQty(l.qty_base_units, l.base_unit)} ${l.name.replace(/\s*\(.*\)/, "")}`)).join(", ");
+  return t.type === "return" ? `Wapasi · ${items}` : items;
 }
 
 function feedTag(t: FeedTx): string {
@@ -35,15 +44,19 @@ function feedTag(t: FeedTx): string {
   if (t.type === "payment") return "Wasooli";
   if (t.type === "purchase") return t.credit_paisa > 0 ? "Restock · A/P" : "Restock";
   if (t.type === "reversal") return "Reversal";
+  if (t.type === "return") return t.credit_paisa > 0 ? "Return · Khata" : "Return · Cash";
+  if (t.type === "adjustment") return "Adjustment";
+  if (t.type === "writeoff") return "Write-off";
   if (t.credit_paisa !== 0 && t.cash_paid_paisa > 0) return "Split · Khata";
   if (t.credit_paisa > 0) return "Udhaar";
   return t.audit_meta?.channel === "tier1-auto" ? "Cash · Tier 1" : "Cash";
 }
 
 export function FeedRow({ t, onOpen, flash }: { t: FeedTx; onOpen: () => void; flash?: boolean }) {
-  const title = t.type === "purchase" ? t.supplier_name ?? "Wholesale" : t.type === "reversal" ? "Reversal" : t.customer_name ?? "Walk-in Cash";
+  const title = t.type === "purchase" ? t.supplier_name ?? "Wholesale" : t.type === "reversal" ? "Reversal" : t.type === "adjustment" ? (t.lines[0]?.name ?? "Stock Adjustment") : t.customer_name ?? "Walk-in Cash";
   const amount = t.type === "sale" ? (t.cash_paid_paisa > 0 ? t.cash_paid_paisa : t.total_paisa) : Math.abs(t.total_paisa);
-  const color = t.type === "purchase" ? "text-maal" : t.type === "reversal" ? "text-ink-3" : t.type === "sale" && t.cash_paid_paisa === 0 ? "text-udhaar" : "text-cash";
+  const color = t.type === "purchase" ? "text-maal" : t.type === "reversal" || t.type === "adjustment" || t.type === "writeoff" ? "text-ink-3" : t.type === "return" ? "text-udhaar" : t.type === "sale" && t.cash_paid_paisa === 0 ? "text-udhaar" : "text-cash";
+  const sign = t.type === "purchase" || t.type === "reversal" || t.type === "return" || t.type === "adjustment" || t.type === "writeoff" ? "-" : "+";
   return (
     <button onClick={onOpen} className={cx("hairline-b flex h-[60px] w-full items-center gap-3 px-4 text-left last:border-b-0", flash && "row-flash", t.is_reversed && "opacity-50")}>
       <div className="min-w-0 flex-1">
@@ -54,7 +67,7 @@ export function FeedRow({ t, onOpen, flash }: { t: FeedTx; onOpen: () => void; f
       </div>
       <div className="shrink-0 text-right">
         <div className={cx("text-[17px] font-bold leading-5", color, t.is_reversed && "line-through")}>
-          {t.type === "purchase" || t.type === "reversal" ? "-" : "+"}
+          {sign}
           <span className="rs-prefix">Rs.</span>
           <span className="num">{(amount / 100).toLocaleString("en-US")}</span>
         </div>
@@ -114,9 +127,14 @@ function QuickSellStrip({ products }: { products: StateProduct[] }) {
 }
 
 export function MunshiTab() {
-  const { state, shop, openSheet, submitTurn, thinking, toast, highlightTx, refresh, lang } = useDukaan();
+  const { state, shop, shopId, openSheet, submitTurn, thinking, toast, highlightTx, refresh, lang } = useDukaan();
   const [pulse, setPulse] = useState<Pulse | null>(null);
   const [stripOpen, setStripOpen] = useState(false);
+  const [held, setHeld] = useState<HeldBill[]>([]);
+  const [showGuide, setShowGuide] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("dukaanos.guide.dismissed") !== "1";
+  });
   const [typing, setTypingState] = useState(() =>
     typeof window !== "undefined" && sessionStorage.getItem("dukaanos.typing") === "1",
   );
@@ -139,11 +157,40 @@ export function MunshiTab() {
   const head = state?.chain_head?.seq;
 
   useEffect(() => {
+    const syncHeld = () => setHeld(listHeldBills(shopId));
+    syncHeld();
+    window.addEventListener(HELD_EVENT, syncHeld);
+    return () => window.removeEventListener(HELD_EVENT, syncHeld);
+  }, [shopId]);
+
+  useEffect(() => {
     if (!head) return;
     api<Pulse>("/api/shop/pulse").then(setPulse).catch(() => undefined);
     setExtraFeed([]);
     setNextSeq(null);
   }, [head]);
+
+  const openBlankBill = () => {
+    const emptyProposal: SaleProposal = {
+      kind: "sale",
+      lines: [],
+      subtotal_paisa: 0,
+      discount_paisa: 0,
+      total_paisa: 0,
+      cash_paid_paisa: 0,
+      cash_explicit: false,
+      credit_paisa: 0,
+      change_due_paisa: 0,
+      payment_mode: "cash",
+      customer: { mention: null, candidates: [], selected_id: null, ambiguous: false, match_ms: 0 },
+      new_balance_paisa: null,
+      tier: 2,
+      tier_reasons: ["NO_ITEMS"],
+      warnings: [],
+      confidence: 1,
+    };
+    openSheet({ type: "review", proposal: emptyProposal, key: newKey("manual"), trace: null });
+  };
 
   if (!state) return <SkeletonMunshi />;
   const today = state.today;
@@ -197,6 +244,101 @@ export function MunshiTab() {
 
       {/* Quick-Sell Top-4 strip — rush-hour 1-tap cash sale, Rs. 0 LLM */}
       <QuickSellStrip products={state.products} />
+
+      {/* Compact action bar: P&L Insights, Manual Bill, Return, Guide */}
+      <div className="no-scrollbar flex items-center gap-2 overflow-x-auto py-0.5">
+        <button type="button" onClick={() => openSheet({ type: "insights" })} className="tactile flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold">
+          <BarChart3 size={13} strokeWidth={SW} className="text-cash" /> Insights · P&amp;L
+        </button>
+        <button type="button" onClick={openBlankBill} className="tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold">
+          <Plus size={13} strokeWidth={SW} /> New Bill
+        </button>
+        <button type="button" onClick={() => openSheet({ type: "return" })} className="tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold">
+          <RotateCcw size={13} strokeWidth={SW} className="text-udhaar" /> Return
+        </button>
+        {!showGuide && (
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.removeItem("dukaanos.guide.dismissed");
+              setShowGuide(true);
+            }}
+            className="tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold text-ink-2"
+          >
+            <HelpCircle size={13} strokeWidth={SW} /> Guide
+          </button>
+        )}
+      </div>
+
+      {held.length > 0 && (
+        <div className="surface-card overflow-hidden">
+          <div className="flex items-center gap-1.5 px-4 pb-1.5 pt-2.5">
+            <PauseCircle size={13} strokeWidth={SW} className="text-udhaar" />
+            <span className="section-label">Held Bills ({held.length})</span>
+          </div>
+          {held.map((h) => (
+            <div key={h.id} className="hairline-t flex items-center gap-2 px-4 py-2.5">
+              <button
+                type="button"
+                onClick={() => openSheet({ type: "review", proposal: h.proposal, key: h.id, trace: h.trace })}
+                className="min-w-0 flex-1 text-left"
+              >
+                <div className="truncate text-[14px] font-semibold">{h.customer_name ?? "Walk-in"} · {formatRs(h.total_paisa)}</div>
+                <div className="truncate text-[12px] text-ink-2">{h.label}</div>
+              </button>
+              <button
+                type="button"
+                aria-label="Discard held bill"
+                onClick={() => shopId && removeHeldBill(shopId, h.id)}
+                className="grid h-8 w-8 place-items-center text-ink-3"
+              >
+                <X size={14} strokeWidth={SW} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showGuide && (
+        <div className="surface-card p-3.5">
+          <div className="flex items-center justify-between">
+            <span className="section-label">Pehli dafa? Bol kar dekhein</span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => void speak("Mic dabaa kar bolein: Ek kilo cheeni cash, ya Ali ko panch sau udhaar, ya Subah ka hisaab batao.")}
+                className="tactile inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[11.5px] font-semibold"
+              >
+                <Volume2 size={12} strokeWidth={SW} /> Suniye
+              </button>
+              <button
+                type="button"
+                aria-label="Dismiss guide"
+                onClick={() => {
+                  localStorage.setItem("dukaanos.guide.dismissed", "1");
+                  setShowGuide(false);
+                }}
+                className="grid h-7 w-7 place-items-center text-ink-3"
+              >
+                <X size={14} strokeWidth={SW} />
+              </button>
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {["Ek kilo cheeni cash", "Chhote Ali ko 500 udhaar", "Subah ka hisaab batao"].map((ex) => (
+              <button
+                key={ex}
+                type="button"
+                disabled={thinking}
+                onClick={() => void submitTurn({ text: ex })}
+                className="tactile rounded-full border border-black/10 bg-canvas px-2.5 py-1 text-[12px] font-medium"
+              >
+                “{ex}”
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {pulse && (
         <div className="surface-card overflow-hidden">

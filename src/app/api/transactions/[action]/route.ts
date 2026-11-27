@@ -56,10 +56,48 @@ const PurchaseBody = z.object({
   audit_meta: Meta,
 });
 
+const ReturnBody = z.object({
+  idempotency_key: Key,
+  customer_id: z.string().uuid().nullable().optional(),
+  cash_refund_paisa: Int.min(0).nullable().optional(),
+  reason: z.string().max(80).optional(),
+  lines: z
+    .array(
+      z.object({
+        product_id: z.string().uuid(),
+        qty_base_units: Int.positive(),
+        refund_paisa: Int.positive().optional(),
+        spoken: z.string().max(120).optional(),
+      }),
+    )
+    .min(1)
+    .max(40),
+  audit_meta: Meta,
+});
+
+const AdjustBody = z.object({
+  idempotency_key: Key,
+  product_id: z.string().uuid(),
+  delta_base_units: Int.refine((n) => n !== 0, "delta_base_units must be non-zero"),
+  reason: z.enum(["wastage", "spoilage", "personal_use", "stock_count", "damaged", "other"]).default("wastage"),
+  audit_meta: Meta,
+});
+
+const WriteOffBody = z.object({
+  idempotency_key: Key,
+  customer_id: z.string().uuid(),
+  amount_paisa: Int.positive(),
+  reason: z.string().max(80).optional(),
+  audit_meta: Meta,
+});
+
 const ROUTES = {
   reverse: { fn: "reverse_transaction", schema: ReverseBody },
   payment: { fn: "record_payment", schema: PaymentBody },
   purchase: { fn: "record_purchase", schema: PurchaseBody },
+  return: { fn: "record_return", schema: ReturnBody },
+  adjust: { fn: "adjust_stock", schema: AdjustBody },
+  "write-off": { fn: "write_off_udhaar", schema: WriteOffBody },
 } as const;
 
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ action: string }> }) => {

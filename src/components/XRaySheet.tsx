@@ -1,11 +1,14 @@
 "use client";
 
-import { RotateCcw, ShieldCheck, WifiOff } from "lucide-react";
+import { Pencil, RotateCcw, ShieldCheck, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { CommitResponse, JournalRow, PakPhoneTrace, TurnTrace } from "@/lib/api/contracts";
-import { api, friendlyError } from "@/lib/client/api";
+import { api, friendlyError, newKey } from "@/lib/client/api";
 import { useDukaan } from "@/lib/client/store";
+import { buildSaleProposal } from "@/lib/domain/bill";
+import { formatBaseQty, type BaseUnit } from "@/lib/domain/desi-units";
 import { formatJournal } from "@/lib/domain/money";
+import type { ParsedTurn } from "@/lib/domain/types";
 import { cx, Pill, Sheet, Spinner, SW } from "./ui";
 
 interface XRayDoc {
@@ -44,13 +47,14 @@ function Row({ n, title, badge, children }: { n: string; title: string; badge?: 
 }
 
 export function XRaySheet({ txId, onClose }: { txId?: string | null; onClose: () => void }) {
-  const { lastCommit, replayTest, state, simulatedOffline, setSimulatedOffline, toast } = useDukaan();
+  const { lastCommit, replayTest, state, simulatedOffline, setSimulatedOffline, reverse, openSheet, toast } = useDukaan();
   const target = txId ?? lastCommit?.response.transaction_id ?? state?.feed[0]?.id ?? null;
   const live = lastCommit && lastCommit.response.transaction_id === target ? lastCommit : null;
   const [doc, setDoc] = useState<XRayDoc | null>(null);
   const [loading, setLoading] = useState(false);
   const [replay, setReplay] = useState<CommitResponse | null>(live?.replay ?? null);
   const [replaying, setReplaying] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
   const [chain, setChain] = useState<{ ok: boolean; code: string; checked: number; ms: number; first_broken_seq?: number } | null>(null);
 
   useEffect(() => {
@@ -90,6 +94,67 @@ export function XRaySheet({ txId, onClose }: { txId?: string | null; onClose: ()
       setChain(await api("/api/shop/chain"));
     } catch (e) {
       toast(friendlyError(e), "err");
+    }
+  };
+
+  const feedTx = state?.feed.find((t) => t.id === target) ?? null;
+  const canCorrect = Boolean(
+    feedTx && !feedTx.is_reversed && !doc?.reversed_by && (feedTx.type === "sale" || feedTx.type === "payment") && state,
+  );
+
+  const correctEntry = async () => {
+    if (!feedTx || !state) return;
+    setCorrecting(true);
+    try {
+      await reverse(feedTx.id, "compensate-edit");
+      toast("Purani entry reverse ho gayi — nayi durust entry save karein", "info");
+      if (feedTx.type === "payment" && feedTx.customer_id) {
+        const cust = state.customers.find((c) => c.id === feedTx.customer_id);
+        openSheet({
+          type: "payment",
+          key: newKey("editpay"),
+          trace: null,
+          proposal: {
+            kind: "payment",
+            amount_paisa: feedTx.total_paisa,
+            customer: {
+              mention: cust?.name ?? null,
+              candidates: cust ? [{ id: cust.id, name: cust.name, role_tag: cust.role_tag ?? null, balance_paisa: cust.balance_paisa, score: 1 }] : [],
+              selected_id: feedTx.customer_id,
+              ambiguous: false,
+              match_ms: 0,
+            },
+            new_balance_paisa: cust ? cust.balance_paisa - feedTx.total_paisa : null,
+            tier: 2,
+            tier_reasons: [],
+          },
+        });
+      } else {
+        const parsed: ParsedTurn = {
+          intent: "sale",
+          transcript: `Edit #${feedTx.seq}`,
+          customer_mention: feedTx.customer_name,
+          items: feedTx.lines.map((l) => ({
+            spoken: l.name,
+            quantity_phrase: formatBaseQty(l.qty_base_units, l.base_unit as BaseUnit),
+            value_rupees: l.value_first ? l.line_total_paisa / 100 : null,
+            is_loose: false,
+            confidence: 1,
+          })),
+          discount_rupees: feedTx.discount_paisa > 0 ? feedTx.discount_paisa / 100 : null,
+          cash_paid_rupees: feedTx.cash_paid_paisa / 100,
+          payment_mode: feedTx.credit_paisa > 0 && feedTx.cash_paid_paisa > 0 ? "split" : feedTx.credit_paisa > 0 ? "udhaar" : "cash",
+          payment_amount_rupees: null,
+          question: null,
+          confidence: 1,
+        };
+        const prop = buildSaleProposal(parsed, { products: state.products, customers: state.customers });
+        openSheet({ type: "review", proposal: { ...prop, tier: 2 }, key: newKey("editsale"), trace: null });
+      }
+    } catch (e) {
+      toast(friendlyError(e), "err");
+    } finally {
+      setCorrecting(false);
     }
   };
 
@@ -164,6 +229,11 @@ export function XRaySheet({ txId, onClose }: { txId?: string | null; onClose: ()
             <WifiOff size={15} strokeWidth={SW} /> {simulatedOffline ? "Offline ON" : "Simulate Offline"}
           </button>
         </div>
+        {canCorrect && (
+          <button onClick={() => void correctEntry()} disabled={correcting} className="tactile flex h-10 w-full items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface text-[13px] font-semibold">
+            {correcting ? <Spinner /> : <Pencil size={14} strokeWidth={SW} />} Correct / Edit via Compensating Entry
+          </button>
+        )}
         {chain && (
           <div className={cx("rounded-[12px] px-3 py-2 font-mono text-[12px]", chain.ok ? "bg-cash-bg text-cash-ink" : "bg-udhaar-bg text-udhaar-ink")}>
             {chain.ok ? `CHAIN_OK · ${chain.checked} links recomputed · ${chain.ms}ms` : `CHAIN_BROKEN at #${chain.first_broken_seq} · ${chain.code}`}

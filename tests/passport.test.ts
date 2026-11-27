@@ -227,4 +227,13 @@ describe("Passport v2 — Mutual Khata metrics", () => {
     expect(p.v).toBe(1);
     expect(p.vr_bp).toBeUndefined();
   });
+  it("carries passport revocation nonce when provided", async () => {
+    const kp = await generateKeypairHex();
+    const p = toPayload({ ...summary, passport_nonce: 3 });
+    expect(p.pn).toBe(3);
+    const s = await signPassport(p, kp.privateKey);
+    const v = await verifyPassport(s.token, kp.publicKey);
+    expect(v.valid).toBe(true);
+    expect(v.payload?.pn).toBe(3);
+  });
 });

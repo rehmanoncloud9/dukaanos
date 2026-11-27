@@ -9,6 +9,7 @@ import { formatRs } from "@/lib/domain/money";
 import type { PaymentProposal, SaleProposal } from "@/lib/domain/types";
 import { api, ClientApiError, friendlyError, isOffline, newKey, onOfflineChange, registerAuthHandlers, setApiShop, setSimulateOffline as setSimOffline, isSimulatedOffline } from "./api";
 import { LANG_KEY, type Lang } from "./i18n";
+import { speak } from "./speak";
 import { applyOptimisticOverlay, dequeue, enqueue, enqueueCommit, flushCommits, flushQueue, listCommits, listQueue, pendingCount, saveReplay, type FlushOutcome, type OptimisticDelta, type QueuedCommit, type QueuedTurn } from "./queue";
 import { browserSupabase, supabaseConfigured } from "./supabase";
 import { normalizePkPhone } from "@/lib/domain/starter-catalog";
@@ -32,7 +33,9 @@ export type Sheet =
   | { type: "settings" }
   | { type: "promise"; proposal: PromiseProposal; key: string; trace: TurnTrace | null }
   | { type: "replays" }
-  | { type: "receipt"; commit: CommitResponse; proposal: SaleProposal | null; customerPhone: string | null };
+  | { type: "receipt"; commit: CommitResponse; proposal: SaleProposal | null; customerPhone: string | null }
+  | { type: "return"; customerId?: string | null }
+  | { type: "insights" };
 
 export interface LastCommit {
   response: CommitResponse;
@@ -401,6 +404,10 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
         until: Date.now() + 5000,
       });
     }
+    if (!queued && typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") === "1") {
+      const amt = Math.round((res.totals.total_paisa ?? p.total_paisa) / 100);
+      void speak(`${amt} rupay darj ho gaye.`);
+    }
     negativeStockToast(res);
     return res;
   }, [commitOrQueue, recordCommit, refresh, updatePending, negativeStockToast]);
@@ -525,6 +532,17 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
         return "review";
       case "purchase":
         if (!opts?.deferSheet) setSheet({ type: "parchi" });
+        return "done";
+      case "navigate":
+        if (!opts?.deferSheet) {
+          setTab(res.tab);
+          if (res.filter) {
+            setTimeout(() => window.dispatchEvent(new CustomEvent("dukaan:filter", { detail: { tab: res.tab, filter: res.filter } })), 50);
+          }
+          if (res.sheet === "insights") setSheet({ type: "insights" });
+          else if (res.sheet === "parchi") setSheet({ type: "parchi" });
+          else if (res.sheet === "return") setSheet({ type: "return" });
+        }
         return "done";
       default:
         toast(`Samajh nahi aaya${res.trace.transcript ? `: “${res.trace.transcript}”` : ""} — dobara bolein`, "warn");

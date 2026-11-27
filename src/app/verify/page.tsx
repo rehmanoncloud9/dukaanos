@@ -12,19 +12,31 @@ import { formatRsCompact } from "@/lib/domain/money";
 export default function VerifyPage() {
   const [token, setToken] = useState("");
   const [res, setRes] = useState<VerifyResult | null>(null);
+  const [revoked, setRevoked] = useState<boolean | null>(null);
   const pub = process.env.NEXT_PUBLIC_ED25519_PUBLIC_KEY ?? "";
 
   const run = async (t: string) => {
     if (!t) return;
-    setRes(await verifyPassport(t, pub));
+    setRevoked(null);
+    const vr = await verifyPassport(t, pub);
+    setRes(vr);
+    if (vr.valid && vr.payload?.sid && vr.payload.pn !== undefined) {
+      fetch(`/api/reports/passport-status?sid=${encodeURIComponent(vr.payload.sid)}&pn=${vr.payload.pn}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { revoked?: boolean } | null) => {
+          if (d && typeof d.revoked === "boolean") setRevoked(d.revoked);
+        })
+        .catch(() => undefined);
+    }
   };
 
   useEffect(() => {
     const t = window.location.hash.replace(/^#/, "");
     if (t) {
       setToken(t);
-      void verifyPassport(t, pub).then(setRes);
+      void run(t);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pub]);
 
   /** Judge demo: change one number inside the signed payload → the signature must fail. */
@@ -49,12 +61,12 @@ export default function VerifyPage() {
       <p className="mt-1 text-[14px] text-ink-2">Ed25519 signature checked on this device against the pinned DukaanOS key.</p>
 
       {res && (
-        <div className={`mt-5 overflow-hidden rounded-[20px] border ${res.valid ? "border-pass-emerald/40 bg-pass-bg text-pass-ink" : "border-udhaar/40 bg-udhaar-bg text-udhaar-ink"}`}>
-          <div className={`h-[3px] ${res.valid ? "bg-pass-emerald" : "bg-udhaar"}`} />
+        <div className={`mt-5 overflow-hidden rounded-[20px] border ${res.valid && !revoked ? "border-pass-emerald/40 bg-pass-bg text-pass-ink" : "border-udhaar/40 bg-udhaar-bg text-udhaar-ink"}`}>
+          <div className={`h-[3px] ${res.valid && !revoked ? "bg-pass-emerald" : "bg-udhaar"}`} />
           <div className="p-5">
             <div className="flex items-center gap-2 text-[18px] font-bold">
-              {res.valid ? <ShieldCheck size={22} strokeWidth={1.75} className="text-pass-emerald" /> : <ShieldX size={22} strokeWidth={1.75} />}
-              {res.valid ? "Signature valid ✓" : `Invalid — ${res.reason}`}
+              {res.valid && !revoked ? <ShieldCheck size={22} strokeWidth={1.75} className="text-pass-emerald" /> : <ShieldX size={22} strokeWidth={1.75} />}
+              {revoked ? "Revoked by Shop Owner" : res.valid ? "Signature valid ✓" : `Invalid — ${res.reason}`}
             </div>
             <div className={`mt-1 font-mono text-[11.5px] ${res.valid ? "text-pass-muted" : ""}`}>
               verified in {res.verify_ms}ms · key {pub.slice(0, 8)}…{pub.slice(-6)}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSaleProposal } from "@/lib/domain/bill";
-import { parseFallback } from "@/lib/domain/fallback-parser";
+import { detectViewCommand, parseFallback } from "@/lib/domain/fallback-parser";
 import type { Catalog } from "@/lib/domain/types";
 
 const catalog: Catalog = {
@@ -54,5 +54,27 @@ describe("deterministic fallback extraction", () => {
   it("marks ambiguous numeric evidence for human review", () => {
     const parsed = parseFallback("99999999999999999 rupay cash diya");
     expect(parsed.number_unresolved).toBe(true);
+  });
+
+  it("handles mid-sentence Urdu self-corrections cleanly", () => {
+    const p1 = parseFallback("2 kilo cheeni nahi balke 1 kilo cheeni cash");
+    expect(p1.items).toHaveLength(1);
+    expect(p1.items[0]?.quantity_phrase).toBe("1 kilo");
+    expect(p1.items[0]?.spoken).toContain("cheeni");
+
+    const p2 = parseFallback("2 kilo cheeni, nahi 1 kilo atta cash");
+    expect(p2.items).toHaveLength(1);
+    expect(p2.items[0]?.spoken).toContain("atta");
+
+    const p3 = parseFallback("atta nahi chawal 2 kilo cash");
+    expect(p3.items).toHaveLength(1);
+    expect(p3.items[0]?.spoken).toContain("chawal");
+  });
+
+  it("detects non-sale navigation commands", () => {
+    expect(detectViewCommand("stock dikhao")).toEqual({ tab: "maal" });
+    expect(detectViewCommand("kam stock dikhao")).toEqual({ tab: "maal", filter: "low" });
+    expect(detectViewCommand("khata dikhao")).toEqual({ tab: "khata" });
+    expect(detectViewCommand("parchi scan karo")).toEqual({ tab: "maal", sheet: "parchi" });
   });
 });

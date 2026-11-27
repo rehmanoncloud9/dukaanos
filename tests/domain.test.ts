@@ -203,6 +203,14 @@ describe("Tier-2 edits", () => {
     expect(q.cash_paid_paisa).toBe(10000);
     expect(q.credit_paisa).toBe(0);
   });
+  it("deselecting a customer back to null restores Walk-in cash settlement", () => {
+    const p = sale("Chhote Ali ko ek kilo cheeni cash");
+    expect(p.customer.selected_id).toBeTruthy();
+    const q = resettle(p, cat.customers, { selected_customer_id: null });
+    expect(q.customer.selected_id).toBeNull();
+    expect(q.new_balance_paisa).toBeNull();
+    expect(q.credit_paisa).toBe(0);
+  });
 });
 
 describe("messages", () => {

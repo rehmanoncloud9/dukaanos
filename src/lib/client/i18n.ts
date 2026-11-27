@@ -45,6 +45,10 @@ const DICT = {
   signOut: { en: "Sign out", ur: "سائن آؤٹ" },
   judgeModeOn: { en: "Judge Mode ON — every commit opens </> X-Ray", ur: "جج موڈ آن — ہر اندراج پر X-Ray کھلے گا" },
   swUpdate: { en: "New version ready — tap to update", ur: "نیا ورژن تیار ہے — اپ ڈیٹ کریں" },
+  insights: { en: "Insights · P&L", ur: "منافع اور رپورٹ" },
+  newBill: { en: "New Bill", ur: "نیا بل" },
+  returnItem: { en: "Return", ur: "واپسی" },
+  autoSpeak: { en: "Spoken Urdu confirmations", ur: "ہر اندراج پر اردو آواز میں تصدیق" },
 } as const;
 
 export type I18nKey = keyof typeof DICT;

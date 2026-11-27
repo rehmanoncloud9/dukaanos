@@ -1,7 +1,7 @@
 "use client";
 
-import { Camera, FileImage, Wand2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, Camera, FileImage, Plus, Trash2, Wand2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CommitResponse } from "@/lib/api/contracts";
 import type { ParchiParseResult, ParchiReviewLine } from "@/lib/ai/parchi";
 import { api, friendlyError, newKey } from "@/lib/client/api";
@@ -49,22 +49,33 @@ function editLine(line: ParchiReviewLine): EditLine {
 }
 
 export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; autoSample?: boolean }) {
-  const { commitPurchase, toast, openSheet } = useDukaan();
+  const { state, commitPurchase, toast, openSheet } = useDukaan();
   const [stage, setStage] = useState<Stage>("capture");
   const [img, setImg] = useState<PreparedImage | null>(null);
   const [res, setRes] = useState<(ParchiParseResult & { api_ms: number }) | null>(null);
+  const [supplierName, setSupplierName] = useState("Wholesale");
   const [lines, setLines] = useState<EditLine[]>([]);
   const [cash, setCash] = useState("");
   const [statedTotalText, setStatedTotalText] = useState("");
   const [statedTotalPaisa, setStatedTotalPaisa] = useState<number | null>(null);
   const [grandTotalAcknowledged, setGrandTotalAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [addingPage, setAddingPage] = useState(false);
   const [parseErr, setParseErr] = useState<string | null>(null);
   const [done, setDone] = useState<CommitResponse | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const key = useRef(newKey("parchi"));
   const camRef = useRef<HTMLInputElement>(null);
   const galRef = useRef<HTMLInputElement>(null);
+  const pageRef = useRef<HTMLInputElement>(null);
+  const products = state?.products ?? [];
+  const recentSuppliers = useMemo(() => {
+    const names = new Set<string>();
+    for (const t of state?.feed ?? []) {
+      if (t.type === "purchase" && !t.is_reversed && t.supplier_name) names.add(t.supplier_name);
+    }
+    return [...names].slice(0, 5);
+  }, [state?.feed]);
 
   useEffect(() => {
     if (!img?.originalPreviewUrl) return;
@@ -100,6 +111,7 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
         }
       }
       setRes(result);
+      setSupplierName(result.supplier_name || "Wholesale");
       setLines(result.lines.map(editLine));
       const extracted = result.math_check.extracted_total_paisa;
       setStatedTotalPaisa(extracted);
@@ -115,6 +127,67 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
     }
   };
 
+  const appendPage = async (file: Blob) => {
+    setAddingPage(true);
+    try {
+      const prepared = await prepareImage(file);
+      const form = new FormData();
+      form.append("image", new File([prepared.blob], "parchi-page.jpg", { type: "image/jpeg" }));
+      const extra = await api<ParchiParseResult & { api_ms: number }>("/api/parchi/parse", { form, timeoutMs: 60_000 });
+      const offset = Date.now().toString(36);
+      const more = extra.lines.map((l, idx) => editLine({ ...l, key: `${l.key}-p${offset}-${idx}` }));
+      setLines((prev) => [...prev, ...more]);
+      if (extra.math_check.extracted_total_paisa && statedTotalPaisa !== null) {
+        const combined = statedTotalPaisa + extra.math_check.extracted_total_paisa;
+        setStatedTotalPaisa(combined);
+        setStatedTotalText(String(combined / 100));
+      }
+      setGrandTotalAcknowledged(false);
+      toast(`${more.length} items from extra page added`, "ok");
+    } catch (e) {
+      toast(friendlyError(e), "err");
+    } finally {
+      setAddingPage(false);
+    }
+  };
+
+  const addBlankLine = () => {
+    const k = `manual-${Date.now().toString(36)}`;
+    const blank: EditLine = {
+      key: k,
+      raw: { name: "Manual item", quantity: null, unit: null, rate: null, line_total: null },
+      written_name: "Manual item",
+      match_status: "new_sku",
+      product_id: null,
+      name: "",
+      match_score: 0,
+      base_unit: "pcs",
+      pack_size_base_units: 1,
+      conversion_unresolved: false,
+      qty_number: 1,
+      unit: "pcs",
+      qty_base_units: null,
+      rate_paisa: null,
+      written_total_paisa: null,
+      computed_total_paisa: null,
+      line_total_paisa: null,
+      math_mismatch: false,
+      manual_review_required: true,
+      issues: [],
+      low_confidence: false,
+      confidence: 1,
+      choice: null,
+      reviewed: false,
+      qtyText: "1",
+      unitText: "pcs",
+      rateText: "",
+      totalText: "",
+      packText: "1",
+    };
+    setLines((prev) => [...prev, blank]);
+    setEditing(k);
+  };
+
   useEffect(() => {
     if (autoSample) void renderStagedParchi().then(run);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -128,6 +201,20 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
   const grandTotalMismatch = statedTotalPaisa === null || statedTotalPaisa !== total;
   const grandTotalNeedsConfirmation = grandTotalMismatch && !grandTotalAcknowledged;
   const cashPaidPaisa = toAmount(cash);
+  const duplicatePurchase = useMemo(() => {
+    if (!state || total <= 0) return null;
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const sup = supplierName.trim().toLowerCase();
+    return state.feed.find(
+      (t) =>
+        t.type === "purchase" &&
+        !t.is_reversed &&
+        new Date(t.created_at) >= todayStart &&
+        t.total_paisa === total &&
+        (!sup || (t.supplier_name ?? "").toLowerCase() === sup),
+    ) ?? null;
+  }, [state, supplierName, total]);
 
   const patchLine = (keyToPatch: string, patch: Partial<EditLine>) => {
     setGrandTotalAcknowledged(false);
@@ -233,7 +320,7 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
     setBusy(true);
     const base = {
       idempotency_key: key.current,
-      supplier_name: res.supplier_name,
+      supplier_name: supplierName.trim() || res.supplier_name || "Wholesale",
       cash_paid_paisa: Math.min(total, cashPaidPaisa),
       stated_total_paisa: statedTotalPaisa,
       lines: lines.map((line) => ({
@@ -273,6 +360,7 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
     >
       <input ref={camRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden onChange={(event) => event.target.files?.[0] && void run(event.target.files[0])} />
       <input ref={galRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => event.target.files?.[0] && void run(event.target.files[0])} />
+      <input ref={pageRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => event.target.files?.[0] && void appendPage(event.target.files[0])} />
 
       {stage === "capture" && (
         <div className="space-y-2.5 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">
@@ -306,6 +394,7 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
                       api_ms: 0,
                     };
                     setRes(blankResult);
+                    setSupplierName("Wholesale");
                     setLines([]);
                     setStatedTotalPaisa(null);
                     setStatedTotalText("");
@@ -313,6 +402,7 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
                     setGrandTotalAcknowledged(false);
                     setParseErr(null);
                     setStage("review");
+                    addBlankLine();
                   }}
                   className="tactile flex h-9 items-center gap-1.5 rounded-[10px] bg-maal px-3 text-[13px] font-semibold text-white"
                 >
@@ -337,21 +427,61 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
 
       {stage === "review" && res && (
         <div className="pb-2">
-          <div className="mx-5 mb-3 flex items-center gap-3 rounded-[14px] bg-canvas p-2.5">
-            {img && <img src={img.originalPreviewUrl} alt="Original parchi reference" className="h-14 w-14 rounded-[10px] object-cover" />}
-            <div className="min-w-0">
-              <div className="truncate text-[15px] font-semibold">{res.supplier_name} · {res.bill_date ?? "Date unclear"}</div>
-              <div className="text-[13px] text-ink-2">{res.legibility === "poor" ? "Low legibility — review every highlighted row" : "Review transcription against the original"} · {res.latency_ms}ms</div>
+          <div className="mx-5 mb-2.5 flex items-center gap-3 rounded-[14px] bg-canvas p-2.5">
+            {img && <img src={img.originalPreviewUrl} alt="Original parchi reference" className="h-14 w-14 shrink-0 rounded-[10px] object-cover" />}
+            <div className="min-w-0 flex-1 space-y-1">
+              <input
+                value={supplierName}
+                onChange={(e) => setSupplierName(e.target.value)}
+                placeholder="Supplier / Mandi ka naam"
+                aria-label="Supplier name"
+                className="h-8 w-full rounded-[8px] bg-surface px-2 text-[14.5px] font-semibold outline-none"
+              />
+              <div className="text-[12px] text-ink-2">
+                {res.bill_date ?? "Date unclear"} · {res.legibility === "poor" ? "Low legibility — check rows" : `${res.latency_ms}ms`}
+              </div>
             </div>
           </div>
 
+          {recentSuppliers.length > 0 && (
+            <div className="no-scrollbar mx-5 mb-2.5 flex gap-1.5 overflow-x-auto">
+              {recentSuppliers.map((sup) => (
+                <button
+                  key={sup}
+                  type="button"
+                  onClick={() => setSupplierName(sup)}
+                  className={cx("tactile shrink-0 rounded-full border px-2.5 py-1 text-[11.5px] font-semibold", supplierName === sup ? "border-ink bg-ink text-white" : "border-black/10 bg-surface text-ink-2")}
+                >
+                  {sup}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {duplicatePurchase && (
+            <div className="mx-5 mb-2.5 flex items-center gap-2 rounded-[12px] border border-amber-ink/25 bg-amber-bg px-3 py-2 text-[12.5px] font-medium text-amber-ink">
+              <AlertTriangle size={15} strokeWidth={SW} className="shrink-0" />
+              <span>Duplicate check: aaj {duplicatePurchase.supplier_name} ki {formatRs(duplicatePurchase.total_paisa)} ki parchi (#{duplicatePurchase.seq}) pehle se darj hai.</span>
+            </div>
+          )}
+
+          <div className="mx-5 mb-2 flex items-center gap-2">
+            <button type="button" onClick={addBlankLine} className="tactile flex h-8 items-center gap-1 rounded-full border border-black/15 bg-surface px-3 text-[12.5px] font-semibold">
+              <Plus size={13} strokeWidth={SW} /> Add item
+            </button>
+            <button type="button" disabled={addingPage} onClick={() => pageRef.current?.click()} className="tactile flex h-8 items-center gap-1 rounded-full border border-maal/30 bg-maal-bg px-3 text-[12.5px] font-semibold text-maal disabled:opacity-50">
+              {addingPage ? <Spinner className="h-3.5 w-3.5" /> : <Camera size={13} strokeWidth={SW} />} + Add Page
+            </button>
+          </div>
+
           <div className="mx-5 surface-card overflow-hidden">
+            {lines.length === 0 && <div className="px-4 py-4 text-center text-[13px] text-ink-2">Koi line nahi — upar “+ Add item” dabayein.</div>}
             {lines.map((line) => (
               <div key={line.key} className={cx("hairline-b px-4 py-3 last:border-b-0", (line.math_mismatch || !line.reviewed) && "bg-amber-bg/60")}>
                 <button className="flex w-full items-start gap-2 text-left" onClick={() => setEditing(editing === line.key ? null : line.key)}>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5 text-[15.5px] font-semibold">
-                      {line.name}
+                      {line.name || "Untitled item"}
                       {line.match_status === "new_sku" && <Pill tone="maal" className="h-5 px-1.5 text-[11px]">New Item</Pill>}
                     </div>
                     <div className="num text-[13px] text-ink-2">
@@ -373,6 +503,37 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
 
                 {editing === line.key && (
                   <div className="mt-2 space-y-2 rounded-[10px] bg-canvas p-2">
+                    {products.length > 0 && (
+                      <label className="block text-[11px] text-ink-2">
+                        Link to existing Maal product
+                        <select
+                          value={line.product_id ?? ""}
+                          onChange={(e) => {
+                            const pid = e.target.value || null;
+                            const prod = products.find((p) => p.id === pid);
+                            if (prod) {
+                              patchLine(line.key, {
+                                product_id: prod.id,
+                                match_status: "matched",
+                                name: prod.name,
+                                base_unit: prod.base_unit,
+                                pack_size_base_units: prod.pack_size_base_units,
+                                packText: String(prod.pack_size_base_units),
+                                conversion_unresolved: false,
+                              });
+                            } else {
+                              patchLine(line.key, { product_id: null, match_status: "new_sku" });
+                            }
+                          }}
+                          className="mt-0.5 h-9 w-full rounded-[8px] bg-surface px-2 text-[13.5px] text-ink outline-none"
+                        >
+                          <option value="">+ Create as New Item</option>
+                          {products.map((p) => (
+                            <option key={p.id} value={p.id}>{p.name} ({p.base_unit})</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <div className="grid grid-cols-2 gap-1.5">
                       <label className="text-[11px] text-ink-2">Name<input value={line.name} onChange={(event) => patchLine(line.key, { name: event.target.value })} className="mt-0.5 h-9 w-full rounded-[8px] bg-surface px-2 text-[14px] text-ink outline-none" /></label>
                       <label className="text-[11px] text-ink-2">Written unit<input value={line.unitText} onChange={(event) => patchLine(line.key, { unitText: event.target.value, unit: event.target.value })} placeholder="kg, g, pcs, packet…" className="mt-0.5 h-9 w-full rounded-[8px] bg-surface px-2 text-[14px] text-ink outline-none" /></label>
@@ -384,9 +545,20 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <SecondaryButton className="h-9" onClick={() => applyManualLine(line)}>Recalculate</SecondaryButton>
+                      <button
+                        type="button"
+                        aria-label="Remove line"
+                        onClick={() => {
+                          setLines((prev) => prev.filter((x) => x.key !== line.key));
+                          setEditing(null);
+                        }}
+                        className="tactile grid h-9 w-9 place-items-center rounded-[10px] bg-udhaar-bg text-udhaar-ink"
+                      >
+                        <Trash2 size={14} strokeWidth={SW} />
+                      </button>
                       {line.computed_total_paisa !== null && <button onClick={() => chooseAmount(line, "computed")} className="tactile h-9 rounded-[10px] border border-black/15 bg-surface px-2.5 text-[12px] font-semibold">Use computed {formatRs(line.computed_total_paisa)}</button>}
                       {line.written_total_paisa !== null && <button onClick={() => chooseAmount(line, "written")} className="tactile h-9 rounded-[10px] border border-black/15 bg-surface px-2.5 text-[12px] font-semibold">Use written {formatRs(line.written_total_paisa)}</button>}
-                      <PrimaryButton tone="maal" className="ml-auto h-9" disabled={line.line_total_paisa === null || line.qty_base_units === null} onClick={() => confirmLine(line)}>{line.reviewed ? "Confirmed" : "Confirm line"}</PrimaryButton>
+                      <PrimaryButton tone="maal" className="ml-auto h-9" disabled={!line.name.trim() || line.line_total_paisa === null || line.qty_base_units === null} onClick={() => confirmLine(line)}>{line.reviewed ? "Confirmed" : "Confirm line"}</PrimaryButton>
                     </div>
                   </div>
                 )}
@@ -433,7 +605,7 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
       {stage === "done" && done && (
         <div className="space-y-3 px-5 pb-[max(16px,env(safe-area-inset-bottom))]">
           <div className="surface-card p-4">
-            <div className="text-[15px] font-semibold">{res?.supplier_name}</div>
+            <div className="text-[15px] font-semibold">{supplierName || res?.supplier_name}</div>
             <Money paisa={done.totals.total_paisa ?? 0} className="mt-1 block text-[26px] font-bold" />
             <div className="mt-2 flex flex-wrap gap-1.5"><Pill tone="cash" mono>Δ = 0 ✓</Pill><Pill mono>#{done.seq} {done.entry_hash.slice(0, 10)}…</Pill>{done.math_check && <Pill tone={done.math_check.passed ? "cash" : "amber"} mono>{done.math_check.passed ? "MATH OK" : "MATH_MISMATCH reviewed"}</Pill>}</div>
             <div className="mt-3 rounded-[10px] bg-canvas p-2.5 font-mono text-[11.5px]">{done.journal.map((entry, index) => <div key={index} className="flex justify-between"><span>{entry.side} {entry.account_code} {entry.account_name}</span><span>{formatJournal(entry.amount_paisa)}</span></div>)}</div>
