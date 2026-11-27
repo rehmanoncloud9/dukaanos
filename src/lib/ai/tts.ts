@@ -83,8 +83,8 @@ function pcmToWav(pcm: Buffer, sampleRate = 24000, channels = 1, bits = 16): Buf
 async function synthesizeEdgeUrdu(text: string): Promise<Buffer> {
   const tts = new MsEdgeTTS({ connectionTimeoutMs: 4000, synthesisTimeoutMs: 5000 });
   try {
-    await tts.setMetadata("ur-PK-AsadNeural", OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
-    const { audioStream } = tts.toStream(text);
+    await tts.setMetadata("ur-PK-AsadNeural", OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, { voiceLocale: "ur-PK" });
+    const { audioStream } = tts.toStream(text, { rate: "-4%", pitch: "+0Hz", volume: "+0%" });
     const chunks: Buffer[] = [];
     for await (const chunk of audioStream) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
