@@ -108,12 +108,12 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
             className="tactile mt-2 flex h-10 w-full items-center justify-between rounded-[12px] bg-surface px-3.5 text-[13.5px] font-medium"
           >
             <span className="flex items-center gap-2"><Volume2 size={15} strokeWidth={SW} /> {tr("autoSpeak", lang)}</span>
-            <Pill tone={autoSpeak ? "cash" : "neutral"}>{autoSpeak ? "ON" : "OFF"}</Pill>
+            <Pill tone={autoSpeak ? "cash" : "neutral"}>{autoSpeak ? tr("on", lang) : tr("off", lang)}</Pill>
           </button>
         </section>
 
         <section>
-          <div className="section-label mb-2">Shop</div>
+          <div className="section-label mb-2" dir="auto">{tr("shop", lang)}</div>
           <div className="surface-card overflow-hidden">
             {shops?.map((s) => (
               <button key={s.id} onClick={() => setShopId(s.id)} className="hairline-b flex w-full items-center justify-between px-4 py-3 text-left last:border-b-0">

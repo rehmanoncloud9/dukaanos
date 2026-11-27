@@ -102,11 +102,11 @@ export function MaalTab() {
       {negative.map((p) => (
         <div key={p.id} className="flex items-center gap-2.5 rounded-[14px] bg-udhaar-bg px-3.5 py-2.5">
           <AlertCircle size={16} strokeWidth={1.75} className="shrink-0 text-udhaar-ink" />
-          <span className="flex-1 text-[13.5px] font-medium text-udhaar-ink">
-            {p.name} stock is now {formatBaseQty(p.stock_base_units, p.base_unit)} — Log Restock?
+          <span className="flex-1 text-[13.5px] font-medium text-udhaar-ink" dir="auto">
+            {p.name} ({formatBaseQty(p.stock_base_units, p.base_unit)})
           </span>
           <button onClick={() => openSheet({ type: "product", productId: p.id })} className="tactile h-8 rounded-full bg-surface px-3 text-[13px] font-semibold text-udhaar-ink">
-            Fix
+            {tr("fix", lang)}
           </button>
         </div>
       ))}
@@ -119,20 +119,21 @@ export function MaalTab() {
             { value: "low", label: `${tr("lowStock", lang)} (${sorted.filter(isLow).length})` },
           ]}
         />
-        {/* Native BarcodeDetector barcode scan button */}
-        <button
-          onClick={() => void startScan()}
-          aria-label="Scan barcode"
-          className={cx("tactile flex h-10 shrink-0 items-center gap-1.5 rounded-[12px] border border-black/15 px-3 text-[13px] font-semibold", scanning ? "bg-maal text-white" : "bg-surface")}
-        >
-          <Camera size={15} strokeWidth={1.75} /> {scanning ? "Scanning…" : "Scan"}
-        </button>
+        {isBarcodeDetectorSupported() && (
+          <button
+            onClick={() => void startScan()}
+            aria-label={tr("scan", lang)}
+            className={cx("tactile flex h-10 shrink-0 items-center gap-1.5 rounded-[12px] border border-black/15 px-3 text-[13px] font-semibold", scanning ? "bg-maal text-white" : "bg-surface")}
+          >
+            <Camera size={15} strokeWidth={1.75} /> {scanning ? tr("scanning", lang) : tr("scan", lang)}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setNewSku("")}
           className="tactile flex h-10 shrink-0 items-center rounded-[12px] bg-ink px-3 text-[13px] font-semibold text-white"
         >
-          + Add
+          {tr("add", lang)}
         </button>
       </div>
       {/* Hidden video for barcode camera feed */}

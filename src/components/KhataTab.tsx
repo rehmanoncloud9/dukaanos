@@ -117,11 +117,11 @@ export function KhataTab() {
           <div className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("totalReceivable", lang)}</div>
           <button
             type="button"
-            aria-label="Kul udhaar sunein"
-            onClick={() => void speak(`Kul udhaar ${Math.round(receivable / 100)} rupay lena hai, ${active.length} logon par.`)}
+            aria-label={tr("listen", lang)}
+            onClick={() => void speak(`کل ادھار ${Math.round(receivable / 100)} روپے لینا ہے، ${active.length} کھاتوں پر۔`)}
             className="tactile inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[11.5px] font-semibold text-ink-2"
           >
-            <Volume2 size={12} strokeWidth={1.75} /> Suniye
+            <Volume2 size={12} strokeWidth={1.75} /> {tr("listen", lang)}
           </button>
         </div>
         <Money paisa={receivable} className="mt-1 block text-[34px] font-bold leading-[38px] tracking-[-0.03em] text-udhaar" />
@@ -129,12 +129,6 @@ export function KhataTab() {
           <span className="text-ink-2" dir="auto">{active.length} {tr("activeAccounts", lang)}</span>
           <span className="font-semibold text-udhaar" dir="auto">{overdue.length} {tr("overdue", lang)}</span>
         </div>
-        {verified + unverified > 0 && (
-          <div className="mt-2 flex items-center gap-1.5 text-[13px] text-ink-2">
-            <ShieldCheck size={14} strokeWidth={1.75} className="text-cash" />
-            <span><b className="text-cash-ink">{verified}</b> gahak-tasdeeq shuda · {unverified} baqi</span>
-          </div>
-        )}
       </div>
 
       <RemindToday customers={customers} bharosa={bharosa} shop={state.shop.name} />
@@ -432,7 +426,7 @@ function NewCustomerSheet({ onClose }: { onClose: () => void }) {
 }
 
 export function CustomerSheet({ customerId, onClose }: { customerId: string; onClose: () => void }) {
-  const { state, shopId, openSheet, xrayOn, helperMode, refresh, toast } = useDukaan();
+  const { state, shopId, openSheet, xrayOn, helperMode, refresh, toast, lang } = useDukaan();
   const c = state?.customers.find((x) => x.id === customerId);
   const [phone, setPhone] = useState(c?.phone ?? "");
   const [roleTag, setRoleTag] = useState(c?.role_tag ?? "");
@@ -507,10 +501,10 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
             <div className="flex gap-1.5">
               <button
                 type="button"
-                onClick={() => void speak(`${c.name} ka baqaya ${Math.round(c.balance_paisa / 100)} rupay hai${c.days_overdue ? `, ${c.days_overdue} din se baqi` : ""}.`)}
+                onClick={() => void speak(`${c.name} کا بقایا ${Math.round(c.balance_paisa / 100)} روپے ہے${c.days_overdue ? `، ${c.days_overdue} دن سے باقی` : ""}۔`)}
                 className="tactile inline-flex h-9 items-center gap-1 rounded-full bg-surface-sunken px-3 text-[12.5px] font-semibold"
               >
-                <Volume2 size={13} strokeWidth={1.75} /> Suniye
+                <Volume2 size={13} strokeWidth={1.75} /> {tr("listen", lang)}
               </button>
               {c.phone && (
                 <a href={`tel:${c.phone}`} className="tactile inline-flex h-9 items-center gap-1 rounded-full bg-cash-bg px-3 text-[12.5px] font-semibold text-cash-ink">
