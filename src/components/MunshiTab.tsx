@@ -27,26 +27,26 @@ export function goFilter(tab: "khata" | "maal", filter: string) {
   window.dispatchEvent(new CustomEvent("dukaan:filter", { detail: { tab, filter } }));
 }
 
-export function feedSummary(t: FeedTx): string {
-  if (t.type === "payment") return "Wasooli · cash received";
-  if (t.type === "reversal") return `Undo · ${t.audit_meta?.reversed_type ?? "entry"} reversed`;
-  if (t.type === "writeoff") return "Maaf / Bad-debt write-off";
+export function feedSummary(t: FeedTx, lang: "en" | "ur" = "en"): string {
+  if (t.type === "payment") return tr("wasooliReceived", lang);
+  if (t.type === "reversal") return lang === "ur" ? `واپسی · ${t.audit_meta?.reversed_type ?? "اندراج"}` : `Undo · ${t.audit_meta?.reversed_type ?? "entry"} reversed`;
+  if (t.type === "writeoff") return lang === "ur" ? "معاف / کھاتہ ختم" : "Maaf / Bad-debt write-off";
   if (t.type === "adjustment") {
-    const r = String(t.audit_meta?.reason ?? t.supplier_name ?? "stock adjust");
+    const r = String(t.audit_meta?.reason ?? t.supplier_name ?? tr("stockAdjust", lang));
     return `${r} · ${t.lines.map((l) => `${formatBaseQty(l.qty_base_units, l.base_unit)} ${l.name.replace(/\s*\(.*\)/, "")}`).join(", ")}`;
   }
   const items = t.lines.map((l) => (l.value_first ? `${l.name} (Rs. ${l.line_total_paisa / 100})` : `${formatBaseQty(l.qty_base_units, l.base_unit)} ${l.name.replace(/\s*\(.*\)/, "")}`)).join(", ");
-  return t.type === "return" ? `Wapasi · ${items}` : items;
+  return t.type === "return" ? `${tr("returnItem", lang)} · ${items}` : items;
 }
 
 function feedTag(t: FeedTx, lang: "en" | "ur"): string {
-  if (t.audit_meta?.pending_sync) return "Offline";
+  if (t.audit_meta?.pending_sync) return lang === "ur" ? "آف لائن" : "Offline";
   if (t.type === "payment") return tr("wasooli", lang);
   if (t.type === "purchase") return t.credit_paisa > 0 ? `${tr("restockTag", lang)} · ${tr("udhaarTag", lang)}` : tr("restockTag", lang);
   if (t.type === "reversal") return tr("undoneTag", lang);
-  if (t.type === "return") return t.credit_paisa > 0 ? "Return · Khata" : "Return · Cash";
-  if (t.type === "adjustment") return "Stock Adjust";
-  if (t.type === "writeoff") return "Maaf";
+  if (t.type === "return") return t.credit_paisa > 0 ? `${tr("returnItem", lang)} · ${tr("khata", lang)}` : `${tr("returnItem", lang)} · ${tr("cashTag", lang)}`;
+  if (t.type === "adjustment") return tr("stockAdjust", lang);
+  if (t.type === "writeoff") return lang === "ur" ? "معاف" : "Maaf";
   if (t.credit_paisa !== 0 && t.cash_paid_paisa > 0) return tr("splitTag", lang);
   if (t.credit_paisa > 0) return tr("udhaarTag", lang);
   return tr("cashTag", lang);
@@ -54,16 +54,16 @@ function feedTag(t: FeedTx, lang: "en" | "ur"): string {
 
 export function FeedRow({ t, onOpen, flash }: { t: FeedTx; onOpen: () => void; flash?: boolean }) {
   const { lang } = useDukaan();
-  const title = t.type === "purchase" ? t.supplier_name ?? "Wholesale" : t.type === "reversal" ? "Reversal" : t.type === "adjustment" ? (t.lines[0]?.name ?? "Stock Adjustment") : t.customer_name ?? "Walk-in Cash";
+  const title = t.type === "purchase" ? t.supplier_name ?? tr("wholesale", lang) : t.type === "reversal" ? tr("reversal", lang) : t.type === "adjustment" ? (t.lines[0]?.name ?? tr("stockAdjust", lang)) : t.customer_name ?? tr("walkInCash", lang);
   const amount = t.type === "sale" ? (t.cash_paid_paisa > 0 ? t.cash_paid_paisa : t.total_paisa) : Math.abs(t.total_paisa);
   const color = t.type === "purchase" ? "text-maal" : t.type === "reversal" || t.type === "adjustment" || t.type === "writeoff" ? "text-ink-3" : t.type === "return" ? "text-udhaar" : t.type === "sale" && t.cash_paid_paisa === 0 ? "text-udhaar" : "text-cash";
   const sign = t.type === "purchase" || t.type === "reversal" || t.type === "return" || t.type === "adjustment" || t.type === "writeoff" ? "-" : "+";
   return (
     <button onClick={onOpen} className={cx("hairline-b flex h-[60px] w-full items-center gap-3 px-4 text-left last:border-b-0", flash && "row-flash", t.is_reversed && "opacity-50")}>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[15px] font-medium leading-5">{title}</div>
-        <div className="truncate text-[13px] leading-[18px] text-ink-2">
-          {relTime(t.created_at)} · {feedSummary(t)}
+        <div className={cx("truncate text-[15px] font-medium leading-5", lang === "ur" && "urdu-ui")} dir="auto">{title}</div>
+        <div className="truncate text-[13px] leading-[18px] text-ink-2" dir="auto">
+          {relTime(t.created_at)} · {feedSummary(t, lang)}
         </div>
       </div>
       <div className="shrink-0 text-right">
@@ -83,7 +83,7 @@ export function FeedRow({ t, onOpen, flash }: { t: FeedTx; onOpen: () => void; f
  * <2ms, Rs. 0 LLM, 0 network dependency. Idempotent: each tap fires submitTurn with typed text.
  */
 function QuickSellStrip({ products }: { products: StateProduct[] }) {
-  const { submitTurn, thinking } = useDukaan();
+  const { submitTurn, thinking, lang } = useDukaan();
   // Top 4 by sold_7d descending; skip items with zero stock
   const top4 = [...products]
     .filter((p) => p.stock_base_units > 0 && p.sold_7d > 0)
@@ -96,14 +96,10 @@ function QuickSellStrip({ products }: { products: StateProduct[] }) {
     <div className="surface-card overflow-hidden">
       <div className="flex items-center gap-1.5 px-4 pb-1.5 pt-2.5">
         <Zap size={12} strokeWidth={SW} className="text-cash" />
-        <span className="section-label">Tez Bikri</span>
+        <span className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("quickSell", lang)}</span>
       </div>
       <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3">
         {top4.map((p) => {
-          const soldLabel =
-            p.pack_size_base_units > 1 && p.base_unit !== "pcs" && p.pack_size_base_units !== 1000
-              ? `${Math.round(p.sold_7d / p.pack_size_base_units)}/wk`
-              : `${formatBaseQty(p.sold_7d, p.base_unit)}/wk`;
           return (
             <button
               key={p.id}
@@ -117,7 +113,7 @@ function QuickSellStrip({ products }: { products: StateProduct[] }) {
                 {p.name.replace(/\s*\(.*\)/, "").slice(0, 16)}
               </span>
               <span className="num text-[12px] text-ink-2">
-                {formatRs(p.unit_price_paisa)} · {soldLabel}
+                {formatRs(p.unit_price_paisa)}
               </span>
             </button>
           );
@@ -131,11 +127,9 @@ export function MunshiTab() {
   const { state, shop, shopId, xrayOn, helperMode, openSheet, submitTurn, thinking, toast, highlightTx, refresh, lang } = useDukaan();
   const [pulse, setPulse] = useState<Pulse | null>(null);
   const [stripOpen, setStripOpen] = useState(false);
+  const [moreActions, setMoreActions] = useState(false);
   const [held, setHeld] = useState<HeldBill[]>([]);
-  const [showGuide, setShowGuide] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem("dukaanos.guide.dismissed") !== "1";
-  });
+  const [showGuide, setShowGuide] = useState(false);
   const [typing, setTypingState] = useState(() =>
     typeof window !== "undefined" && sessionStorage.getItem("dukaanos.typing") === "1",
   );
@@ -234,8 +228,8 @@ export function MunshiTab() {
             </div>
             <button
               type="button"
-              aria-label="Aaj ka hisaab sunein"
-              onClick={() => void speak(`Aaj cash ${Math.round(today.cash_sales_paisa / 100)} rupay aur udhaar ${Math.round(today.udhaar_paisa / 100)} rupay hai, kul ${today.sales_count} sales.`)}
+              aria-label={tr("listen", lang)}
+              onClick={() => void speak(`آج کی نقد فروخت ${Math.round(today.cash_sales_paisa / 100)} روپے اور ادھار ${Math.round(today.udhaar_paisa / 100)} روپے ہے، کل ${today.sales_count} بل بنے۔`)}
               className="tactile grid h-6 w-6 place-items-center rounded-full bg-surface-sunken text-ink-2"
             >
               <Volume2 size={12} strokeWidth={SW} />
@@ -256,30 +250,38 @@ export function MunshiTab() {
       {/* Quick-Sell Top-4 strip — rush-hour 1-tap cash sale, Rs. 0 LLM */}
       <QuickSellStrip products={state.products} />
 
-      {/* Compact action bar: Munafa Insights, Manual Bill, Return, Guide */}
-      <div className="no-scrollbar flex items-center gap-2 overflow-x-auto py-0.5">
-        {!helperMode && (
-          <button type="button" onClick={() => openSheet({ type: "insights" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
-            <BarChart3 size={13} strokeWidth={SW} className="text-cash" /> {tr("insights", lang)}
-          </button>
-        )}
+      {/* Primary action + progressive disclosure for secondary tools */}
+      <div className="flex flex-wrap items-center gap-2 py-0.5">
         <button type="button" onClick={openBlankBill} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
           <Plus size={13} strokeWidth={SW} /> {tr("newBill", lang)}
         </button>
-        <button type="button" onClick={() => openSheet({ type: "return" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
-          <RotateCcw size={13} strokeWidth={SW} className="text-udhaar" /> {tr("returnItem", lang)}
+        <button
+          type="button"
+          onClick={() => setMoreActions((m) => !m)}
+          className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold text-ink-2", lang === "ur" && "urdu-ui")}
+          dir="auto"
+        >
+          {tr("more", lang)} {moreActions ? <ChevronUp size={13} strokeWidth={SW} /> : <ChevronDown size={13} strokeWidth={SW} />}
         </button>
-        {!showGuide && (
-          <button
-            type="button"
-            onClick={() => {
-              localStorage.removeItem("dukaanos.guide.dismissed");
-              setShowGuide(true);
-            }}
-            className="tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold text-ink-2"
-          >
-            <HelpCircle size={13} strokeWidth={SW} /> Guide
-          </button>
+        {moreActions && (
+          <>
+            {!helperMode && (
+              <button type="button" onClick={() => openSheet({ type: "insights" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+                <BarChart3 size={13} strokeWidth={SW} className="text-cash" /> {tr("insights", lang)}
+              </button>
+            )}
+            <button type="button" onClick={() => openSheet({ type: "return" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+              <RotateCcw size={13} strokeWidth={SW} className="text-udhaar" /> {tr("returnItem", lang)}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowGuide((g) => !g)}
+              className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold text-ink-2", lang === "ur" && "urdu-ui")}
+              dir="auto"
+            >
+              <HelpCircle size={13} strokeWidth={SW} /> {tr("guide", lang)}
+            </button>
+          </>
         )}
       </div>
 
@@ -287,7 +289,7 @@ export function MunshiTab() {
         <div className="surface-card overflow-hidden">
           <div className="flex items-center gap-1.5 px-4 pb-1.5 pt-2.5">
             <PauseCircle size={13} strokeWidth={SW} className="text-udhaar" />
-            <span className="section-label">Held Bills ({held.length})</span>
+            <span className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("heldBills", lang)} ({held.length})</span>
           </div>
           {held.map((h) => (
             <div key={h.id} className="hairline-t flex items-center gap-2 px-4 py-2.5">
@@ -296,7 +298,7 @@ export function MunshiTab() {
                 onClick={() => openSheet({ type: "review", proposal: h.proposal, key: h.id, trace: h.trace })}
                 className="min-w-0 flex-1 text-left"
               >
-                <div className="truncate text-[14px] font-semibold">{h.customer_name ?? "Walk-in"} · {formatRs(h.total_paisa)}</div>
+                <div className="truncate text-[14px] font-semibold">{h.customer_name ?? tr("walkInCash", lang)} · {formatRs(h.total_paisa)}</div>
                 <div className="truncate text-[12px] text-ink-2">{h.label}</div>
               </button>
               <button
@@ -312,29 +314,28 @@ export function MunshiTab() {
         </div>
       )}
 
-      {showGuide && (
+      {(showGuide || (list.length === 0 && !thinking)) && (
         <div className="surface-card p-3.5">
           <div className="flex items-center justify-between">
-            <span className="section-label">Pehli dafa? Bol kar dekhein</span>
+            <span className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("guideTitle", lang)}</span>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => void speak("Mic dabaa kar bolein: Ek kilo cheeni cash, ya Ali ko panch sau udhaar, ya Subah ka hisaab batao.")}
+                onClick={() => void speak("مائیک دبا کر بولیں: ایک کلو چینی نقد، یا علی کو پانچ سو ادھار، یا صبح کا حساب بتاؤ۔")}
                 className="tactile inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[11.5px] font-semibold"
               >
-                <Volume2 size={12} strokeWidth={SW} /> Suniye
+                <Volume2 size={12} strokeWidth={SW} /> {tr("listen", lang)}
               </button>
-              <button
-                type="button"
-                aria-label="Dismiss guide"
-                onClick={() => {
-                  localStorage.setItem("dukaanos.guide.dismissed", "1");
-                  setShowGuide(false);
-                }}
-                className="grid h-7 w-7 place-items-center text-ink-3"
-              >
-                <X size={14} strokeWidth={SW} />
-              </button>
+              {showGuide && (
+                <button
+                  type="button"
+                  aria-label="Dismiss guide"
+                  onClick={() => setShowGuide(false)}
+                  className="grid h-7 w-7 place-items-center text-ink-3"
+                >
+                  <X size={14} strokeWidth={SW} />
+                </button>
+              )}
             </div>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -353,38 +354,38 @@ export function MunshiTab() {
         </div>
       )}
 
-      {pulse && (
+      {pulse && (pulse.overdue.count > 0 || pulse.stockout.count > 0) && (
         <div className="surface-card overflow-hidden">
           <button onClick={() => setStripOpen((o) => !o)} className="flex h-10 w-full items-center gap-2 px-4 text-[13.5px] font-medium">
             <span className="h-1.5 w-1.5 rounded-full bg-udhaar" />
-            <span className="num">
-              {pulse.overdue.count} overdue · {formatRs(pulse.overdue.total_paisa)}
+            <span className="num" dir="auto">
+              {pulse.overdue.count} {tr("overdueAccounts", lang)} · {formatRs(pulse.overdue.total_paisa)}
             </span>
             <span className="text-ink-3">·</span>
             <span className="h-1.5 w-1.5 rounded-full bg-maal" />
-            <span>{pulse.stockout.count} low stock</span>
+            <span dir="auto">{pulse.stockout.count} {tr("lowStockCount", lang)}</span>
             <span className="ml-auto text-ink-2">{stripOpen ? <ChevronUp size={16} strokeWidth={SW} /> : <ChevronDown size={16} strokeWidth={SW} />}</span>
           </button>
           {stripOpen && (
             <>
               <div className="hairline-t flex items-center gap-3 px-4 py-2.5">
                 <div className="min-w-0 flex-1">
-                  <div className="text-[15px] font-semibold">Recover Overdue Udhaar</div>
-                  <div className="truncate text-[13px] text-ink-2">15+ days stuck · 1-tap WhatsApp/SMS</div>
+                  <div className={cx("text-[15px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">{tr("recoverUdhaar", lang)}</div>
+                  <div className="truncate text-[13px] text-ink-2" dir="auto">{lang === "ur" ? "15 دن سے زیادہ پرانا ادھار · واٹس ایپ یا ایس ایم ایس" : "15+ days stuck · 1-tap WhatsApp/SMS"}</div>
                 </div>
                 <Pill tone="udhaar" onClick={() => goFilter("khata", "overdue")} className="h-7 px-3 text-[13px]">
-                  Remind
+                  {tr("remind", lang)}
                 </Pill>
               </div>
               <div className="hairline-t flex items-center gap-3 px-4 py-2.5">
                 <div className="min-w-0 flex-1">
-                  <div className="text-[15px] font-semibold">2-Day Stockout Alert</div>
-                  <div className="truncate text-[13px] text-ink-2">
-                    {pulse.stockout.items.length ? pulse.stockout.items.map((i) => i.name.replace(/\s*\(.*\)/, "").replace(/ 5L$/, "")).join(" & ") : "All shelves healthy"} · Wholesale list ready
+                  <div className={cx("text-[15px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">{tr("stockoutAlert", lang)}</div>
+                  <div className="truncate text-[13px] text-ink-2" dir="auto">
+                    {pulse.stockout.items.length ? pulse.stockout.items.map((i) => i.name.replace(/\s*\(.*\)/, "").replace(/ 5L$/, "")).join(" & ") : tr("allShelvesHealthy", lang)}
                   </div>
                 </div>
                 <Pill tone="maal" onClick={() => openSheet({ type: "pulse", pulse })} className="h-7 px-3 text-[13px]">
-                  Order
+                  {tr("order", lang)}
                 </Pill>
               </div>
             </>
@@ -393,7 +394,7 @@ export function MunshiTab() {
       )}
 
       <div className="flex items-center justify-between px-1 pt-3">
-        <span className="section-label" dir="auto">{showAll ? tr("allEntries", lang) : `Today · ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" }).toUpperCase()}`}</span>
+        <span className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{showAll ? tr("allEntries", lang) : `${tr("today", lang)} · ${new Date().toLocaleDateString(lang === "ur" ? "ur-PK" : "en-GB", { day: "numeric", month: "short" }).toUpperCase()}`}</span>
         <div className="flex items-center gap-2">
           <button
             onClick={() => void refresh()}
@@ -402,8 +403,8 @@ export function MunshiTab() {
           >
             <RefreshCw size={13} strokeWidth={SW} />
           </button>
-          <button onClick={() => setShowAll((s) => !s)} className="section-label min-h-[28px]">
-            {showAll ? tr("showLess", lang) : `${list.length} latest`}
+          <button onClick={() => setShowAll((s) => !s)} className="section-label min-h-[28px]" dir="auto">
+            {showAll ? tr("showLess", lang) : tr("showAll", lang)}
           </button>
         </div>
       </div>
@@ -433,7 +434,7 @@ export function MunshiTab() {
             disabled={loadingMore}
             className="hairline-t tactile flex h-11 w-full items-center justify-center gap-2 text-[13.5px] font-semibold text-ink-2 disabled:opacity-50"
           >
-            {loadingMore ? <Spinner /> : "Load older entries"}
+            {loadingMore ? <Spinner /> : tr("loadOlder", lang)}
           </button>
         )}
       </div>

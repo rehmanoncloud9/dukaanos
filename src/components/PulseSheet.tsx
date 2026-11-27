@@ -13,11 +13,11 @@ import { PriceMemoryCard } from "./PriceMemory";
 
 export function pulseSpeech(p: Pulse): string {
   return [
-    `Aaj galla mein ${formatRs(p.galla.cash_in_galla_paisa)} hain.`,
-    `${p.galla.sales_count} sales, udhaar ${formatRs(p.galla.udhaar_paisa)}.`,
-    p.overdue.count ? `${p.overdue.count} customers ka ${formatRs(p.overdue.total_paisa)} pandrah din se zyada ruka hua hai.` : "Koi purana udhaar nahi.",
-    p.stockout.count ? `${p.stockout.items.map((s) => s.name.replace(/\s*\(.*\)/, "")).join(" aur ")} do din mein khatam ho sakte hain.` : "",
-  ].join(" ");
+    `آج گلے میں ${Math.round(p.galla.cash_in_galla_paisa / 100)} روپے ہیں۔`,
+    `کل ${p.galla.sales_count} فروخت، اور ادھار ${Math.round(p.galla.udhaar_paisa / 100)} روپے ہے۔`,
+    p.overdue.count ? `${p.overdue.count} گاہکوں کا ${Math.round(p.overdue.total_paisa / 100)} روپے پندرہ دن سے زیادہ رکا ہوا ہے۔` : "کوئی پرانا ادھار باقی نہیں۔",
+    p.stockout.count ? `${p.stockout.items.map((s) => s.name.replace(/\s*\(.*\)/, "")).join(" اور ")} دو دن میں ختم ہو سکتے ہیں۔` : "",
+  ].filter(Boolean).join(" ");
 }
 
 export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => void }) {
@@ -155,7 +155,7 @@ export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => vo
         <PriceMemoryCard />
 
         <button onClick={() => void speak(pulseSpeech(pulse))} className="tactile flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[15px] font-semibold">
-          <Volume2 size={16} strokeWidth={SW} /> Suniye (Urdu readout)
+          <Volume2 size={16} strokeWidth={SW} /> سنیں (اردو آواز)
         </button>
       </div>
     </Sheet>
