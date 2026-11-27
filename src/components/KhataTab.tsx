@@ -305,8 +305,22 @@ function BharosaBadges({ b }: { b?: BharosaItem }) {
   );
 }
 
+function customerOverviewSpeech(c: StateCustomer, b?: BharosaItem): string {
+  const rupees = Math.round(Math.abs(c.balance_paisa) / 100);
+  if (c.balance_paisa <= 0) {
+    return `${c.name} کا حساب برابر ہے، کوئی ادھار باقی نہیں۔`;
+  }
+  const parts = [`${c.name} کے ذمے ${rupees} روپے ادھار ہیں۔`];
+  if (c.days_overdue) parts.push(`${c.days_overdue} دن سے باقی ہے۔`);
+  if (c.last_paid_at) parts.push(`آخری وصولی ${shortDate(c.last_paid_at)} کو ہوئی۔`);
+  if (b?.promise_date && b.promise_state !== "kept") {
+    parts.push(b.promise_state === "broken" ? "وعدہ کی تاریخ گزر چکی ہے۔" : `وعدہ کی تاریخ ${wadaLabel(b.promise_date)} ہے۔`);
+  }
+  return parts.join(" ");
+}
+
 function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: BharosaItem; shop: string; onOpen: () => void; onWasooli: () => void }) {
-  const { toast, confirmPayment, shopId } = useDukaan();
+  const { toast, confirmPayment, shopId, lang } = useDukaan();
   const [sending, setSending] = useState<"wa" | "sms" | null>(null);
   const voice = useVoiceReminder();
   const msg = reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue });
@@ -382,6 +396,13 @@ function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: Bh
         )}
         <button onClick={() => void send("sms")} disabled={sending !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
           {sending === "sms" ? <Spinner className="h-3.5 w-3.5" /> : null} SMS (2G)
+        </button>
+        <button
+          type="button"
+          onClick={() => void speak(customerOverviewSpeech(c, b))}
+          className="tactile flex h-9 items-center gap-1 rounded-full border border-black/10 bg-surface-sunken px-3 text-[13px] font-semibold text-ink"
+        >
+          <Volume2 size={13} strokeWidth={1.75} /> {tr("listen", lang)}
         </button>
       </div>
     </div>
@@ -501,7 +522,7 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
             <div className="flex gap-1.5">
               <button
                 type="button"
-                onClick={() => void speak(`${c.name} کا بقایا ${Math.round(c.balance_paisa / 100)} روپے ہے${c.days_overdue ? `، ${c.days_overdue} دن سے باقی` : ""}۔`)}
+                onClick={() => void speak(customerOverviewSpeech(c))}
                 className="tactile inline-flex h-9 items-center gap-1 rounded-full bg-surface-sunken px-3 text-[12.5px] font-semibold"
               >
                 <Volume2 size={13} strokeWidth={1.75} /> {tr("listen", lang)}
