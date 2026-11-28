@@ -61,12 +61,20 @@ export const POST = handle(async (req: Request) => {
   }
   if (!audio && !text) throw new ApiError("BAD_REQUEST", "Send an audio clip or text");
 
-  // Fast path — no catalog, no LLM: pure SQL Pulse.
+  // Fast paths — no catalog, no LLM: pure SQL Pulse & View Navigation.
   if (!audio && text && PULSE_REGEX.test(text)) {
     const pulse = numify(await rpc<Pulse>(sb, "get_munshi_pulse", { p_shop_id: shopId }));
     const api_ms = Date.now() - t0;
     const trace: TurnTrace = { transcript: text, source: "regex", model: null, latency_ms: api_ms, api_ms, attempts: [], pakphone: null, intent: "pulse" };
     return ok<TurnResponse>({ kind: "pulse", pulse: { ...pulse, api_ms }, trace });
+  }
+  if (!audio && text) {
+    const fastNav = detectViewCommand(text);
+    if (fastNav) {
+      const api_ms = Date.now() - t0;
+      const trace: TurnTrace = { transcript: text, source: "regex", model: null, latency_ms: api_ms, api_ms, attempts: [], pakphone: null, intent: "navigate" };
+      return ok<TurnResponse>({ kind: "navigate", ...fastNav, trace });
+    }
   }
 
   const { state, catalog } = await loadCatalog(sb, shopId);

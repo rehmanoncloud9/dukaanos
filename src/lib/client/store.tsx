@@ -112,7 +112,7 @@ interface Store {
   retryCommit: (key: string) => Promise<void>;
   discardCommit: (key: string) => Promise<void>;
   thinking: boolean;
-  submitTurn: (input: { blob?: Blob; mime?: string; text?: string; ambient?: boolean }, key?: string) => Promise<void>;
+  submitTurn: (input: { blob?: Blob; mime?: string; text?: string; textIsFinal?: boolean; ambient?: boolean }, key?: string) => Promise<void>;
   confirmSale: (p: SaleProposal, key: string, trace: TurnTrace | null, opts?: { auto?: boolean }) => Promise<CommitResponse>;
   confirmPayment: (customerId: string, amountPaisa: number, key: string, trace?: TurnTrace | null) => Promise<CommitResponse>;
   reverse: (txId: string | null, reason: string) => Promise<CommitResponse>;
@@ -720,7 +720,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     return api<TurnResponse>("/api/munshi/turn", { json: { text: input.text }, timeoutMs: 60_000 });
   }, []);
 
-  const submitTurn = useCallback(async (input: { blob?: Blob; mime?: string; text?: string; ambient?: boolean }, givenKey?: string) => {
+  const submitTurn = useCallback(async (input: { blob?: Blob; mime?: string; text?: string; textIsFinal?: boolean; ambient?: boolean }, givenKey?: string) => {
     const shop = shopRef.current;
     if (!shop) return;
     const key = givenKey ?? newKey("turn");
@@ -780,10 +780,16 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       await queueIt();
       return;
     }
-    if (input.text && !input.blob) {
+    if (input.text && (!input.blob || (input.ambient && input.textIsFinal))) {
       const fast = tryLocalTurn(input.text, state, { offline: false });
-      if (fast) {
-        await handleTurn(fast, key);
+      const safeFast =
+        !input.blob ||
+        (fast !== null &&
+          (fast.kind === "pulse" ||
+            fast.kind === "navigate" ||
+            (fast.kind === "sale" && fast.proposal.tier === 1 && fast.proposal.credit_paisa === 0)));
+      if (fast && safeFast) {
+        await handleTurn(fast, key, { ambient: input.ambient });
         return;
       }
     }

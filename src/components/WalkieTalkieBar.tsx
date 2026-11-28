@@ -39,6 +39,7 @@ interface QueuedSegment {
   blob: Blob;
   mime: string;
   transcript?: string;
+  transcriptIsFinal?: boolean;
 }
 
 function getSpeechRecognition(): (new () => SpeechRecognitionInstance) | null {
@@ -46,6 +47,24 @@ function getSpeechRecognition(): (new () => SpeechRecognitionInstance) | null {
   return (window as unknown as Record<string, unknown>).SpeechRecognition as (new () => SpeechRecognitionInstance)
     ?? (window as unknown as Record<string, unknown>).webkitSpeechRecognition as (new () => SpeechRecognitionInstance)
     ?? null;
+}
+
+/** Trim leading and trailing dead silence, leaving ~170ms cushion around voiced speech. */
+function trimSilenceChunks(chunks: Float32Array[], sustainThresh: number): Float32Array[] {
+  let first = -1;
+  let last = -1;
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i];
+    let sum = 0;
+    for (let j = 0; j < c.length; j++) sum += c[j] * c[j];
+    const rms = Math.sqrt(sum / c.length);
+    if (rms > sustainThresh) {
+      if (first === -1) first = i;
+      last = i;
+    }
+  }
+  if (first === -1) return chunks;
+  return chunks.slice(Math.max(0, first - 2), Math.min(chunks.length, last + 3));
 }
 
 /** Downsample mono Float32 PCM chunks to a compact 16kHz 16-bit mono WAV Blob. */
@@ -116,6 +135,7 @@ export function WalkieTalkieBar() {
   const srRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const srErrorsRef = useRef(0);
   const lastTranscriptRef = useRef<string>("");
+  const finalTranscriptRef = useRef<string>("");
 
   const activeRef = useRef(false);
   const recordingRef = useRef(false);
@@ -153,7 +173,10 @@ export function WalkieTalkieBar() {
           if (seg.transcript && typeof navigator !== "undefined" && !navigator.onLine) {
             await submitTurn({ text: seg.transcript, ambient: true }, seg.key);
           } else {
-            await submitTurn({ blob: seg.blob, mime: seg.mime, text: seg.transcript, ambient: true }, seg.key);
+            await submitTurn(
+              { blob: seg.blob, mime: seg.mime, text: seg.transcript, textIsFinal: seg.transcriptIsFinal, ambient: true },
+              seg.key,
+            );
           }
         } catch {
           /* submitTurn handles error toasts / offline queue */
@@ -191,6 +214,7 @@ export function WalkieTalkieBar() {
     srRef.current = null;
     srErrorsRef.current = 0;
     lastTranscriptRef.current = "";
+    finalTranscriptRef.current = "";
 
     if (procNodeRef.current) {
       procNodeRef.current.onaudioprocess = null;
@@ -263,11 +287,15 @@ export function WalkieTalkieBar() {
           sr.onresult = (e: Event) => {
             srErrorsRef.current = 0;
             if (!recordingRef.current) return;
-            const ev = e as unknown as { results: ArrayLike<{ [key: number]: { transcript: string } }> };
+            const ev = e as unknown as { results: ArrayLike<{ isFinal?: boolean; [key: number]: { transcript: string } }> };
             const idx = ev.results.length - 1;
             if (idx >= 0) {
-              const t = ev.results[idx]?.[0]?.transcript ?? "";
-              if (t.trim()) lastTranscriptRef.current = t.trim();
+              const res = ev.results[idx];
+              const t = (res?.[0]?.transcript ?? "").trim();
+              if (t) {
+                lastTranscriptRef.current = t;
+                if (res.isFinal) finalTranscriptRef.current = t;
+              }
             }
           };
           sr.onerror = () => {
@@ -288,6 +316,19 @@ export function WalkieTalkieBar() {
           /* optional browser SpeechRecognition */
         }
       }
+
+      const beginUtterance = (now: number, rms: number, initialVoiced: number) => {
+        recordingRef.current = true;
+        utteranceChunksRef.current = [...preRollRef.current];
+        lastTranscriptRef.current = "";
+        finalTranscriptRef.current = "";
+        speechStartRef.current = now;
+        lastVoiceRef.current = now;
+        voicedFramesRef.current = initialVoiced;
+        peakRmsRef.current = rms;
+        setSpeakingNow(true);
+        setLastStatus("آواز ریکارڈ ہو رہی ہے…");
+      };
 
       proc.onaudioprocess = (ev) => {
         if (!activeRef.current) return;
@@ -329,15 +370,7 @@ export function WalkieTalkieBar() {
                 stopSpeaking();
                 muteUntilRef.current = 0;
                 bargeFramesRef.current = 0;
-                recordingRef.current = true;
-                utteranceChunksRef.current = [...preRollRef.current];
-                lastTranscriptRef.current = "";
-                speechStartRef.current = now;
-                lastVoiceRef.current = now;
-                voicedFramesRef.current = 2;
-                peakRmsRef.current = rms;
-                setSpeakingNow(true);
-                setLastStatus("آواز ریکارڈ ہو رہی ہے…");
+                beginUtterance(now, rms, 2);
               }
             } else {
               bargeFramesRef.current = 0;
@@ -349,15 +382,7 @@ export function WalkieTalkieBar() {
             onsetFramesRef.current += rms > onsetThresh * 1.5 ? 2 : 1;
             if (onsetFramesRef.current >= 2) {
               onsetFramesRef.current = 0;
-              recordingRef.current = true;
-              utteranceChunksRef.current = [...preRollRef.current];
-              lastTranscriptRef.current = "";
-              speechStartRef.current = now;
-              lastVoiceRef.current = now;
-              voicedFramesRef.current = 1;
-              peakRmsRef.current = rms;
-              setSpeakingNow(true);
-              setLastStatus("آواز ریکارڈ ہو رہی ہے…");
+              beginUtterance(now, rms, 1);
             }
           } else {
             onsetFramesRef.current = 0;
@@ -379,22 +404,27 @@ export function WalkieTalkieBar() {
           const captured = utteranceChunksRef.current;
           const voicedFrames = voicedFramesRef.current;
           const peakRms = peakRmsRef.current;
-          const transcript = lastTranscriptRef.current.trim() || undefined;
+          const finalText = finalTranscriptRef.current.trim();
+          const transcript = (finalText || lastTranscriptRef.current.trim()) || undefined;
+          const transcriptIsFinal = Boolean(finalText);
 
           recordingRef.current = false;
           utteranceChunksRef.current = [];
           preRollRef.current = totalDur >= MAX_SEGMENT_MS ? captured.slice(-maxPreRollChunks) : [];
           lastTranscriptRef.current = "";
+          finalTranscriptRef.current = "";
           onsetFramesRef.current = 0;
           setSpeakingNow(false);
 
           if (totalDur >= MIN_SPEECH_MS && voicedFrames >= 4 && peakRms >= onsetThresh * 1.15) {
-            const wav = encodeWav16k(captured, ctx.sampleRate);
+            const trimmed = trimSilenceChunks(captured, sustainThresh);
+            const wav = encodeWav16k(trimmed, ctx.sampleRate);
             segmentQueueRef.current.push({
               key: newKey("walkie"),
               blob: wav,
               mime: "audio/wav",
               transcript,
+              transcriptIsFinal,
             });
             setQueuedCount(segmentQueueRef.current.length);
             setGlobalWalkieQueue(segmentQueueRef.current.length);

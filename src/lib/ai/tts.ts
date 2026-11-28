@@ -80,8 +80,8 @@ function pcmToWav(pcm: Buffer, sampleRate = 24000, channels = 1, bits = 16): Buf
   return Buffer.concat([header, pcm]);
 }
 
-const TTS_CACHE_TTL_MS = 15 * 60 * 1000;
-const TTS_CACHE_MAX = 50;
+const TTS_CACHE_TTL_MS = 60 * 60 * 1000;
+const TTS_CACHE_MAX = 200;
 const ttsCache = new Map<string, { buf: Buffer; expiresAt: number }>();
 
 let warmEdgeClient: MsEdgeTTS | null = null;

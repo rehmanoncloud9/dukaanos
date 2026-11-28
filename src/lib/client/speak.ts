@@ -90,7 +90,7 @@ async function fetchTtsBlob(text: string, budgetMs: number): Promise<Blob> {
     ])
       .then((res) => res.blob())
       .then((blob) => {
-        if (audioCache.size >= 30) {
+        if (audioCache.size >= 80) {
           const oldest = audioCache.keys().next().value;
           if (oldest) audioCache.delete(oldest);
         }
