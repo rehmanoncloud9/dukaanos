@@ -86,17 +86,17 @@ export function Sheet({ open, onClose, children, title, right, className }: { op
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined}>
-      <button aria-label="Close" className="absolute inset-0 bg-black/30 scrim-in" onClick={onClose} />
-      <div ref={panelRef} className={cx("relative flex max-h-[88dvh] w-full max-w-[430px] flex-col rounded-t-[24px] bg-surface sheet-in", className)}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined}>
+      <button aria-label="Close" className="absolute inset-0 bg-black/35 scrim-in" onClick={onClose} />
+      <div ref={panelRef} className={cx("relative flex max-h-[86dvh] w-full max-w-[414px] flex-col rounded-t-[24px] sm:rounded-[24px] bg-surface sheet-in shadow-[0_20px_60px_rgba(0,0,0,0.28)]", className)}>
         <div className="flex justify-center pb-1 pt-2">
           <span className="h-1 w-9 rounded-full bg-black/15" />
         </div>
         {(title || right) && (
-          <div className="flex items-center justify-between px-5 pb-3 pt-2">
-            <div id={titleId} className="text-[19px] font-bold tracking-[-0.02em]">{title}</div>
+          <div className="flex items-center justify-between gap-2 px-5 pb-3 pt-2">
+            <div id={titleId} className="min-w-0 flex-1 truncate text-[18px] font-bold tracking-[-0.02em]">{title}</div>
             {right ?? (
-              <button onClick={onClose} className="tactile grid h-8 w-8 place-items-center rounded-full bg-surface-sunken" aria-label="Close">
+              <button onClick={onClose} className="tactile grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface-sunken" aria-label="Close">
                 <X size={16} strokeWidth={SW} />
               </button>
             )}

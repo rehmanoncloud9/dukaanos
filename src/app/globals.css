@@ -91,13 +91,136 @@ html, body {
   background: var(--color-surface);
   border: 1px solid var(--color-border-card);
   border-radius: var(--radius-card);
+  transition: transform 220ms var(--ease-spring), border-color 180ms ease;
 }
 
-.tactile {
-  transition: transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 120ms ease;
-  touch-action: manipulation;
+/* ── Phone Shell & Viewport Containment (Jakob's Law, Aesthetic-Usability, Solid 3D Drawing) ── */
+.phone-stage {
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-sunken);
 }
-.tactile:active { transform: scale(0.97); }
+
+.phone-frame {
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-canvas);
+}
+
+@media (min-width: 540px) {
+  .phone-stage {
+    padding: 18px 12px;
+  }
+  .phone-frame {
+    height: min(868px, calc(100dvh - 36px));
+    border-radius: 42px;
+    border: 8px solid var(--color-ink);
+    box-shadow:
+      0 26px 70px rgba(0, 0, 0, 0.22),
+      0 4px 16px rgba(0, 0, 0, 0.10),
+      inset 0 0 0 1px var(--color-border-card);
+  }
+}
+
+.phone-notch {
+  display: none;
+}
+
+@media (min-width: 540px) {
+  .phone-notch {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 22px;
+    width: 100%;
+    flex-shrink: 0;
+    background: var(--color-canvas);
+    z-index: 30;
+  }
+  .phone-notch-pill {
+    width: 96px;
+    height: 5px;
+    border-radius: 9999px;
+    background: var(--color-ink);
+    opacity: 0.16;
+  }
+}
+
+/* ── 14 Animation Principles & Micro-Interactions ── */
+/* 1. Squash & Stretch + 2. Anticipation + 9. Snappy Timing + 13. Bigger Hit Area */
+.tactile {
+  position: relative;
+  transition:
+    transform 150ms cubic-bezier(0.22, 1.35, 0.36, 1),
+    background-color 140ms var(--ease-tactile),
+    opacity 140ms ease;
+  touch-action: manipulation;
+  will-change: transform;
+}
+.tactile:hover {
+  transform: translateY(-1px);
+}
+.tactile:active {
+  transform: scaleX(1.03) scaleY(0.94) translateY(1px);
+}
+
+/* 4. Pose-to-Pose + 5. Follow-Through + 6. Slow In & Slow Out + 7. Moving in Arcs */
+@keyframes arc-pop {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.96);
+  }
+  65% {
+    opacity: 1;
+    transform: translate3d(0, -2px, 0) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+.pose-enter {
+  animation: arc-pop 280ms var(--ease-spring) both;
+}
+
+/* 8. Secondary Action + 10. Exaggerated Feedback for Audio / Listen pills */
+.audio-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  min-width: 34px;
+  border-radius: 9999px;
+  padding-inline: 11px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--color-surface-sunken);
+  color: var(--color-ink);
+  border: 1px solid var(--color-border-card);
+  transition:
+    transform 160ms cubic-bezier(0.22, 1.35, 0.36, 1),
+    background-color 140ms ease,
+    color 140ms ease;
+}
+.audio-btn:hover {
+  background: var(--color-cash-bg);
+  color: var(--color-cash-ink);
+}
+.audio-btn:active {
+  transform: scale(0.92);
+  background: var(--color-cash);
+  color: var(--color-surface);
+}
 
 /* Urdu */
 .urdu-ui { font-family: var(--font-urdu-ui); font-weight: 600; line-height: 1.75; padding-block: 3px; }

@@ -49,7 +49,7 @@ export function Splash() {
   };
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-[430px] flex-col px-6 pb-8 pt-16">
+    <main className="mx-auto flex min-h-full max-w-[430px] flex-col px-6 pb-8 pt-12">
       <Logo size={64} />
       <h1 className="mt-6 text-[34px] font-bold leading-[38px] tracking-[-0.03em] urdu-ui">دکان او ایس</h1>
       <p className="urdu-read mt-2 text-right text-[18px] text-ink" dir="rtl">آپ بولیں، منشی حساب لکھے گا — فروخت، ادھار، گودام اور پرچی</p>
@@ -201,7 +201,7 @@ export function CreateShop() {
   const [seedStarter, setSeedStarter] = useState(true);
   const [busy, setBusy] = useState(false);
   return (
-    <main className="mx-auto flex min-h-dvh max-w-[430px] flex-col px-6 pb-8 pt-14">
+    <main className="mx-auto flex min-h-full max-w-[430px] flex-col px-6 pb-8 pt-10">
       <Logo />
       <h1 className="mt-5 text-[28px] font-bold tracking-[-0.02em] urdu-ui">اپنی دکان بنائیں</h1>
       <p className="mt-1 text-[15px] text-ink-2 urdu-ui">نہ شناختی کارڈ، نہ ٹیکس نمبر — صرف کھاتے کی بنیادی معلومات۔</p>
@@ -256,7 +256,7 @@ export function SetupNeeded() {
 
 export function Loading() {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-[430px] items-center justify-center">
+    <main className="mx-auto flex min-h-full flex-1 max-w-[430px] items-center justify-center">
       <Spinner className="h-6 w-6 text-ink-2" />
     </main>
   );
