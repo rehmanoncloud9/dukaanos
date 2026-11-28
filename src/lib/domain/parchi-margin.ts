@@ -4,8 +4,15 @@
  */
 
 import type { StateProduct } from "@/lib/api/contracts";
-import type { ParchiReviewLine } from "@/lib/ai/parchi";
 import { mulDiv } from "./money";
+
+export interface ParchiLineInput {
+  match_status: "matched" | "new_sku";
+  product_id: string | null;
+  rate_paisa: number | null;
+  line_total_paisa: number | null;
+  qty_base_units: number | null;
+}
 
 export interface ParchiRateAlert {
   productId: string;
@@ -24,7 +31,7 @@ function roundUpRs5(paisa: number): number {
 
 /** Compute per-pack wholesale cost from a Parchi line and compare against catalog cost. */
 export function detectParchiMarginAlerts(
-  lines: ParchiReviewLine[],
+  lines: ParchiLineInput[],
   products: StateProduct[],
   targetMarginPct = 10,
 ): ParchiRateAlert[] {

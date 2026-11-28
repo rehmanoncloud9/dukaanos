@@ -20,7 +20,7 @@ export async function saveSnapshot<T>(key: string, data: T): Promise<void> {
   await set(key, { saved_at: Date.now(), data } satisfies Snapshot<T>, store).catch(() => undefined);
   if (key.startsWith("state:") && data && typeof data === "object" && "products" in data) {
     const shopId = key.slice("state:".length);
-    void syncShopStateToIndexedDB(shopId, data as ShopState).catch(() => undefined);
+    void syncShopStateToIndexedDB(shopId, data as unknown as ShopState).catch(() => undefined);
   }
 }
 
