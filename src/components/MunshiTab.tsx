@@ -97,26 +97,27 @@ function QuickSellStrip({ products }: { products: StateProduct[] }) {
   if (top4.length === 0) return null;
 
   return (
-    <div className="surface-card overflow-hidden">
-      <div className="flex items-center gap-1.5 px-4 pb-1.5 pt-2.5">
+    <div className="surface-card overflow-hidden px-3 py-2">
+      <div className="mb-1.5 flex items-center gap-1.5">
         <Zap size={12} strokeWidth={SW} className="text-cash" />
         <span className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("quickSell", lang)}</span>
       </div>
-      <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3">
+      <div className="grid grid-cols-4 gap-1.5">
         {top4.map((p) => {
+          const shortName = p.name.replace(/\s*\(.*\)/, "").replace(/\s+5L$/i, "").slice(0, 12);
           return (
             <button
               key={p.id}
               type="button"
               disabled={thinking}
               onClick={() => void submitTurn({ text: `ek ${p.name} cash` })}
-              className="tactile flex shrink-0 flex-col items-start rounded-[12px] border border-black/10 bg-canvas px-3 py-2 text-left disabled:opacity-50"
+              className="tactile flex min-w-0 flex-col items-start justify-between rounded-[10px] border border-black/10 bg-canvas px-2 py-1.5 text-left disabled:opacity-50"
             >
-              <span className="flex items-center gap-1 text-[13.5px] font-semibold leading-5">
-                <Plus size={12} strokeWidth={SW + 0.5} />
-                {p.name.replace(/\s*\(.*\)/, "").slice(0, 16)}
+              <span className="flex w-full items-center gap-0.5 truncate text-[12px] font-bold leading-4 text-ink">
+                <Plus size={10} strokeWidth={SW + 0.5} className="shrink-0 text-cash" />
+                <span className="truncate">{shortName}</span>
               </span>
-              <span className="num text-[12px] text-ink-2">
+              <span className="num mt-0.5 text-[11px] font-medium text-ink-2">
                 {formatRs(p.unit_price_paisa)}
               </span>
             </button>
@@ -128,7 +129,7 @@ function QuickSellStrip({ products }: { products: StateProduct[] }) {
 }
 
 export function MunshiTab() {
-  const { state, shop, shopId, xrayOn, helperMode, openSheet, submitTurn, thinking, toast, highlightTx, refresh, lang } = useDukaan();
+  const { state, shopId, xrayOn, helperMode, openSheet, submitTurn, thinking, highlightTx, refresh, lang } = useDukaan();
   const [pulse, setPulse] = useState<Pulse | null>(null);
   const [stripOpen, setStripOpen] = useState(false);
   const [moreActions, setMoreActions] = useState(false);
@@ -137,21 +138,6 @@ export function MunshiTab() {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("dukaanos.guide.dismissed") !== "1";
   });
-  const [typing, setTypingState] = useState(() =>
-    typeof window !== "undefined" && sessionStorage.getItem("dukaanos.typing") === "1",
-  );
-  const setTyping = (next: boolean | ((prev: boolean) => boolean)) => {
-    setTypingState((prev) => {
-      const val = typeof next === "function" ? next(prev) : next;
-      try {
-        sessionStorage.setItem("dukaanos.typing", val ? "1" : "0");
-      } catch {
-        /* ignore storage quota */
-      }
-      return val;
-    });
-  };
-  const [text, setText] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [extraFeed, setExtraFeed] = useState<FeedTx[]>([]);
   const [nextSeq, setNextSeq] = useState<number | null>(null);
@@ -240,57 +226,50 @@ export function MunshiTab() {
     }
   };
 
-  const send = async (v: string) => {
-    const s = v.trim();
-    if (!s) return;
-    setText("");
-    await submitTurn({ text: s });
-  };
-
   return (
-    <div className={cx("space-y-3", typing ? "pb-36" : "pb-24")}>
-      {/* 2-Column Hero KPI Strip (Von Restorff, Law of Proximity, Icon Badges instead of tiny dots) */}
-      <div className="grid grid-cols-2 gap-2.5 pose-enter">
-        <div className="surface-card flex flex-col justify-between p-3.5">
-          <div className="flex items-center justify-between gap-1.5">
-            <span className={cx("inline-flex items-center gap-1.5 rounded-full bg-cash-bg px-2.5 py-1 text-[11.5px] font-bold text-cash-ink", lang === "ur" && "urdu-ui")} dir="auto">
-              <Banknote size={13} strokeWidth={SW} className="shrink-0" />
+    <div className="space-y-2 pb-3">
+      {/* 2-Column Hero KPI Strip (Von Restorff, Law of Proximity, Single-Line Badges) */}
+      <div className="grid grid-cols-2 gap-2 pose-enter">
+        <div className="surface-card flex flex-col justify-between p-3">
+          <div className="flex items-center justify-between gap-1">
+            <span className={cx("inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-cash-bg px-2 py-0.5 text-[11px] font-bold text-cash-ink", lang === "ur" && "urdu-ui")} dir="auto">
+              <Banknote size={12} strokeWidth={SW} className="shrink-0" />
               <span>{tr("todayCash", lang)}</span>
             </span>
             <button
               type="button"
               aria-label="آج کا نقد حساب سنیں"
               onClick={() => void speak(dailySummaryScript)}
-              className="audio-btn tactile urdu-ui shrink-0"
+              className="audio-btn tactile urdu-ui shrink-0 !min-h-[28px] !px-2 !text-[11px]"
             >
-              <Volume2 size={13} strokeWidth={SW} />
+              <Volume2 size={12} strokeWidth={SW} />
               <span>سنیں</span>
             </button>
           </div>
-          <Money paisa={today.cash_sales_paisa} className="mt-2.5 block text-[23px] font-bold leading-[27px] tracking-[-0.02em] text-ink" />
-          <div className="mt-1 flex items-center justify-between text-[12.5px] text-ink-2" dir="auto">
+          <Money paisa={today.cash_sales_paisa} className="mt-2 block text-[21px] font-bold leading-[25px] tracking-[-0.02em] text-ink" />
+          <div className="mt-0.5 flex items-center justify-between text-[12px] text-ink-2" dir="auto">
             <span>{today.sales_count} {tr("sales", lang)}</span>
           </div>
         </div>
 
-        <div className="surface-card flex flex-col justify-between p-3.5">
-          <div className="flex items-center justify-between gap-1.5">
-            <span className={cx("inline-flex items-center gap-1.5 rounded-full bg-udhaar-bg px-2.5 py-1 text-[11.5px] font-bold text-udhaar-ink", lang === "ur" && "urdu-ui")} dir="auto">
-              <BookOpen size={13} strokeWidth={SW} className="shrink-0" />
+        <div className="surface-card flex flex-col justify-between p-3">
+          <div className="flex items-center justify-between gap-1">
+            <span className={cx("inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-udhaar-bg px-2 py-0.5 text-[11px] font-bold text-udhaar-ink", lang === "ur" && "urdu-ui")} dir="auto">
+              <BookOpen size={12} strokeWidth={SW} className="shrink-0" />
               <span>{tr("todayUdhaar", lang)}</span>
             </span>
             <button
               type="button"
               aria-label="آج کا ادھار سنیں"
               onClick={() => void speak(`آج کا ادھار ${Math.round(today.udhaar_paisa / 100)} روپے ہے، ${today.udhaar_accounts} کھاتوں پر۔`)}
-              className="audio-btn tactile urdu-ui shrink-0"
+              className="audio-btn tactile urdu-ui shrink-0 !min-h-[28px] !px-2 !text-[11px]"
             >
-              <Volume2 size={13} strokeWidth={SW} />
+              <Volume2 size={12} strokeWidth={SW} />
               <span>سنیں</span>
             </button>
           </div>
-          <Money paisa={today.udhaar_paisa} className="mt-2.5 block text-[23px] font-bold leading-[27px] tracking-[-0.02em] text-udhaar" />
-          <div className="mt-1 flex items-center justify-between text-[12.5px] text-ink-2" dir="auto">
+          <Money paisa={today.udhaar_paisa} className="mt-2 block text-[21px] font-bold leading-[25px] tracking-[-0.02em] text-udhaar" />
+          <div className="mt-0.5 flex items-center justify-between text-[12px] text-ink-2" dir="auto">
             <span>{today.udhaar_accounts} {tr("accounts", lang)}</span>
           </div>
         </div>
@@ -463,7 +442,7 @@ export function MunshiTab() {
         </div>
       )}
 
-      <div className="flex items-center justify-between px-1 pt-3">
+      <div className="flex items-center justify-between px-1 pt-1">
         <span className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{showAll ? tr("allEntries", lang) : `${tr("today", lang)} · ${new Date().toLocaleDateString(lang === "ur" ? "ur-PK" : "en-GB", { day: "numeric", month: "short" }).toUpperCase()}`}</span>
         <div className="flex items-center gap-2">
           <button
@@ -513,64 +492,111 @@ export function MunshiTab() {
           </button>
         )}
       </div>
+    </div>
+  );
+}
 
-      {/* Dock — Sticky inside Phone Frame so it never overlaps ledger cards or floats outside the phone */}
-      <div className="pointer-events-none sticky inset-x-0 bottom-0 z-30 -mx-4 bg-gradient-to-t from-canvas via-canvas/95 to-transparent px-4 pb-2 pt-4">
-        {typing && (
-          <div className="pointer-events-auto mb-3 rounded-[16px] border border-black/10 bg-surface p-2 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
-            {(shop?.is_demo_shop || shop?.is_stage_shop) && (
-              <div className="no-scrollbar mb-2 flex gap-1.5 overflow-x-auto">
-                {DEMO_UTTERANCES.map((u) => (
-                  <button key={u} onClick={() => setText(u)} className="tactile h-7 shrink-0 rounded-full bg-surface-sunken px-2.5 text-[12px] text-ink-2">
-                    {u.length > 34 ? u.slice(0, 32) + "…" : u}
-                  </button>
-                ))}
-              </div>
-            )}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void send(text);
-              }}
-              className="flex items-center gap-2"
-            >
-              <input
-                autoFocus
-                dir="auto"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder={tr("typePlaceholder", lang)}
-                className="h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[15px] outline-none"
-              />
-              <button type="submit" disabled={!text.trim() || thinking} className="tactile grid h-11 w-11 place-items-center rounded-[12px] bg-ink text-white disabled:opacity-40" aria-label="Send">
-                <SendHorizontal size={18} strokeWidth={SW} />
-              </button>
-            </form>
-          </div>
-        )}
-        <div className="pointer-events-auto relative flex items-center justify-center">
+/**
+ * Dedicated Bottom Command Dock for the Munshi counter screen.
+ * Rendered as a flex-shrink-0 bar above TabBar in AppShell so it NEVER overlaps
+ * the scrollable cards or ledger entries, and uses clean symmetric flex layout.
+ */
+export function MunshiDock() {
+  const { shop, openSheet, submitTurn, thinking, toast, lang } = useDukaan();
+  const [typing, setTypingState] = useState(() =>
+    typeof window !== "undefined" && sessionStorage.getItem("dukaanos.typing") === "1",
+  );
+  const setTyping = (next: boolean | ((prev: boolean) => boolean)) => {
+    setTypingState((prev) => {
+      const val = typeof next === "function" ? next(prev) : next;
+      try {
+        sessionStorage.setItem("dukaanos.typing", val ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return val;
+    });
+  };
+  const [text, setText] = useState("");
+
+  const send = async (v: string) => {
+    const s = v.trim();
+    if (!s) return;
+    setText("");
+    await submitTurn({ text: s });
+  };
+
+  return (
+    <div dir="ltr" className="chrome-blur hairline-t z-30 shrink-0 px-3.5 py-2">
+      {typing && (
+        <div className="mb-2 rounded-[14px] border border-black/10 bg-surface p-2 shadow-sm">
+          {(shop?.is_demo_shop || shop?.is_stage_shop) && (
+            <div className="no-scrollbar mb-1.5 flex gap-1.5 overflow-x-auto">
+              {DEMO_UTTERANCES.map((u) => (
+                <button key={u} type="button" onClick={() => setText(u)} className="tactile h-7 shrink-0 rounded-full bg-surface-sunken px-2.5 text-[11.5px] text-ink-2">
+                  {u.length > 34 ? u.slice(0, 32) + "…" : u}
+                </button>
+              ))}
+            </div>
+          )}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void send(text);
+            }}
+            className="flex items-center gap-2"
+          >
+            <input
+              autoFocus
+              dir="auto"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={tr("typePlaceholder", lang)}
+              className="h-10 min-w-0 flex-1 rounded-[10px] bg-canvas px-3 text-[14px] outline-none"
+            />
+            <button type="submit" disabled={!text.trim() || thinking} className="tactile grid h-10 w-10 place-items-center rounded-[10px] bg-ink text-white disabled:opacity-40" aria-label="Send">
+              <SendHorizontal size={17} strokeWidth={SW} />
+            </button>
+          </form>
+        </div>
+      )}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+        <div className="flex justify-end">
           <button
+            type="button"
             onClick={() => setTyping((t) => !t)}
             aria-label={tr("typeInstead", lang)}
-            className={cx("tactile absolute left-[calc(50%-112px)] grid h-12 w-12 place-items-center rounded-full border border-black/10 shadow-sm", typing ? "bg-ink text-white" : "bg-surface text-ink")}
+            className={cx(
+              "tactile flex h-11 items-center gap-1.5 rounded-full border border-black/10 px-3.5 text-[13px] font-semibold shadow-xs",
+              typing ? "bg-ink text-white" : "bg-surface text-ink",
+            )}
           >
-            <Keyboard size={18} strokeWidth={SW} />
+            <Keyboard size={16} strokeWidth={SW} />
+            <span className={cx(lang === "ur" && "urdu-ui")} dir="auto">
+              {lang === "ur" ? "لکھیں" : "Type"}
+            </span>
           </button>
-          <MicButton
-            busy={thinking}
-            onClip={(blob, mime) => void submitTurn({ blob, mime })}
-            onOfflineTranscript={(t) => void submitTurn({ text: t })}
-            onDenied={(m) => {
-              toast(m, "warn");
-              setTyping(true);
-            }}
-          />
+        </div>
+
+        <MicButton
+          busy={thinking}
+          onClip={(blob, mime) => void submitTurn({ blob, mime })}
+          onOfflineTranscript={(t) => void submitTurn({ text: t })}
+          onDenied={(m) => {
+            toast(m, "warn");
+            setTyping(true);
+          }}
+        />
+
+        <div className="flex justify-start">
           <button
+            type="button"
             onClick={() => openSheet({ type: "parchi" })}
             aria-label={tr("scanParchi", lang)}
-            className="tactile absolute left-[calc(50%+46px)] flex h-12 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-4 text-[15px] font-semibold shadow-sm"
+            className="tactile flex h-11 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold text-ink shadow-xs"
           >
-            <Camera size={16} strokeWidth={SW} className="text-maal" /> <span dir="auto">{tr("parchi", lang)}</span>
+            <Camera size={16} strokeWidth={SW} className="text-maal" />
+            <span className={cx(lang === "ur" && "urdu-ui")} dir="auto">{tr("parchi", lang)}</span>
           </button>
         </div>
       </div>

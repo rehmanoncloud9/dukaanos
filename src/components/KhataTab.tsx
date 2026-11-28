@@ -114,7 +114,7 @@ export function KhataTab() {
   if (!state) return <div className="surface-card h-[400px] animate-pulse" />;
 
   return (
-    <div className="space-y-3 pb-24">
+    <div className="space-y-2.5 pb-4">
       <div className="surface-card p-4 pose-enter">
         <div className="flex items-center justify-between gap-2">
           <div className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("totalReceivable", lang)}</div>

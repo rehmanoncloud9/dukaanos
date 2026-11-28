@@ -22,22 +22,22 @@ export function AajKiSalahCard({ state }: { state: ShopState }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div dir={lang === "ur" ? "rtl" : "ltr"} className="surface-card overflow-hidden px-3.5 py-3">
-      <div className="flex items-center justify-between gap-2.5">
+    <div dir={lang === "ur" ? "rtl" : "ltr"} className="surface-card overflow-hidden px-3 py-2">
+      <div className="flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="flex min-w-0 flex-1 items-center gap-2.5 text-start"
+          className="flex min-w-0 flex-1 items-center gap-2 text-start"
         >
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] bg-maal-bg text-maal">
-            <Compass size={18} strokeWidth={SW} />
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] bg-maal-bg text-maal">
+            <Compass size={15} strokeWidth={SW} />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 text-[14px] font-bold text-ink">
-              <span className={cx(lang === "ur" && "urdu-ui")}>{tr("aajKiSalah", lang)}</span>
-              <span className="text-ink-3">{expanded ? <ChevronUp size={14} strokeWidth={SW} /> : <ChevronDown size={14} strokeWidth={SW} />}</span>
+            <div className="flex items-center gap-1 text-[13px] font-bold text-ink leading-tight">
+              <span className={cx("truncate", lang === "ur" && "urdu-ui")}>{tr("aajKiSalah", lang)}</span>
+              <span className="shrink-0 text-ink-3">{expanded ? <ChevronUp size={13} strokeWidth={SW} /> : <ChevronDown size={13} strokeWidth={SW} />}</span>
             </div>
-            <div className="urdu-ui truncate text-[12px] text-ink-2">
+            <div className="urdu-ui truncate text-[11px] leading-tight text-ink-2">
               {report.fridayStockouts.length > 0
                 ? `جمعہ سے پہلے ${report.fridayStockouts.length} اشیاء ختم ہو سکتی ہیں`
                 : "گودام کا اسٹاک محفوظ ہے"}
@@ -49,9 +49,9 @@ export function AajKiSalahCard({ state }: { state: ShopState }) {
         <button
           type="button"
           onClick={() => void speak(report.briefingUrdu)}
-          className="tactile flex h-11 shrink-0 items-center gap-1.5 rounded-[12px] bg-maal px-3 text-[13px] font-bold text-white urdu-ui"
+          className="tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-maal px-3 text-[12px] font-bold text-white urdu-ui"
         >
-          <Volume2 size={15} strokeWidth={SW} />
+          <Volume2 size={13} strokeWidth={SW} />
           <span>{tr("salahListen", lang)}</span>
         </button>
       </div>

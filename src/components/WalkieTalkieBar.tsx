@@ -232,21 +232,21 @@ export function WalkieTalkieBar() {
     <div
       dir={lang === "ur" ? "rtl" : "ltr"}
       className={cx(
-        "surface-card flex items-center justify-between gap-3 px-3.5 py-2.5 transition-colors",
+        "surface-card flex items-center justify-between gap-2.5 px-3 py-2 transition-colors",
         active ? "border-cash/40 bg-cash-bg/40" : "bg-surface",
       )}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        <span className={cx("grid h-10 w-10 shrink-0 place-items-center rounded-[12px]", active ? "bg-cash text-white" : "bg-cash-bg text-cash-ink")}>
-          <Radio size={18} strokeWidth={SW} />
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className={cx("grid h-8 w-8 shrink-0 place-items-center rounded-[10px]", active ? "bg-cash text-white" : "bg-cash-bg text-cash-ink")}>
+          <Radio size={15} strokeWidth={SW} />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className={cx("truncate text-[14px] font-bold text-ink", lang === "ur" && "urdu-ui")}>
+          <div className="flex items-center gap-1.5">
+            <span className={cx("truncate text-[13px] font-bold text-ink leading-tight", lang === "ur" && "urdu-ui")}>
               {active ? (speakingNow ? "آواز ریکارڈ ہو رہی ہے…" : tr("walkieTalkie", lang)) : tr("walkieTalkie", lang)}
             </span>
             {active && (
-              <div className="flex h-3.5 items-end gap-0.5" aria-hidden="true">
+              <div className="flex h-3 items-end gap-0.5" aria-hidden="true">
                 {levels.map((lvl, i) => (
                   <span
                     key={i}
@@ -257,7 +257,7 @@ export function WalkieTalkieBar() {
               </div>
             )}
           </div>
-          <div className="urdu-ui truncate text-[12px] text-ink-2">{lastStatus}</div>
+          <div className="urdu-ui truncate text-[11px] leading-tight text-ink-2">{lastStatus}</div>
         </div>
       </div>
 
@@ -266,7 +266,7 @@ export function WalkieTalkieBar() {
           <button
             type="button"
             onClick={() => void doUndo()}
-            className="tactile h-11 shrink-0 rounded-[12px] bg-ink px-3 text-[12.5px] font-bold text-white urdu-ui"
+            className="tactile h-9 shrink-0 rounded-[10px] bg-ink px-2.5 text-[12px] font-bold text-white urdu-ui"
           >
             واپس
           </button>
@@ -276,11 +276,11 @@ export function WalkieTalkieBar() {
           onClick={() => void toggle()}
           aria-pressed={active}
           className={cx(
-            "tactile flex h-11 min-w-[56px] shrink-0 items-center justify-center gap-1.5 rounded-[12px] px-3.5 text-[13.5px] font-bold text-white",
+            "tactile flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-[12.5px] font-bold text-white",
             active ? "bg-udhaar" : "bg-cash",
           )}
         >
-          {active ? <Square size={15} strokeWidth={SW} /> : <Radio size={15} strokeWidth={SW} />}
+          {active ? <Square size={13} strokeWidth={SW} /> : <Radio size={13} strokeWidth={SW} />}
           <span className={cx(lang === "ur" && "urdu-ui")}>{active ? tr("walkieStop", lang) : tr("walkieBtn", lang)}</span>
         </button>
       </div>

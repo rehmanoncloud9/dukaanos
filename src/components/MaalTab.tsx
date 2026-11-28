@@ -141,7 +141,7 @@ export function MaalTab() {
   if (!state) return <div className="surface-card h-[400px] animate-pulse" />;
 
   return (
-    <div className="space-y-3 pb-24">
+    <div className="space-y-2.5 pb-4">
       {negative.map((p) => (
         <div key={p.id} className="flex items-center gap-2.5 rounded-[14px] bg-udhaar-bg px-3.5 py-2.5">
           <AlertCircle size={16} strokeWidth={1.75} className="shrink-0 text-udhaar-ink" />

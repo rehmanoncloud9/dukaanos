@@ -221,7 +221,7 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
         onPointerCancel={() => void finish(true)}
         onContextMenu={(e) => e.preventDefault()}
         className={cx(
-          "tactile grid h-[66px] w-[66px] select-none place-items-center rounded-full text-white shadow-[0_8px_24px_rgba(0,0,0,0.22)] transition-colors",
+          "tactile grid h-[56px] w-[56px] select-none place-items-center rounded-full text-white shadow-[0_6px_18px_rgba(0,0,0,0.2)] transition-colors",
           recording ? (cancelling ? "bg-udhaar" : "bg-cash") : "bg-ink",
         )}
         style={{ touchAction: "none" }}

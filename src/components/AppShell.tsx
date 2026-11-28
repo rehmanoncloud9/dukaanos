@@ -8,7 +8,7 @@ import { tr } from "@/lib/client/i18n";
 import { DukaanProvider, useDukaan, type Tab } from "@/lib/client/store";
 import { CustomerSheet, KhataTab } from "./KhataTab";
 import { MaalTab, ProductSheet } from "./MaalTab";
-import { MunshiTab } from "./MunshiTab";
+import { MunshiDock, MunshiTab } from "./MunshiTab";
 import { CreateShop, Loading, SetupNeeded, Splash } from "./Onboarding";
 import { InsightsSheet } from "./InsightsSheet";
 import { EodSheet } from "./EodSheet";
@@ -101,7 +101,7 @@ function Shell() {
           <span className="phone-notch-pill" />
         </div>
         <Header />
-        <div className="no-scrollbar relative flex-1 overflow-y-auto px-4 pb-6 pt-1">
+        <div className="no-scrollbar relative flex-1 overflow-y-auto px-3.5 pb-4 pt-1">
           <JudgeBanner />
           <OfflineBanner />
           <PendingSyncBanner />
@@ -114,6 +114,7 @@ function Shell() {
           {tab === "khata" && <KhataTab />}
           {tab === "maal" && <MaalTab />}
         </div>
+        {tab === "munshi" && <MunshiDock />}
         <TabBar />
         <UndoToast />
         <Toasts />
