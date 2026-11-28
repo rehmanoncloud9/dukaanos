@@ -84,12 +84,12 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
     try {
       const res = await r.stop();
       if (res.durationMs < MIN_CLIP_MS || res.blob.size < 800) {
-        onDenied("Mic dabaa kar rakhein aur bolein (hold to talk)");
+        onDenied("مائیک دبا کر رکھیں اور بولیں");
         return;
       }
       onClip(res.blob, res.mime);
     } catch (e) {
-      onDenied(e instanceof Error ? e.message : "Recording failed");
+      onDenied(e instanceof Error ? e.message : "آواز ریکارڈ نہیں ہو سکی");
     }
   };
 
@@ -101,7 +101,7 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
   const beginOfflineRecognition = () => {
     const SR = getSpeechRecognition();
     if (!SR) {
-      onDenied("Offline mode: type your order below");
+      onDenied("آف لائن موڈ: نیچے لکھ کر اندراج کریں");
       return;
     }
     const sr = new SR();
@@ -118,7 +118,7 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
       setOfflineTranscript(transcript);
       if (transcript && onOfflineTranscript) onOfflineTranscript(transcript);
     };
-    sr.onerror = () => onDenied("Voice recognition error — type below");
+    sr.onerror = () => onDenied("آواز واضح نہیں ہوئی — نیچے لکھ کر اندراج کریں");
     sr.onend = () => {
       if (tick.current) clearInterval(tick.current);
       setRecording(false);
@@ -137,7 +137,7 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
         beginOfflineRecognition();
         return;
       }
-      onDenied("Is browser mein mic nahi — neeche type karein");
+      onDenied("اس براؤزر میں مائیک دستیاب نہیں — نیچے ٹائپ کریں");
       return;
     }
     const r = new Recorder();
@@ -167,7 +167,7 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
       starting.current = false;
       releasedEarly.current = false;
       rec.current = null;
-      onDenied("Mic permission denied — typed input is open below");
+      onDenied("مائیک کی اجازت درکار ہے — نیچے ٹائپ کر لیں");
     }
   };
 
@@ -197,12 +197,12 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
   return (
     <div className="relative flex flex-col items-center">
       {recording && (
-        <div aria-live="polite" className="absolute -top-11 whitespace-nowrap rounded-full bg-ink px-3 py-1 text-[12px] font-semibold text-white num">
+        <div aria-live="polite" className="absolute -top-11 whitespace-nowrap rounded-full bg-ink px-3 py-1 text-[12px] font-semibold text-white num urdu-ui">
           {cancelling
-            ? "Chhor dein — cancel"
+            ? "چھوڑ دیں — منسوخ"
             : toggleMode
-              ? `0:${String(secs).padStart(2, "0")} · Dobara tap karein`
-              : `0:${String(secs).padStart(2, "0")} · ← Khiskayein cancel`}
+              ? `0:${String(secs).padStart(2, "0")} · دوبارہ دبائیں`
+              : `0:${String(secs).padStart(2, "0")} · ← منسوخ کریں`}
         </div>
       )}
       {offlineTranscript && !recording && (
@@ -221,7 +221,7 @@ export function MicButton({ onClip, onDenied, onOfflineTranscript, busy }: {
         onPointerCancel={() => void finish(true)}
         onContextMenu={(e) => e.preventDefault()}
         className={cx(
-          "tactile grid h-[66px] w-[66px] select-none place-items-center rounded-full text-white shadow-[0_8px_24px_rgba(0,0,0,0.22)] transition-colors",
+          "tactile grid h-[56px] w-[56px] select-none place-items-center rounded-full text-white shadow-[0_6px_18px_rgba(0,0,0,0.2)] transition-colors",
           recording ? (cancelling ? "bg-udhaar" : "bg-cash") : "bg-ink",
         )}
         style={{ touchAction: "none" }}

@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import type { ReactNode } from "react";
 import { Inter, JetBrains_Mono, Noto_Nastaliq_Urdu, Noto_Sans_Arabic } from "next/font/google";
 import "./globals.css";
 
@@ -30,7 +31,7 @@ export const viewport: Viewport = {
   themeColor: "#F2F2F7",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ur" dir="rtl" className={`${inter.variable} ${jetbrains.variable} ${notoArabic.variable} ${nastaliq.variable} h-full`}>
       <body className="min-h-full bg-canvas text-ink">{children}</body>

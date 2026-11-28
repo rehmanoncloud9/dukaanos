@@ -3,7 +3,7 @@
 import { AlertTriangle, Camera, Check, ChevronDown, ChevronUp, FileImage, Pencil, Plus, ShieldAlert, Trash2, Volume2, Wand2, ZoomIn } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CommitResponse } from "@/lib/api/contracts";
-import type { ParchiParseResult, ParchiReviewLine } from "@/lib/ai/parchi";
+import { interpretParchiOcr, type ParchiParseResult, type ParchiReviewLine } from "@/lib/ai/parchi";
 import { api, friendlyError, newKey } from "@/lib/client/api";
 import { renderStagedParchi } from "@/lib/client/canvas";
 import { prepareImage, type PreparedImage } from "@/lib/client/image";
@@ -80,7 +80,7 @@ function blankResult(): ParchiParseResult & { api_ms: number } {
 }
 
 export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; autoSample?: boolean }) {
-  const { state, commitPurchase, refresh, toast, openSheet, xrayOn } = useDukaan();
+  const { state, commitPurchase, refresh, toast, openSheet, xrayOn, configured } = useDukaan();
   const [updatingRetailId, setUpdatingRetailId] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>("capture");
   const [img, setImg] = useState<PreparedImage | null>(null);
@@ -132,22 +132,42 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
       const form = new FormData();
       form.append("image", new File([prepared.blob], "parchi.jpg", { type: "image/jpeg" }));
       let result: ParchiParseResult & { api_ms: number };
-      try {
-        result = await api<ParchiParseResult & { api_ms: number }>("/api/parchi/parse", { form, timeoutMs: 60_000 });
-      } catch (firstErr) {
-        // Hedged 503 retry: single retry with 800ms ± 200ms jittered backoff (Phase C)
-        const isTransient = firstErr instanceof Error && /503|504|UNAVAILABLE|timeout/i.test(firstErr.message);
-        if (isTransient) {
-          await new Promise((r) => setTimeout(r, 600 + Math.random() * 400));
-          try {
-            const form2 = new FormData();
-            form2.append("image", new File([prepared.blob], "parchi.jpg", { type: "image/jpeg" }));
-            result = await api<ParchiParseResult & { api_ms: number }>("/api/parchi/parse", { form: form2, timeoutMs: 60_000 });
-          } catch {
+      if (!configured) {
+        const parsed = interpretParchiOcr(
+          {
+            supplier_name: "Al-Madina Wholesale",
+            bill_date: "24/11",
+            legibility: "good",
+            bill_total_raw: "13970",
+            lines: [
+              { name_raw: "Surf Excel 1kg", quantity_raw: "10", unit_raw: "pcs", rate_raw: "480", line_total_raw: "4800", confidence: 0.96 },
+              { name_raw: "Dalda Oil 5L", quantity_raw: "3", unit_raw: "tin", rate_raw: "2450", line_total_raw: "7650", confidence: 0.95 },
+              { name_raw: "Tapal Danedar 190g", quantity_raw: "4", unit_raw: "pcs", rate_raw: "380", line_total_raw: "1520", confidence: 0.94 },
+            ],
+          },
+          products,
+          "local-ocr-demo",
+          18,
+        );
+        result = { ...parsed, api_ms: 18 };
+      } else {
+        try {
+          result = await api<ParchiParseResult & { api_ms: number }>("/api/parchi/parse", { form, timeoutMs: 60_000 });
+        } catch (firstErr) {
+          // Hedged 503 retry: single retry with 800ms ± 200ms jittered backoff (Phase C)
+          const isTransient = firstErr instanceof Error && /503|504|UNAVAILABLE|timeout/i.test(firstErr.message);
+          if (isTransient) {
+            await new Promise((r) => setTimeout(r, 600 + Math.random() * 400));
+            try {
+              const form2 = new FormData();
+              form2.append("image", new File([prepared.blob], "parchi.jpg", { type: "image/jpeg" }));
+              result = await api<ParchiParseResult & { api_ms: number }>("/api/parchi/parse", { form: form2, timeoutMs: 60_000 });
+            } catch {
+              throw firstErr;
+            }
+          } else {
             throw firstErr;
           }
-        } else {
-          throw firstErr;
         }
       }
       setRes(result);
@@ -464,10 +484,10 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
     <Sheet
       open
       onClose={onClose}
-      title={stage === "review" ? "Parchi Check" : stage === "done" ? "Restocked ✓" : "Parchi Scan"}
+      title={stage === "review" ? "پرچی کی تصدیق" : stage === "done" ? "گودام میں درج ہو گیا ✓" : "پرچی اسکین"}
       right={stage === "review" ? (
-        <span className="text-[13px] text-ink-2">
-          {lines.length} items{xrayOn ? " · 0 write tools" : ""}
+        <span className="text-[13px] text-ink-2 urdu-ui">
+          {lines.length} اشیاء{xrayOn ? " · 0 write tools" : ""}
         </span>
       ) : undefined}
     >
@@ -510,28 +530,28 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
             </div>
           )}
 
-          <p className="text-[14px] text-ink-2">Saaf roshni mein poori parchi ki photo lein.</p>
-          <PrimaryButton tone="maal" className="h-14 w-full" onClick={() => camRef.current?.click()}>
-            <Camera size={18} strokeWidth={SW} /> Snap parchi
+          <p className="text-[14px] text-ink-2 urdu-ui" dir="rtl">صاف روشنی میں پوری پرچی کی تصویر لیں۔</p>
+          <PrimaryButton tone="maal" className="h-14 w-full urdu-ui" onClick={() => camRef.current?.click()}>
+            <Camera size={18} strokeWidth={SW} /> پرچی کی تصویر لیں
           </PrimaryButton>
-          <SecondaryButton className="flex w-full items-center justify-center gap-2" onClick={() => galRef.current?.click()}>
-            <FileImage size={16} strokeWidth={SW} /> Choose from gallery
+          <SecondaryButton className="flex w-full items-center justify-center gap-2 urdu-ui" onClick={() => galRef.current?.click()}>
+            <FileImage size={16} strokeWidth={SW} /> گیلری سے منتخب کریں
           </SecondaryButton>
 
           <div className="grid grid-cols-2 gap-2 pt-1">
             <button
               type="button"
               onClick={() => void renderStagedParchi().then(run)}
-              className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-dashed border-maal/50 bg-maal-bg px-2 text-[13px] font-semibold text-maal"
+              className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-dashed border-maal/50 bg-maal-bg px-2 text-[13px] font-semibold text-maal urdu-ui"
             >
-              <Wand2 size={14} strokeWidth={SW} /> 1-tap staged field sample
+              <Wand2 size={14} strokeWidth={SW} /> نمونہ پرچی چیک کریں
             </button>
             <button
               type="button"
               onClick={openManualEntry}
-              className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface px-2 text-[13px] font-semibold text-ink"
+              className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface px-2 text-[13px] font-semibold text-ink urdu-ui"
             >
-              <Pencil size={14} strokeWidth={SW} /> Manual entry
+              <Pencil size={14} strokeWidth={SW} /> خود درج کریں
             </button>
           </div>
         </div>
@@ -540,9 +560,9 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
       {stage === "parsing" && (
         <div className="flex flex-col items-center gap-3 px-5 pb-8 pt-2">
           {img && <img src={img.originalPreviewUrl} alt="Original parchi" className="max-h-[260px] rounded-[12px] border border-black/10" />}
-          <div className="flex items-center gap-2 text-[14px] text-ink-2">
+          <div className="flex items-center gap-2 text-[14px] text-ink-2 urdu-ui">
             <Spinner className="text-maal" />
-            <span>Parchi parhi ja rahi hai…</span>
+            <span>پرچی پڑھی جا رہی ہے…</span>
             {xrayOn && <span className="font-mono text-[12px]">· 0 write tools</span>}
           </div>
         </div>
@@ -984,11 +1004,11 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
           )}
 
           {/* 1-tap Cash / Baqi settlement */}
-          <div className="mx-5 mt-3 rounded-[12px] bg-canvas p-3">
-            <div className="flex items-center justify-between text-[13px]">
-              <span className="font-semibold text-ink">Cash paid now</span>
+          <div className="mx-5 mt-3 rounded-[12px] bg-canvas p-3" dir="rtl">
+            <div className="flex items-center justify-between text-[13px] urdu-ui">
+              <span className="font-semibold text-ink">ابھی نقد ادائیگی</span>
               <span className="num font-semibold text-udhaar">
-                {xrayOn ? "A/P" : "Baqi"} {formatRs(Math.max(0, total - (cashPaidPaisa ?? 0)))}
+                {xrayOn ? "A/P" : "باقی"} {formatRs(Math.max(0, total - (cashPaidPaisa ?? 0)))}
               </span>
             </div>
             <div className="mt-2 flex items-center gap-2">
@@ -997,31 +1017,31 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
                 disabled={total <= 0}
                 onClick={() => setCash(String(total / 100))}
                 className={cx(
-                  "tactile h-10 shrink-0 rounded-[10px] border px-3 text-[13px] font-semibold disabled:opacity-40",
+                  "tactile h-10 shrink-0 rounded-[10px] border px-3 text-[13px] font-semibold urdu-ui disabled:opacity-40",
                   cashPaidPaisa !== null && total > 0 && cashPaidPaisa >= total ? "border-ink bg-ink text-white" : "border-black/15 bg-surface text-ink",
                 )}
               >
-                Full Cash
+                پوری نقد
               </button>
               <button
                 type="button"
                 disabled={total <= 0}
                 onClick={() => setCash("0")}
                 className={cx(
-                  "tactile h-10 shrink-0 rounded-[10px] border px-3 text-[13px] font-semibold disabled:opacity-40",
+                  "tactile h-10 shrink-0 rounded-[10px] border px-3 text-[13px] font-semibold urdu-ui disabled:opacity-40",
                   cashPaidPaisa === 0 && cash.trim() !== "" ? "border-ink bg-ink text-white" : "border-black/15 bg-surface text-ink",
                 )}
               >
-                Baqi (0)
+                ادھار (0)
               </button>
               <div className="flex min-w-0 flex-1 items-center gap-1 rounded-[10px] bg-surface px-2.5">
-                <span className="text-[12.5px] text-ink-2">Rs.</span>
+                <span className="text-[12.5px] text-ink-2">روپے</span>
                 <input
                   inputMode="decimal"
-                  aria-label="Cash paid now"
+                  aria-label="نقد ادائیگی"
                   value={cash}
                   onChange={(event) => setCash(event.target.value.replace(/[^\d.,]/g, ""))}
-                  placeholder="amount"
+                  placeholder="رقم"
                   className="num h-10 w-full bg-transparent text-[15px] font-semibold outline-none"
                 />
               </div>
@@ -1029,12 +1049,12 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
           </div>
 
           <div className="hairline-t mt-3 flex items-baseline justify-between px-5 pt-3">
-            <span className="text-[14px] text-ink-2">Total ({lines.length} items{newCount ? ` · ${newCount} new` : ""})</span>
+            <span className="text-[14px] text-ink-2 urdu-ui">کل بل ({lines.length} اشیاء{newCount ? ` · ${newCount} نیا` : ""})</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => void speak(`${supplierName} کی پرچی میں ${lines.length} اشیاء ہیں، کل بل ${Math.round(total / 100)} روپے ہے۔`)}
-                className="tactile inline-flex h-8 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[12px] font-semibold text-ink"
+                className="tactile inline-flex h-8 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[12px] font-semibold text-ink urdu-ui"
               >
                 <Volume2 size={13} strokeWidth={SW} /> سنیں
               </button>
@@ -1042,15 +1062,15 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
             </div>
           </div>
           <div className="flex gap-3 px-5 pb-[max(16px,env(safe-area-inset-bottom))] pt-3">
-            <SecondaryButton onClick={onClose} className="w-[92px]">Cancel</SecondaryButton>
+            <SecondaryButton onClick={onClose} className="w-[92px] urdu-ui">منسوخ</SecondaryButton>
             <PrimaryButton
               tone="maal"
               busy={busy}
               disabled={!lines.length || hasUnreviewedLine || grandTotalNeedsConfirmation || !totalSafe || total <= 0 || cashPaidPaisa === null}
               onClick={commit}
-              className="flex-1"
+              className="flex-1 urdu-ui"
             >
-              Restock Commit
+              گودام میں درج کریں
             </PrimaryButton>
           </div>
         </div>
@@ -1058,10 +1078,10 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
 
       {stage === "done" && done && (
         <div className="space-y-3 px-5 pb-[max(16px,env(safe-area-inset-bottom))]">
-          <div className="surface-card p-4">
+          <div className="surface-card p-4" dir="rtl">
             <div className="text-[15px] font-semibold">{supplierName || res?.supplier_name}</div>
             <Money paisa={done.totals.total_paisa ?? 0} className="mt-1 block text-[26px] font-bold" />
-            <div className="mt-1 text-[13px] font-medium text-cash-ink">Stock &amp; khata update ho gaya ✓</div>
+            <div className="mt-1 text-[13px] font-medium text-cash-ink urdu-ui">گودام اور کھاتہ اپ ڈیٹ ہو گیا ✓</div>
             {xrayOn && (
               <>
                 <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1083,7 +1103,7 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
           <PriceMemoryCard />
           <div className="flex gap-3">
             {xrayOn && <SecondaryButton className="flex-1" onClick={() => openSheet({ type: "xray", txId: done.transaction_id })}>{"</>"} X-Ray</SecondaryButton>}
-            <PrimaryButton className="flex-1" onClick={onClose}>Done</PrimaryButton>
+            <PrimaryButton className="flex-1 urdu-ui" onClick={onClose}>مکمل</PrimaryButton>
           </div>
         </div>
       )}

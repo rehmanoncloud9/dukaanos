@@ -3,11 +3,11 @@ export type Lang = "en" | "ur";
 export const LANG_KEY = "dukaanos.lang";
 
 const DICT = {
-  munshi: { en: "Bikri", ur: "بکری" },
+  munshi: { en: "Bikri", ur: "فروخت" },
   khata: { en: "Udhaar", ur: "ادھار" },
   maal: { en: "Godam", ur: "گودام" },
   zeroFbr: { en: "Zero FBR", ur: "ایف بی آر سے پاک" },
-  todayCash: { en: "Today cash", ur: "آج کا کیش" },
+  todayCash: { en: "Today cash", ur: "آج کا نقد" },
   todayUdhaar: { en: "Today udhaar", ur: "آج کا ادھار" },
   sales: { en: "sales", ur: "فروخت" },
   accounts: { en: "accounts", ur: "کھاتے" },
@@ -60,9 +60,9 @@ const DICT = {
   quickSell: { en: "Quick Sell", ur: "تیز فروخت" },
   heldBills: { en: "Held Bills", ur: "رکے ہوئے بل" },
   guideTitle: { en: "First time? Try speaking", ur: "پہلی بار؟ بول کر آزمائیں" },
-  listen: { en: "Suniye", ur: "سنیں" },
+  listen: { en: "سنیں", ur: "سنیں" },
   guide: { en: "Guide", ur: "رہنمائی" },
-  more: { en: "More", ur: "مزید" },
+  more: { en: "More Tools", ur: "مزید سہولیات" },
   walkInCash: { en: "Walk-in Cash", ur: "نقد گاہک" },
   wholesale: { en: "Wholesale", ur: "ہول سیل" },
   reversal: { en: "Reversal", ur: "واپسی" },
@@ -85,6 +85,11 @@ const DICT = {
   lowStockCount: { en: "low stock", ur: "کم اسٹاک" },
   closeDay: { en: "Dukaan Band", ur: "دکان بند" },
   marginShield: { en: "Munafa Bachao", ur: "منافع بچاؤ" },
+  walkieTalkie: { en: "Live Counter Mic", ur: "لائیو کاؤنٹر مائیک" },
+  walkieStop: { en: "Stop", ur: "بند کریں" },
+  walkieBtn: { en: "Walkie-Talkie", ur: "واکی ٹاکی" },
+  aajKiSalah: { en: "Morning Briefing", ur: "آج کی صلاح" },
+  salahListen: { en: "صلاح سنیں", ur: "صلاح سنیں" },
 } as const;
 
 export type I18nKey = keyof typeof DICT;

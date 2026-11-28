@@ -129,9 +129,17 @@ export async function reviewCount(shopId?: string): Promise<number> {
 /** Errors that will fail identically on every retry (bad key, unknown model, unsupported audio). */
 export const PERMANENT_ERROR_CODES = ["AI_REJECTED", "AI_NOT_CONFIGURED", "AUDIO_TOO_LARGE", "UNSUPPORTED_MEDIA", "BAD_REQUEST"];
 
+/** Conflict codes where remote state diverged and the record must be retained safely for review without overwriting history. */
+export const CONFLICT_ERROR_CODES = ["ALREADY_REVERSED", "UDHAAR_REQUIRES_CUSTOMER", "CREDIT_LIMIT_EXCEEDED", "MATH_MISMATCH", "CHAIN_BROKEN"];
+
 export function isPermanentFailure(e: unknown): boolean {
   const code = e && typeof e === "object" && "code" in e ? (e as { code: unknown }).code : null;
-  return typeof code === "string" && PERMANENT_ERROR_CODES.includes(code);
+  return typeof code === "string" && (PERMANENT_ERROR_CODES.includes(code) || CONFLICT_ERROR_CODES.includes(code));
+}
+
+export function isConflictFailure(e: unknown): boolean {
+  const code = e && typeof e === "object" && "code" in e ? (e as { code: unknown }).code : null;
+  return typeof code === "string" && CONFLICT_ERROR_CODES.includes(code);
 }
 
 export type FlushOutcome =
@@ -216,8 +224,9 @@ export interface QueuedCommit {
   created_at: number;
   seq_local?: number;
   attempts: number;
-  status: "pending" | "failed";
+  status: "pending" | "failed" | "conflict";
   last_error?: string;
+  conflict_reason?: string;
 }
 
 export async function enqueueCommit(item: Omit<QueuedCommit, "attempts" | "status" | "created_at" | "seq_local">): Promise<void> {
@@ -261,10 +270,17 @@ export async function flushCommits(
     } catch (e) {
       const attempts = c.attempts + 1;
       const permanent = isPermanentFailure(e);
+      const conflict = isConflictFailure(e);
       if (commits) {
         await set(
           c.idempotency_key,
-          { ...c, attempts, last_error: e instanceof Error ? e.message : String(e), status: permanent || attempts >= 8 ? "failed" : "pending" } satisfies QueuedCommit,
+          {
+            ...c,
+            attempts,
+            last_error: e instanceof Error ? e.message : String(e),
+            conflict_reason: conflict ? (e instanceof Error ? e.message : String(e)) : undefined,
+            status: conflict ? "conflict" : permanent || attempts >= 8 ? "failed" : "pending",
+          } satisfies QueuedCommit,
           commits,
         );
       }
@@ -330,12 +346,14 @@ export async function flushOperations(
     } catch (error) {
       const attempts = commit.attempts + 1;
       const permanent = isPermanentFailure(error);
+      const conflict = isConflictFailure(error);
       if (commits) {
         await set(commit.idempotency_key, {
           ...commit,
           attempts,
           last_error: error instanceof Error ? error.message : String(error),
-          status: permanent || attempts >= 8 ? "failed" : "pending",
+          conflict_reason: conflict ? (error instanceof Error ? error.message : String(error)) : undefined,
+          status: conflict ? "conflict" : permanent || attempts >= 8 ? "failed" : "pending",
         } satisfies QueuedCommit, commits);
       }
       out.failed++;

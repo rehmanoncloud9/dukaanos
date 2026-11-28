@@ -99,10 +99,15 @@ export const POST = handle(async (req: Request) => {
   });
 
   // A foreground counter mic may hear customers, radio, or shop staff. Ambient audio
-  // cannot reach any ledger action unless its transcript begins with the wake phrase.
+  // is ignored unless it begins with the wake phrase OR is an explicit, high-confidence
+  // business command with clear transactional cues (product/quantity/payment/khata).
   const romanTranscript = (p as { transcript_roman?: string }).transcript_roman ?? "";
   const hasAmbientWakePhrase = AMBIENT_WAKE_PREFIX.test(romanTranscript) || AMBIENT_WAKE_PREFIX.test(p.transcript);
-  if (ambient && !hasAmbientWakePhrase) {
+  const hasClearBusinessIntent =
+    (p.intent === "sale" || p.intent === "payment" || p.intent === "pulse") &&
+    p.confidence >= 0.85 &&
+    (AMBIENT_BUSINESS_CUE.test(romanTranscript) || AMBIENT_BUSINESS_CUE.test(p.transcript));
+  if (ambient && !hasAmbientWakePhrase && !hasClearBusinessIntent) {
     return ok<TurnResponse>({ kind: "unknown", trace: { ...baseTrace(null), intent: "ambient_ignored" } });
   }
 
@@ -198,6 +203,7 @@ export const POST = handle(async (req: Request) => {
 });
 
 const AMBIENT_WAKE_PREFIX = /^\s*(?:(?:hey|o|oye|اوئے?|ارے)\s+)?(?:munshi|منشی)(?:\s+(?:ji|jee|جی))?(?=$|[\s,:،۔!؛])/iu;
+const AMBIENT_BUSINESS_CUE = /\b(khate\s+mein|khaate|khata|udhaa?r|cash|naqd|nakad|de\s+do|dedo|likh\s+do|likh\s+dena|jama\s+karwa|wasooli|kilo|kg|pao|litre|liter|packet|darjan|rupay|rupees)\b|کھاتے میں|کھاتہ|ادھار|نقد|لکھ دو|لکھ دینا|دے دو|کلو|پاؤ|لیٹر|پیکٹ|درجن|روپے|وصولی/iu;
 
 /**
  * Server-side dialect fallback: QuickAdd lines get one more chance against the 100+

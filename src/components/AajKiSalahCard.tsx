@@ -5,54 +5,56 @@
  * high-margin items stocking out before Friday + 45-day dead-stock alerts.
  */
 
-import { Sparkles, TrendingDown, Volume2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Compass, TrendingDown, Volume2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ShopState } from "@/lib/api/contracts";
+import { tr } from "@/lib/client/i18n";
 import { speak } from "@/lib/client/speak";
+import { useDukaan } from "@/lib/client/store";
 import { computeAajKiSalah } from "@/lib/domain/aaj-ki-salah";
 import { formatRs } from "@/lib/domain/money";
 import { goFilter } from "./MunshiTab";
-import { SW } from "./ui";
+import { cx, SW } from "./ui";
 
 export function AajKiSalahCard({ state }: { state: ShopState }) {
+  const { lang } = useDukaan();
   const report = useMemo(() => computeAajKiSalah(state), [state]);
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div dir="rtl" className="surface-card overflow-hidden p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 text-[14px] font-bold text-ink urdu-ui">
-            <Sparkles size={15} strokeWidth={SW} className="shrink-0 text-maal" />
-            <span>آج کی صلاح (صبح کا خلاصہ)</span>
+    <div dir={lang === "ur" ? "rtl" : "ltr"} className="surface-card overflow-hidden px-3 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-start"
+        >
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] bg-maal-bg text-maal">
+            <Compass size={15} strokeWidth={SW} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1 text-[13px] font-bold text-ink leading-tight">
+              <span className={cx("truncate", lang === "ur" && "urdu-ui")}>{tr("aajKiSalah", lang)}</span>
+              <span className="shrink-0 text-ink-3">{expanded ? <ChevronUp size={13} strokeWidth={SW} /> : <ChevronDown size={13} strokeWidth={SW} />}</span>
+            </div>
+            <div className="urdu-ui truncate text-[11px] leading-tight text-ink-2">
+              {report.fridayStockouts.length > 0
+                ? `جمعہ سے پہلے ${report.fridayStockouts.length} اشیاء ختم ہو سکتی ہیں`
+                : "گودام کا اسٹاک محفوظ ہے"}
+              {report.deadStock.length > 0 ? ` · ${report.deadStock.length} رکا ہوا مال` : ""}
+            </div>
           </div>
-          <div className="mt-0.5 text-[12.5px] text-ink-2 urdu-ui">
-            {report.fridayStockouts.length > 0
-              ? `جمعہ سے پہلے ${report.fridayStockouts.length} منافع بخش اشیاء ختم ہو سکتی ہیں`
-              : "گودام کا اسٹاک محفوظ ہے"}
-            {report.deadStock.length > 0 ? ` · ${report.deadStock.length} رکا ہوا مال` : ""}
-          </div>
-        </div>
+        </button>
 
         <button
           type="button"
           onClick={() => void speak(report.briefingUrdu)}
-          className="tactile flex h-14 min-w-[56px] shrink-0 items-center gap-1.5 rounded-[14px] bg-maal px-3.5 text-[13.5px] font-bold text-white urdu-ui"
+          className="tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-maal px-3 text-[12px] font-bold text-white urdu-ui"
         >
-          <Volume2 size={16} strokeWidth={SW} />
-          <span>صلاح سنیں</span>
+          <Volume2 size={13} strokeWidth={SW} />
+          <span>{tr("salahListen", lang)}</span>
         </button>
       </div>
-
-      {(report.fridayStockouts.length > 0 || report.deadStock.length > 0) && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="mt-2.5 text-[12px] font-semibold text-maal urdu-ui"
-        >
-          {expanded ? "کم تفصیل دیکھیں ▲" : "منڈی اور رکا ہوا مال دیکھیں ▼"}
-        </button>
-      )}
 
       {expanded && (
         <div className="mt-3 space-y-2 border-t border-black/5 pt-3">

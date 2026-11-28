@@ -23,7 +23,7 @@ interface Health {
 }
 
 export function SettingsSheet({ onClose }: { onClose: () => void }) {
-  const { shops, shop, setShopId, state, pending, queue, queuedCommits, flush, openQueuedReview, discardQueued, retryQueuedTurn, retryCommit, discardCommit, simulatedOffline, setSimulatedOffline, xrayOn, setXrayOn, helperMode, setHelperMode, refresh, reloadShops, toast, signOut, openSheet, session, lang } = useDukaan();
+  const { shops, shop, setShopId, state, pending, queue, queuedCommits, flush, openQueuedReview, discardQueued, retryQueuedTurn, retryCommit, discardCommit, simulatedOffline, setSimulatedOffline, xrayOn, setXrayOn, helperMode, setHelperMode, refresh, reloadShops, toast, signOut, openSheet, session, lang, setLang } = useDukaan();
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
@@ -84,7 +84,35 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
     <Sheet open onClose={onClose} title={tr("settings", lang)}>
       <div className="space-y-4 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">
         <section>
-          <div className="section-label mb-2" dir="rtl">زبان: اردو</div>
+          <div className="section-label mb-2" dir="auto">{tr("language", lang)} · زبان / Language</div>
+          <div className="grid grid-cols-2 gap-2 rounded-[12px] bg-surface-sunken p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setLang("ur");
+                toast("زبان اردو منتخب ہو گئی (آواز ہمیشہ اردو رہے گی)", "info");
+              }}
+              className={cx(
+                "tactile flex h-10 items-center justify-center rounded-[10px] text-[14px] font-bold urdu-ui transition-colors",
+                lang === "ur" ? "bg-surface text-ink shadow-sm" : "text-ink-2",
+              )}
+            >
+              اردو (Urdu)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLang("en");
+                toast("English display active — spoken audio remains in Urdu", "info");
+              }}
+              className={cx(
+                "tactile flex h-10 items-center justify-center rounded-[10px] text-[14px] font-bold transition-colors",
+                lang === "en" ? "bg-surface text-ink shadow-sm" : "text-ink-2",
+              )}
+            >
+              English (اردو آواز)
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -97,7 +125,7 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
               }
               toast(next ? "ہر اندراج کی آواز میں تصدیق آن ہے" : "آواز میں تصدیق بند ہے", "info");
             }}
-            className="tactile mt-2 flex h-10 w-full items-center justify-between rounded-[12px] bg-surface px-3.5 text-[13.5px] font-medium"
+            className="tactile mt-2 flex h-11 w-full items-center justify-between rounded-[12px] bg-surface px-3.5 text-[13.5px] font-medium"
           >
             <span className="flex items-center gap-2"><Volume2 size={15} strokeWidth={SW} /> {tr("autoSpeak", lang)}</span>
             <Pill tone={autoSpeak ? "cash" : "neutral"}>{autoSpeak ? tr("on", lang) : tr("off", lang)}</Pill>
@@ -180,40 +208,40 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
 
         {/* Helper / Family Restricted Mode */}
         <section>
-          <div className="section-label mb-2">Helper / Family Mode</div>
+          <div className="section-label mb-2 urdu-ui">مددگار / خاندانی موڈ</div>
           <button
             type="button"
             onClick={() => {
               const next = !helperMode;
               setHelperMode(next);
-              toast(next ? "Helper Mode ON — munafa aur cost ab chhupa hai" : "Owner Mode wapas ON", "info");
+              toast(next ? "مددگار موڈ آن — منافع اور خرید قیمت چھپ گئی ہے" : "مالک موڈ واپس آن", "info");
             }}
-            className="tactile flex h-11 w-full items-center justify-between rounded-[12px] bg-surface px-3.5 text-[13.5px] font-medium"
+            className="tactile flex h-11 w-full items-center justify-between rounded-[12px] bg-surface px-3.5 text-[13.5px] font-medium urdu-ui"
           >
-            <span>Munafa, cost aur settings chhupayein</span>
-            <Pill tone={helperMode ? "amber" : "neutral"}>{helperMode ? "ON" : "OFF"}</Pill>
+            <span>منافع، خرید قیمت اور ترتیبات چھپائیں</span>
+            <Pill tone={helperMode ? "amber" : "neutral"}>{helperMode ? "آن" : "آف"}</Pill>
           </button>
         </section>
 
         {/* Shift Handover · Galla Count */}
         <section>
-          <div className="section-label mb-2">Shift Handover · Galla Count</div>
+          <div className="section-label mb-2 urdu-ui">شفٹ کی تبدیلی · گلے کی گنتی</div>
           <div className="surface-card p-4 space-y-3">
-            <div className="text-[13px] text-ink-2">Drawer mein giye paison ka hisaab karein aur system se compare karein.</div>
+            <div className="text-[13px] text-ink-2 urdu-ui">گلے میں موجود نقد رقم گن کر سسٹم سے ملائیں۔</div>
             <div className="flex gap-2 items-center">
-              <span className="text-[14px] font-semibold shrink-0">Rs.</span>
+              <span className="text-[14px] font-semibold shrink-0">روپے</span>
               <input
                 inputMode="numeric"
                 value={gallaInput}
                 onChange={(e) => setGallaInput(e.target.value.replace(/[^\d]/g, ""))}
-                placeholder="Actual cash counted"
+                placeholder="گلے کی اصل گنتی"
                 className="num h-11 min-w-0 flex-1 rounded-[12px] border border-black/15 px-3 text-[16px] outline-none"
               />
             </div>
             {gallaInput && (
-              <div className={cx("rounded-[10px] px-3 py-2.5 text-[14px] font-semibold", gallaDiff === 0 ? "bg-cash-bg text-cash-ink" : "bg-udhaar-bg text-udhaar-ink")}>
-                System: {formatRs(gallaSystem)} · Actual: {formatRs(gallaActual)} ·{" "}
-                {gallaDiff === 0 ? "✓ Match" : gallaDiff > 0 ? `+${formatRs(gallaDiff)} extra` : `${formatRs(Math.abs(gallaDiff))} short`}
+              <div className={cx("rounded-[10px] px-3 py-2.5 text-[14px] font-semibold urdu-ui", gallaDiff === 0 ? "bg-cash-bg text-cash-ink" : "bg-udhaar-bg text-udhaar-ink")}>
+                سسٹم: {formatRs(gallaSystem)} · گنتی: {formatRs(gallaActual)} ·{" "}
+                {gallaDiff === 0 ? "✓ برابر" : gallaDiff > 0 ? `+${formatRs(gallaDiff)} زیادہ` : `${formatRs(Math.abs(gallaDiff))} کم`}
               </div>
             )}
             {state && (
@@ -230,9 +258,9 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
                   });
                   window.open(waLink(null, text), "_blank", "noopener,noreferrer");
                 }}
-                className="tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-cash-bg text-[13.5px] font-semibold text-cash-ink"
+                className="tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-cash-bg text-[13.5px] font-semibold text-cash-ink urdu-ui"
               >
-                Share Aaj Ka Hisaab (WhatsApp)
+                آج کا حساب واٹس ایپ کریں
               </button>
             )}
           </div>
@@ -240,25 +268,25 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
 
         {/* Raast / Wallet ID for Mutual Khata */}
         <section>
-          <div className="section-label mb-2">Raast / EasyPaisa / JazzCash ID</div>
+          <div className="section-label mb-2 urdu-ui">راست / ایزی پیسہ / جاز کیش نمبر</div>
           <form
             className="surface-card flex gap-2 p-3"
             onSubmit={(e) => {
               e.preventDefault();
               void act("raast", async () => {
                 await api("/api/khata/raast", { json: { raast_id: raastId.trim() || null } });
-                toast(raastId.trim() ? "Raast ID saved — Mutual Khata par dikhega" : "Raast ID cleared", "ok");
+                toast(raastId.trim() ? "راست نمبر محفوظ ہو گیا — کھاتہ لنک پر نظر آئے گا" : "راست نمبر ہٹا دیا گیا", "ok");
               });
             }}
           >
             <input
               value={raastId}
               onChange={(e) => setRaastId(e.target.value)}
-              placeholder="03xx-xxxxxxx ya IBAN"
+              placeholder="03xx-xxxxxxx یا IBAN"
               className="h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[14.5px] outline-none"
             />
-            <button type="submit" disabled={busy === "raast"} className="tactile h-11 shrink-0 rounded-[12px] bg-ink px-4 text-[14px] font-semibold text-white disabled:opacity-50">
-              {busy === "raast" ? <Spinner /> : "Save"}
+            <button type="submit" disabled={busy === "raast"} className="tactile h-11 shrink-0 rounded-[12px] bg-ink px-4 text-[14px] font-semibold text-white urdu-ui disabled:opacity-50">
+              {busy === "raast" ? <Spinner /> : "محفوظ کریں"}
             </button>
           </form>
         </section>
@@ -613,21 +641,21 @@ function AppLockSection() {
   useEffect(() => setEnabled(isAppLockEnabled()), []);
   return (
     <section>
-      <div className="section-label mb-2">App lock · shared phone</div>
+      <div className="section-label mb-2 urdu-ui">ایپ لاک · مشترکہ فون کی حفاظت</div>
       <div className="surface-card p-4">
         {enabled ? (
           <div className="flex items-center justify-between gap-3">
-            <span className="text-[14px]">PIN laga hua hai — 1 minute baad app khud lock ho jati hai.</span>
-            <button onClick={() => { clearAppLock(); setEnabled(false); toast("App lock hata diya", "info"); }} className="tactile h-11 shrink-0 rounded-[12px] bg-surface-sunken px-3 text-[14px] font-semibold">Hata dein</button>
+            <span className="text-[14px] urdu-ui">۴ ہندسوں کا کوڈ لگا ہوا ہے — ایک منٹ بعد ایپ خود لاک ہو جاتی ہے۔</span>
+            <button onClick={() => { clearAppLock(); setEnabled(false); toast("ایپ لاک ہٹا دیا گیا", "info"); }} className="tactile h-11 shrink-0 rounded-[12px] bg-surface-sunken px-3 text-[14px] font-semibold urdu-ui">ہٹا دیں</button>
           </div>
         ) : (
           <form className="flex gap-2" onSubmit={(e) => {
             e.preventDefault();
-            void setAppLockPin(pin).then(() => { setEnabled(true); setPin(""); toast("PIN set — balances ab chhupe rahenge", "ok"); }).catch((err: unknown) => toast(err instanceof Error ? err.message : "PIN set nahi hua", "err"));
+            void setAppLockPin(pin).then(() => { setEnabled(true); setPin(""); toast("کوڈ لگ گیا — کھاتے محفوظ رہیں گے", "ok"); }).catch((err: unknown) => toast(err instanceof Error ? err.message : "کوڈ محفوظ نہیں ہوا", "err"));
           }}>
-            <input inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="4-digit PIN" aria-label="New 4-digit PIN"
+            <input inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="۴ ہندسوں کا کوڈ" aria-label="New 4-digit PIN"
               className="num h-11 min-w-0 flex-1 rounded-[12px] border border-black/15 px-3 text-[15px] tracking-[0.3em]" />
-            <button type="submit" disabled={pin.length !== 4} className="tactile h-11 shrink-0 rounded-[12px] bg-ink px-4 text-[14px] font-semibold text-white disabled:opacity-40">PIN lagayein</button>
+            <button type="submit" disabled={pin.length !== 4} className="tactile h-11 shrink-0 rounded-[12px] bg-ink px-4 text-[14px] font-semibold text-white urdu-ui disabled:opacity-40">کوڈ لگائیں</button>
           </form>
         )}
       </div>

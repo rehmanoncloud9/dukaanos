@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Camera, ChevronDown, ChevronUp, HelpCircle, Keyboard, PauseCircle, Plus, RefreshCw, RotateCcw, SendHorizontal, Volume2, X, Zap } from "lucide-react";
+import { AlertCircle, Banknote, BarChart3, BookOpen, Camera, ChevronDown, ChevronUp, HelpCircle, Keyboard, Package, PauseCircle, Plus, RefreshCw, RotateCcw, SendHorizontal, Volume2, X, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FeedTx, Pulse, StateProduct } from "@/lib/api/contracts";
 import { api, newKey } from "@/lib/client/api";
@@ -11,6 +11,7 @@ import { useDukaan } from "@/lib/client/store";
 import { formatBaseQty } from "@/lib/domain/desi-units";
 import { formatRs } from "@/lib/domain/money";
 import type { SaleProposal } from "@/lib/domain/types";
+import { buildLocalPulse } from "@/lib/client/local-turn";
 import { MicButton } from "./MicButton";
 import { AajKiSalahCard } from "./AajKiSalahCard";
 import { VirtualList } from "./VirtualList";
@@ -96,26 +97,27 @@ function QuickSellStrip({ products }: { products: StateProduct[] }) {
   if (top4.length === 0) return null;
 
   return (
-    <div className="surface-card overflow-hidden">
-      <div className="flex items-center gap-1.5 px-4 pb-1.5 pt-2.5">
+    <div className="surface-card overflow-hidden px-3 py-2">
+      <div className="mb-1.5 flex items-center gap-1.5">
         <Zap size={12} strokeWidth={SW} className="text-cash" />
         <span className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("quickSell", lang)}</span>
       </div>
-      <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3">
+      <div className="grid grid-cols-4 gap-1.5">
         {top4.map((p) => {
+          const shortName = p.name.replace(/\s*\(.*\)/, "").replace(/\s+5L$/i, "").slice(0, 12);
           return (
             <button
               key={p.id}
               type="button"
               disabled={thinking}
               onClick={() => void submitTurn({ text: `ek ${p.name} cash` })}
-              className="tactile flex shrink-0 flex-col items-start rounded-[12px] border border-black/10 bg-canvas px-3 py-2 text-left disabled:opacity-50"
+              className="tactile flex min-w-0 flex-col items-start justify-between rounded-[10px] border border-black/10 bg-canvas px-2 py-1.5 text-left disabled:opacity-50"
             >
-              <span className="flex items-center gap-1 text-[13.5px] font-semibold leading-5">
-                <Plus size={12} strokeWidth={SW + 0.5} />
-                {p.name.replace(/\s*\(.*\)/, "").slice(0, 16)}
+              <span className="flex w-full items-center gap-0.5 truncate text-[12px] font-bold leading-4 text-ink">
+                <Plus size={10} strokeWidth={SW + 0.5} className="shrink-0 text-cash" />
+                <span className="truncate">{shortName}</span>
               </span>
-              <span className="num text-[12px] text-ink-2">
+              <span className="num mt-0.5 text-[11px] font-medium text-ink-2">
                 {formatRs(p.unit_price_paisa)}
               </span>
             </button>
@@ -127,7 +129,7 @@ function QuickSellStrip({ products }: { products: StateProduct[] }) {
 }
 
 export function MunshiTab() {
-  const { state, shop, shopId, xrayOn, helperMode, openSheet, submitTurn, thinking, toast, highlightTx, refresh, lang } = useDukaan();
+  const { state, shopId, xrayOn, helperMode, openSheet, submitTurn, thinking, highlightTx, refresh, lang } = useDukaan();
   const [pulse, setPulse] = useState<Pulse | null>(null);
   const [stripOpen, setStripOpen] = useState(false);
   const [moreActions, setMoreActions] = useState(false);
@@ -136,21 +138,6 @@ export function MunshiTab() {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("dukaanos.guide.dismissed") !== "1";
   });
-  const [typing, setTypingState] = useState(() =>
-    typeof window !== "undefined" && sessionStorage.getItem("dukaanos.typing") === "1",
-  );
-  const setTyping = (next: boolean | ((prev: boolean) => boolean)) => {
-    setTypingState((prev) => {
-      const val = typeof next === "function" ? next(prev) : next;
-      try {
-        sessionStorage.setItem("dukaanos.typing", val ? "1" : "0");
-      } catch {
-        /* ignore storage quota */
-      }
-      return val;
-    });
-  };
-  const [text, setText] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [extraFeed, setExtraFeed] = useState<FeedTx[]>([]);
   const [nextSeq, setNextSeq] = useState<number | null>(null);
@@ -165,11 +152,14 @@ export function MunshiTab() {
   }, [shopId]);
 
   useEffect(() => {
-    if (!head) return;
-    api<Pulse>("/api/shop/pulse").then(setPulse).catch(() => undefined);
+    if (!head || !state) return;
+    setPulse(buildLocalPulse(state));
+    if (shopId !== "local-demo-shop") {
+      api<Pulse>("/api/shop/pulse").then(setPulse).catch(() => undefined);
+    }
     setExtraFeed([]);
     setNextSeq(null);
-  }, [head]);
+  }, [head, state, shopId]);
 
   const dailySummaryScript = state
     ? (() => {
@@ -236,49 +226,52 @@ export function MunshiTab() {
     }
   };
 
-  const send = async (v: string) => {
-    const s = v.trim();
-    if (!s) return;
-    setText("");
-    await submitTurn({ text: s });
-  };
-
   return (
-    <div className={cx("space-y-2.5", typing ? "pb-44" : "pb-24")}>
-      <div className="grid grid-cols-2 gap-2.5">
-        <div className="surface-card p-3.5">
+    <div className="space-y-2 pb-3">
+      {/* 2-Column Hero KPI Strip (Von Restorff, Law of Proximity, Single-Line Badges) */}
+      <div className="grid grid-cols-2 gap-2 pose-enter">
+        <div className="surface-card flex flex-col justify-between p-3">
           <div className="flex items-center justify-between gap-1">
-            <div className={cx("section-label flex items-center gap-1.5", lang === "ur" && "urdu-ui")} dir="auto">
-              <span className="h-1.5 w-1.5 rounded-full bg-cash" /> {tr("todayCash", lang)}
-            </div>
+            <span className={cx("inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-cash-bg px-2 py-0.5 text-[11px] font-bold text-cash-ink", lang === "ur" && "urdu-ui")} dir="auto">
+              <Banknote size={12} strokeWidth={SW} className="shrink-0" />
+              <span>{tr("todayCash", lang)}</span>
+            </span>
             <button
               type="button"
-              aria-label={tr("listen", lang)}
+              aria-label="آج کا نقد حساب سنیں"
               onClick={() => void speak(dailySummaryScript)}
-              className="tactile inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[11.5px] font-semibold text-ink-2"
-            >
-              <Volume2 size={12} strokeWidth={SW} /> {tr("listen", lang)}
-            </button>
-          </div>
-          <Money paisa={today.cash_sales_paisa} className="mt-1.5 block text-[22px] font-bold leading-[26px] tracking-[-0.02em]" />
-          <div className="mt-1 text-[13px] text-ink-2" dir="auto">{today.sales_count} {tr("sales", lang)}</div>
-        </div>
-        <div className="surface-card p-3.5">
-          <div className="flex items-center justify-between gap-1">
-            <div className={cx("section-label flex items-center gap-1.5", lang === "ur" && "urdu-ui")} dir="auto">
-              <span className="h-1.5 w-1.5 rounded-full bg-udhaar" /> {tr("todayUdhaar", lang)}
-            </div>
-            <button
-              type="button"
-              aria-label={tr("listen", lang)}
-              onClick={() => void speak(`آج کا ادھار ${Math.round(today.udhaar_paisa / 100)} روپے ہے، ${today.udhaar_accounts} کھاتوں پر۔`)}
-              className="tactile inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2 text-[11px] font-semibold text-ink-2"
+              className="audio-btn tactile urdu-ui shrink-0 !min-h-[28px] !px-2 !text-[11px]"
             >
               <Volume2 size={12} strokeWidth={SW} />
+              <span>سنیں</span>
             </button>
           </div>
-          <Money paisa={today.udhaar_paisa} className="mt-1.5 block text-[22px] font-bold leading-[26px] tracking-[-0.02em] text-udhaar" />
-          <div className="mt-1 text-[13px] text-ink-2" dir="auto">{today.udhaar_accounts} {tr("accounts", lang)}</div>
+          <Money paisa={today.cash_sales_paisa} className="mt-2 block text-[21px] font-bold leading-[25px] tracking-[-0.02em] text-ink" />
+          <div className="mt-0.5 flex items-center justify-between text-[12px] text-ink-2" dir="auto">
+            <span>{today.sales_count} {tr("sales", lang)}</span>
+          </div>
+        </div>
+
+        <div className="surface-card flex flex-col justify-between p-3">
+          <div className="flex items-center justify-between gap-1">
+            <span className={cx("inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-udhaar-bg px-2 py-0.5 text-[11px] font-bold text-udhaar-ink", lang === "ur" && "urdu-ui")} dir="auto">
+              <BookOpen size={12} strokeWidth={SW} className="shrink-0" />
+              <span>{tr("todayUdhaar", lang)}</span>
+            </span>
+            <button
+              type="button"
+              aria-label="آج کا ادھار سنیں"
+              onClick={() => void speak(`آج کا ادھار ${Math.round(today.udhaar_paisa / 100)} روپے ہے، ${today.udhaar_accounts} کھاتوں پر۔`)}
+              className="audio-btn tactile urdu-ui shrink-0 !min-h-[28px] !px-2 !text-[11px]"
+            >
+              <Volume2 size={12} strokeWidth={SW} />
+              <span>سنیں</span>
+            </button>
+          </div>
+          <Money paisa={today.udhaar_paisa} className="mt-2 block text-[21px] font-bold leading-[25px] tracking-[-0.02em] text-udhaar" />
+          <div className="mt-0.5 flex items-center justify-between text-[12px] text-ink-2" dir="auto">
+            <span>{today.udhaar_accounts} {tr("accounts", lang)}</span>
+          </div>
         </div>
       </div>
 
@@ -289,15 +282,15 @@ export function MunshiTab() {
       {/* Quick-Sell Top-4 strip — rush-hour 1-tap cash sale, Rs. 0 LLM */}
       <QuickSellStrip products={state.products} />
 
-      {/* Primary action + progressive disclosure for secondary tools */}
+      {/* Primary action + progressive disclosure for secondary tools (Hick's Law & Miller's Law) */}
       <div className="flex flex-wrap items-center gap-2 py-0.5">
-        <button type="button" onClick={openBlankBill} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
-          <Plus size={13} strokeWidth={SW} /> {tr("newBill", lang)}
+        <button type="button" onClick={openBlankBill} className={cx("tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+          <Plus size={14} strokeWidth={SW} /> {tr("newBill", lang)}
         </button>
         <button
           type="button"
           onClick={() => setMoreActions((m) => !m)}
-          className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold text-ink-2", lang === "ur" && "urdu-ui")}
+          className={cx("tactile flex h-9 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold text-ink-2", lang === "ur" && "urdu-ui")}
           dir="auto"
         >
           {tr("more", lang)} {moreActions ? <ChevronUp size={13} strokeWidth={SW} /> : <ChevronDown size={13} strokeWidth={SW} />}
@@ -305,26 +298,26 @@ export function MunshiTab() {
         {moreActions && (
           <>
             {!helperMode && (
-              <button type="button" onClick={() => openSheet({ type: "insights" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
-                <BarChart3 size={13} strokeWidth={SW} className="text-cash" /> {tr("insights", lang)}
+              <button type="button" onClick={() => openSheet({ type: "insights" })} className={cx("tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+                <BarChart3 size={14} strokeWidth={SW} className="text-cash" /> {tr("insights", lang)}
               </button>
             )}
-            <button type="button" onClick={() => openSheet({ type: "return" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
-              <RotateCcw size={13} strokeWidth={SW} className="text-udhaar" /> {tr("returnItem", lang)}
+            <button type="button" onClick={() => openSheet({ type: "return" })} className={cx("tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+              <RotateCcw size={14} strokeWidth={SW} className="text-udhaar" /> {tr("returnItem", lang)}
             </button>
-            <button type="button" onClick={() => openSheet({ type: "eod" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+            <button type="button" onClick={() => openSheet({ type: "eod" })} className={cx("tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
               {tr("closeDay", lang)}
             </button>
-            <button type="button" onClick={() => openSheet({ type: "margin" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+            <button type="button" onClick={() => openSheet({ type: "margin" })} className={cx("tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
               {tr("marginShield", lang)}
             </button>
             <button
               type="button"
               onClick={() => setShowGuide((g) => !g)}
-              className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold text-ink-2", lang === "ur" && "urdu-ui")}
+              className={cx("tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold text-ink-2", lang === "ur" && "urdu-ui")}
               dir="auto"
             >
-              <HelpCircle size={13} strokeWidth={SW} /> {tr("guide", lang)}
+              <HelpCircle size={14} strokeWidth={SW} /> {tr("guide", lang)}
             </button>
           </>
         )}
@@ -359,7 +352,8 @@ export function MunshiTab() {
         </div>
       )}
 
-      {(showGuide || (list.length === 0 && !thinking)) && (
+      {/* Progressive Disclosure: Only show onboarding guide when feed is empty or user explicitly opened Guide */}
+      {(showGuide && list.length === 0 && !thinking) && (
         <div className="surface-card p-3.5">
           <div className="flex items-center justify-between">
             <span className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("guideTitle", lang)}</span>
@@ -367,27 +361,25 @@ export function MunshiTab() {
               <button
                 type="button"
                 onClick={() => void speak("مائیک دبا کر بولیں: ایک کلو چینی نقد، یا علی کو پانچ سو ادھار، یا صبح کا حساب بتاؤ۔")}
-                className="tactile inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[11.5px] font-semibold"
+                className="audio-btn tactile urdu-ui"
               >
-                <Volume2 size={12} strokeWidth={SW} /> {tr("listen", lang)}
+                <Volume2 size={12} strokeWidth={SW} /> سنیں
               </button>
-              {showGuide && (
-                <button
-                  type="button"
-                  aria-label="Dismiss guide"
-                  onClick={() => {
-                    try {
-                      localStorage.setItem("dukaanos.guide.dismissed", "1");
-                    } catch {
-                      /* ignore */
-                    }
-                    setShowGuide(false);
-                  }}
-                  className="grid h-7 w-7 place-items-center text-ink-3"
-                >
-                  <X size={14} strokeWidth={SW} />
-                </button>
-              )}
+              <button
+                type="button"
+                aria-label="Dismiss guide"
+                onClick={() => {
+                  try {
+                    localStorage.setItem("dukaanos.guide.dismissed", "1");
+                  } catch {
+                    /* ignore */
+                  }
+                  setShowGuide(false);
+                }}
+                className="grid h-7 w-7 place-items-center text-ink-3"
+              >
+                <X size={14} strokeWidth={SW} />
+              </button>
             </div>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -408,14 +400,19 @@ export function MunshiTab() {
 
       {pulse && (pulse.overdue.count > 0 || pulse.stockout.count > 0) && (
         <div className="surface-card overflow-hidden">
-          <button onClick={() => setStripOpen((o) => !o)} className="flex h-10 w-full items-center gap-2 px-4 text-[13.5px] font-medium">
-            <span className="h-1.5 w-1.5 rounded-full bg-udhaar" />
-            <span className="num" dir="auto">
-              {pulse.overdue.count} {tr("overdueAccounts", lang)} · {formatRs(pulse.overdue.total_paisa)}
-            </span>
-            <span className="text-ink-3">·</span>
-            <span className="h-1.5 w-1.5 rounded-full bg-maal" />
-            <span dir="auto">{pulse.stockout.count} {tr("lowStockCount", lang)}</span>
+          <button onClick={() => setStripOpen((o) => !o)} className="flex min-h-[46px] w-full items-center gap-2 px-3.5 py-2 text-[13px] font-semibold">
+            {pulse.overdue.count > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-udhaar-bg px-2.5 py-0.5 text-[12px] font-bold text-udhaar-ink num" dir="auto">
+                <AlertCircle size={12} strokeWidth={SW} />
+                {pulse.overdue.count} {tr("overdueAccounts", lang)} · {formatRs(pulse.overdue.total_paisa)}
+              </span>
+            )}
+            {pulse.stockout.count > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-maal-bg px-2.5 py-0.5 text-[12px] font-bold text-maal" dir="auto">
+                <Package size={12} strokeWidth={SW} />
+                {pulse.stockout.count} {tr("lowStockCount", lang)}
+              </span>
+            )}
             <span className="ml-auto text-ink-2">{stripOpen ? <ChevronUp size={16} strokeWidth={SW} /> : <ChevronDown size={16} strokeWidth={SW} />}</span>
           </button>
           {stripOpen && (
@@ -425,7 +422,7 @@ export function MunshiTab() {
                   <div className={cx("text-[15px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">{tr("recoverUdhaar", lang)}</div>
                   <div className="truncate text-[13px] text-ink-2" dir="auto">{lang === "ur" ? "15 دن سے زیادہ پرانا ادھار · واٹس ایپ یا ایس ایم ایس" : "15+ days stuck · 1-tap WhatsApp/SMS"}</div>
                 </div>
-                <Pill tone="udhaar" onClick={() => goFilter("khata", "overdue")} className="h-7 px-3 text-[13px]">
+                <Pill tone="udhaar" onClick={() => goFilter("khata", "overdue")} className="h-8 px-3 text-[13px]">
                   {tr("remind", lang)}
                 </Pill>
               </div>
@@ -436,7 +433,7 @@ export function MunshiTab() {
                     {pulse.stockout.items.length ? pulse.stockout.items.map((i) => i.name.replace(/\s*\(.*\)/, "").replace(/ 5L$/, "")).join(" & ") : tr("allShelvesHealthy", lang)}
                   </div>
                 </div>
-                <Pill tone="maal" onClick={() => openSheet({ type: "pulse", pulse })} className="h-7 px-3 text-[13px]">
+                <Pill tone="maal" onClick={() => openSheet({ type: "pulse", pulse })} className="h-8 px-3 text-[13px]">
                   {tr("order", lang)}
                 </Pill>
               </div>
@@ -445,7 +442,7 @@ export function MunshiTab() {
         </div>
       )}
 
-      <div className="flex items-center justify-between px-1 pt-3">
+      <div className="flex items-center justify-between px-1 pt-1">
         <span className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{showAll ? tr("allEntries", lang) : `${tr("today", lang)} · ${new Date().toLocaleDateString(lang === "ur" ? "ur-PK" : "en-GB", { day: "numeric", month: "short" }).toUpperCase()}`}</span>
         <div className="flex items-center gap-2">
           <button
@@ -495,64 +492,111 @@ export function MunshiTab() {
           </button>
         )}
       </div>
+    </div>
+  );
+}
 
-      {/* Dock */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-[60px] z-30 mx-auto max-w-[430px] bg-gradient-to-t from-canvas via-canvas/95 to-transparent px-4 pb-2 pt-5 pb-safe">
-        {typing && (
-          <div className="pointer-events-auto mb-3 rounded-[16px] border border-black/10 bg-surface p-2 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
-            {(shop?.is_demo_shop || shop?.is_stage_shop) && (
-              <div className="no-scrollbar mb-2 flex gap-1.5 overflow-x-auto">
-                {DEMO_UTTERANCES.map((u) => (
-                  <button key={u} onClick={() => setText(u)} className="tactile h-7 shrink-0 rounded-full bg-surface-sunken px-2.5 text-[12px] text-ink-2">
-                    {u.length > 34 ? u.slice(0, 32) + "…" : u}
-                  </button>
-                ))}
-              </div>
-            )}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void send(text);
-              }}
-              className="flex items-center gap-2"
-            >
-              <input
-                autoFocus
-                dir="auto"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder={tr("typePlaceholder", lang)}
-                className="h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[15px] outline-none"
-              />
-              <button type="submit" disabled={!text.trim() || thinking} className="tactile grid h-11 w-11 place-items-center rounded-[12px] bg-ink text-white disabled:opacity-40" aria-label="Send">
-                <SendHorizontal size={18} strokeWidth={SW} />
-              </button>
-            </form>
-          </div>
-        )}
-        <div className="pointer-events-auto relative flex items-center justify-center">
+/**
+ * Dedicated Bottom Command Dock for the Munshi counter screen.
+ * Rendered as a flex-shrink-0 bar above TabBar in AppShell so it NEVER overlaps
+ * the scrollable cards or ledger entries, and uses clean symmetric flex layout.
+ */
+export function MunshiDock() {
+  const { shop, openSheet, submitTurn, thinking, toast, lang } = useDukaan();
+  const [typing, setTypingState] = useState(() =>
+    typeof window !== "undefined" && sessionStorage.getItem("dukaanos.typing") === "1",
+  );
+  const setTyping = (next: boolean | ((prev: boolean) => boolean)) => {
+    setTypingState((prev) => {
+      const val = typeof next === "function" ? next(prev) : next;
+      try {
+        sessionStorage.setItem("dukaanos.typing", val ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return val;
+    });
+  };
+  const [text, setText] = useState("");
+
+  const send = async (v: string) => {
+    const s = v.trim();
+    if (!s) return;
+    setText("");
+    await submitTurn({ text: s });
+  };
+
+  return (
+    <div dir="ltr" className="chrome-blur hairline-t z-30 shrink-0 px-3.5 py-2">
+      {typing && (
+        <div className="mb-2 rounded-[14px] border border-black/10 bg-surface p-2 shadow-sm">
+          {(shop?.is_demo_shop || shop?.is_stage_shop) && (
+            <div className="no-scrollbar mb-1.5 flex gap-1.5 overflow-x-auto">
+              {DEMO_UTTERANCES.map((u) => (
+                <button key={u} type="button" onClick={() => setText(u)} className="tactile h-7 shrink-0 rounded-full bg-surface-sunken px-2.5 text-[11.5px] text-ink-2">
+                  {u.length > 34 ? u.slice(0, 32) + "…" : u}
+                </button>
+              ))}
+            </div>
+          )}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void send(text);
+            }}
+            className="flex items-center gap-2"
+          >
+            <input
+              autoFocus
+              dir="auto"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={tr("typePlaceholder", lang)}
+              className="h-10 min-w-0 flex-1 rounded-[10px] bg-canvas px-3 text-[14px] outline-none"
+            />
+            <button type="submit" disabled={!text.trim() || thinking} className="tactile grid h-10 w-10 place-items-center rounded-[10px] bg-ink text-white disabled:opacity-40" aria-label="Send">
+              <SendHorizontal size={17} strokeWidth={SW} />
+            </button>
+          </form>
+        </div>
+      )}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+        <div className="flex justify-end">
           <button
+            type="button"
             onClick={() => setTyping((t) => !t)}
             aria-label={tr("typeInstead", lang)}
-            className={cx("tactile absolute left-[calc(50%-112px)] grid h-12 w-12 place-items-center rounded-full border border-black/10 shadow-sm", typing ? "bg-ink text-white" : "bg-surface text-ink")}
+            className={cx(
+              "tactile flex h-11 items-center gap-1.5 rounded-full border border-black/10 px-3.5 text-[13px] font-semibold shadow-xs",
+              typing ? "bg-ink text-white" : "bg-surface text-ink",
+            )}
           >
-            <Keyboard size={18} strokeWidth={SW} />
+            <Keyboard size={16} strokeWidth={SW} />
+            <span className={cx(lang === "ur" && "urdu-ui")} dir="auto">
+              {lang === "ur" ? "لکھیں" : "Type"}
+            </span>
           </button>
-          <MicButton
-            busy={thinking}
-            onClip={(blob, mime) => void submitTurn({ blob, mime })}
-            onOfflineTranscript={(t) => void submitTurn({ text: t })}
-            onDenied={(m) => {
-              toast(m, "warn");
-              setTyping(true);
-            }}
-          />
+        </div>
+
+        <MicButton
+          busy={thinking}
+          onClip={(blob, mime) => void submitTurn({ blob, mime })}
+          onOfflineTranscript={(t) => void submitTurn({ text: t })}
+          onDenied={(m) => {
+            toast(m, "warn");
+            setTyping(true);
+          }}
+        />
+
+        <div className="flex justify-start">
           <button
+            type="button"
             onClick={() => openSheet({ type: "parchi" })}
             aria-label={tr("scanParchi", lang)}
-            className="tactile absolute left-[calc(50%+46px)] flex h-12 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-4 text-[15px] font-semibold shadow-sm"
+            className="tactile flex h-11 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold text-ink shadow-xs"
           >
-            <Camera size={16} strokeWidth={SW} className="text-maal" /> <span dir="auto">{tr("parchi", lang)}</span>
+            <Camera size={16} strokeWidth={SW} className="text-maal" />
+            <span className={cx(lang === "ur" && "urdu-ui")} dir="auto">{tr("parchi", lang)}</span>
           </button>
         </div>
       </div>

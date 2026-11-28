@@ -18,8 +18,8 @@ export function Logo({ size = 44 }: { size?: number }) {
 
 export function TrustBadge() {
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-full bg-cash-bg px-3 py-1.5 text-[13px] font-semibold text-cash-ink">
-      <Lock size={12} strokeWidth={SW} /> Sirf Aap Ka Record · 100% Private
+    <div className="inline-flex items-center gap-1.5 rounded-full bg-cash-bg px-3 py-1.5 text-[13px] font-semibold text-cash-ink urdu-ui">
+      <Lock size={12} strokeWidth={SW} /> صرف آپ کا ریکارڈ · ۱۰۰٪ محفوظ
     </div>
   );
 }
@@ -49,11 +49,10 @@ export function Splash() {
   };
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-[430px] flex-col px-6 pb-8 pt-16">
+    <main className="mx-auto flex min-h-full max-w-[430px] flex-col px-6 pb-8 pt-12">
       <Logo size={64} />
-      <h1 className="mt-6 text-[34px] font-bold leading-[38px] tracking-[-0.03em]">DukaanOS</h1>
-      <p className="mt-2 text-[17px] leading-6 text-ink-2">Bolo, parchi dikhao — munshi hisaab likh dega. Voice &amp; parchi → pakka khata.</p>
-      <p className="urdu-read mt-1 text-right text-ink" dir="rtl">آپ بولیں، منشی حساب لکھے گا</p>
+      <h1 className="mt-6 text-[34px] font-bold leading-[38px] tracking-[-0.03em] urdu-ui">دکان او ایس</h1>
+      <p className="urdu-read mt-2 text-right text-[18px] text-ink" dir="rtl">آپ بولیں، منشی حساب لکھے گا — فروخت، ادھار، گودام اور پرچی</p>
       <div className="mt-4">
         <TrustBadge />
       </div>
@@ -61,13 +60,13 @@ export function Splash() {
       <div className="mt-auto space-y-3 pt-10">
         <PrimaryButton
           tone="cash"
-          className="h-14 w-full text-[17px]"
+          className="h-14 w-full text-[17px] urdu-ui"
           busy={busy === "sandbox"}
           onClick={() => void run("sandbox", () => signInSandbox())}
         >
-          <Store size={18} strokeWidth={SW} /> Try Live Demo Shop
+          <Store size={18} strokeWidth={SW} /> ڈیمو دکان چلائیں (Try Live Demo Shop)
         </PrimaryButton>
-        <p className="-mt-1 text-center text-[12.5px] text-ink-2">Demo dukaan — bina account ke check karein</p>
+        <p className="-mt-1 text-center text-[12.5px] text-ink-2 urdu-ui">بنا اکاؤنٹ کے ابھی دکان چلا کر دیکھیں</p>
 
         {mode === "stage" ? (
           <form
@@ -202,18 +201,18 @@ export function CreateShop() {
   const [seedStarter, setSeedStarter] = useState(true);
   const [busy, setBusy] = useState(false);
   return (
-    <main className="mx-auto flex min-h-dvh max-w-[430px] flex-col px-6 pb-8 pt-14">
+    <main className="mx-auto flex min-h-full max-w-[430px] flex-col px-6 pb-8 pt-10">
       <Logo />
-      <h1 className="mt-5 text-[28px] font-bold tracking-[-0.02em]">Apni dukaan banayein</h1>
-      <p className="mt-1 text-[15px] text-ink-2">No CNIC. No tax number. Only what the khata needs.</p>
+      <h1 className="mt-5 text-[28px] font-bold tracking-[-0.02em] urdu-ui">اپنی دکان بنائیں</h1>
+      <p className="mt-1 text-[15px] text-ink-2 urdu-ui">نہ شناختی کارڈ، نہ ٹیکس نمبر — صرف کھاتے کی بنیادی معلومات۔</p>
       <div className="mt-6 space-y-2.5">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Dukaan ka naam (e.g. Madina Store)" className="h-12 w-full rounded-[12px] bg-surface px-3 text-[16px] outline-none" />
-        <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="Owner name" className="h-12 w-full rounded-[12px] bg-surface px-3 text-[16px] outline-none" />
-        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone (optional)" inputMode="tel" className="h-12 w-full rounded-[12px] bg-surface px-3 text-[16px] outline-none" />
-        <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Area / city (e.g. G-9 Markaz)" className="h-12 w-full rounded-[12px] bg-surface px-3 text-[16px] outline-none" />
-        <label className="flex cursor-pointer items-center gap-2.5 rounded-[12px] bg-surface px-3 py-2.5 text-[13.5px]">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="دکان کا نام (مثلاً مدینہ اسٹور)" className="h-12 w-full rounded-[12px] bg-surface px-3 text-[16px] outline-none" />
+        <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="مالک کا نام" className="h-12 w-full rounded-[12px] bg-surface px-3 text-[16px] outline-none" />
+        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="فون نمبر (اختیاری)" inputMode="tel" className="h-12 w-full rounded-[12px] bg-surface px-3 text-[16px] outline-none" />
+        <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="علاقہ یا شہر" className="h-12 w-full rounded-[12px] bg-surface px-3 text-[16px] outline-none" />
+        <label className="flex cursor-pointer items-center gap-2.5 rounded-[12px] bg-surface px-3 py-2.5 text-[13.5px] urdu-ui">
           <input type="checkbox" checked={seedStarter} onChange={(e) => setSeedStarter(e.target.checked)} className="h-4 w-4 accent-cash" />
-          <span>Pakistani Kiryana Starter List (20 items + Urdu aliases)</span>
+          <span>پاکستانی کریانہ کا ابتدائی سامان شامل کریں (۲۰ اشیاء + اردو نام)</span>
         </label>
       </div>
       <div className="mt-4">
@@ -221,7 +220,7 @@ export function CreateShop() {
       </div>
       <div className="mt-auto space-y-2 pt-8">
         <PrimaryButton
-          className="w-full"
+          className="w-full urdu-ui"
           busy={busy}
           disabled={name.trim().length < 2}
           onClick={async () => {
@@ -229,16 +228,16 @@ export function CreateShop() {
             try {
               await createShop({ name, owner_name: owner || undefined, phone: phone || undefined, city: city || undefined, seed_starter: seedStarter });
             } catch (e) {
-              toast(e instanceof Error ? e.message : "Could not create shop", "err");
+              toast(e instanceof Error ? e.message : "دکان نہیں بن سکی", "err");
             } finally {
               setBusy(false);
             }
           }}
         >
-          Dukaan kholo
+          دکان کھولیں
         </PrimaryButton>
-        <button onClick={() => void signOut()} className="block w-full py-2 text-center text-[14px] text-ink-2">
-          Sign out
+        <button onClick={() => void signOut()} className="block w-full py-2 text-center text-[14px] text-ink-2 urdu-ui">
+          باہر نکلیں
         </button>
       </div>
     </main>
@@ -257,7 +256,7 @@ export function SetupNeeded() {
 
 export function Loading() {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-[430px] items-center justify-center">
+    <main className="mx-auto flex min-h-full flex-1 max-w-[430px] items-center justify-center">
       <Spinner className="h-6 w-6 text-ink-2" />
     </main>
   );

@@ -50,18 +50,18 @@ export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => vo
     >
       <div className="space-y-3 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">
         <div className="surface-card p-4">
-          <div className="section-label">Cash in galla · today</div>
+          <div className="section-label urdu-ui">آج گلے میں نقد رقم</div>
           <Money paisa={pulse.galla.cash_in_galla_paisa} className="mt-1 block text-[30px] font-bold tracking-[-0.02em]" />
           <div className="mt-2 grid grid-cols-3 gap-2 text-[12.5px] text-ink-2">
             <div>
-              Sales <b className="block text-[15px] text-ink num">{formatRs(pulse.galla.cash_sales_paisa)}</b>
+              نقد فروخت <b className="block text-[15px] text-ink num">{formatRs(pulse.galla.cash_sales_paisa)}</b>
             </div>
             <div>
-              Udhaar <b className="block text-[15px] text-udhaar num">{formatRs(pulse.galla.udhaar_paisa)}</b>
+              ادھار <b className="block text-[15px] text-udhaar num">{formatRs(pulse.galla.udhaar_paisa)}</b>
             </div>
             {!helperMode && (
               <div>
-                Est. margin <b className="block text-[15px] text-cash num">{formatRs(pulse.galla.est_margin_paisa)}</b>
+                اندازاً منافع <b className="block text-[15px] text-cash num">{formatRs(pulse.galla.est_margin_paisa)}</b>
               </div>
             )}
           </div>
@@ -69,25 +69,25 @@ export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => vo
 
         <div className="surface-card overflow-hidden">
           <div className="flex items-center justify-between px-4 pb-2 pt-3">
-            <span className="text-[15px] font-semibold">Overdue udhaar (15+ days)</span>
+            <span className="text-[15px] font-semibold urdu-ui">پرانا ادھار (۱۵+ دن)</span>
             <Pill tone="udhaar">{formatRs(pulse.overdue.total_paisa)}</Pill>
           </div>
-          {pulse.overdue.items.length === 0 && <div className="px-4 pb-3 text-[13px] text-ink-2">Sab saaf hai ✓</div>}
+          {pulse.overdue.items.length === 0 && <div className="px-4 pb-3 text-[13px] text-ink-2 urdu-ui">سب حساب صاف ہے ✓</div>}
           {pulse.overdue.items.map((o) => {
             const msg = reminderText({ name: o.name, shop, balance_paisa: o.balance_paisa, days_overdue: o.days_overdue });
             return (
               <div key={o.id} className="hairline-t flex items-center gap-2 px-4 py-2.5">
                 <div className="min-w-0 flex-1">
                   <div className="text-[15px] font-medium">{o.name}</div>
-                  <div className="text-[12.5px] text-ink-2">
-                    {o.days_overdue}d overdue · {formatRs(o.balance_paisa)}
+                  <div className="text-[12.5px] text-ink-2 urdu-ui">
+                    {o.days_overdue} دن سے باقی · {formatRs(o.balance_paisa)}
                   </div>
                 </div>
-                <a href={waLink(o.phone, msg)} target="_blank" rel="noreferrer" className="tactile flex h-8 items-center gap-1 rounded-full bg-cash-bg px-3 text-[13px] font-semibold text-cash-ink">
-                  <MessageSquare size={13} strokeWidth={SW} /> Remind
+                <a href={waLink(o.phone, msg)} target="_blank" rel="noreferrer" className="tactile flex h-8 items-center gap-1 rounded-full bg-cash-bg px-3 text-[13px] font-semibold text-cash-ink urdu-ui">
+                  <MessageSquare size={13} strokeWidth={SW} /> یاددہانی
                 </a>
-                <a href={smsLink(o.phone, msg)} className="tactile flex h-8 items-center rounded-full bg-surface-sunken px-3 text-[13px] font-semibold">
-                  SMS
+                <a href={smsLink(o.phone, msg)} className="tactile flex h-8 items-center rounded-full bg-surface-sunken px-3 text-[13px] font-semibold urdu-ui">
+                  پیغام
                 </a>
               </div>
             );
@@ -96,24 +96,24 @@ export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => vo
 
         <div className="surface-card overflow-hidden">
           <div className="flex items-center justify-between px-4 pb-2 pt-3">
-            <span className="text-[15px] font-semibold">{xrayOn ? "2-day stockout velocity" : "Kam stock alerts"}</span>
-            <Pill tone="maal">{pulse.stockout.count} items</Pill>
+            <span className="text-[15px] font-semibold urdu-ui">{xrayOn ? "2-day stockout velocity" : "کم اسٹاک کی وارننگ"}</span>
+            <Pill tone="maal">{pulse.stockout.count} اشیاء</Pill>
           </div>
           {pulse.stockout.items.map((s) => (
             <div key={s.id} className="hairline-t flex items-center justify-between px-4 py-2.5">
               <div>
-                <div className="text-[15px] font-medium">{s.name}</div>
-                <div className="text-[12.5px] text-ink-2">
-                  {formatBaseQty(s.stock_base_units, s.base_unit)} left · ~{formatBaseQty(Math.round(s.daily_avg), s.base_unit)}/day
+                <div className="text-[15px] font-medium">{s.name_ur || s.name}</div>
+                <div className="text-[12.5px] text-ink-2 urdu-ui">
+                  {formatBaseQty(s.stock_base_units, s.base_unit)} باقی · تقریباً {formatBaseQty(Math.round(s.daily_avg), s.base_unit)} روزانہ
                 </div>
               </div>
-              <span className="num text-[15px] font-bold text-udhaar">{s.days_left}d</span>
+              <span className="num text-[15px] font-bold text-udhaar">{s.days_left} دن</span>
             </div>
           ))}
           {pulse.stockout.items.length > 0 && (
             <div className="p-3">
-              <a href={waLink(null, list)} target="_blank" rel="noreferrer" className="tactile flex h-11 items-center justify-center gap-2 rounded-[12px] bg-maal text-[15px] font-semibold text-white">
-                <MessageSquare size={16} strokeWidth={SW} /> Wholesale WhatsApp List
+              <a href={waLink(null, list)} target="_blank" rel="noreferrer" className="tactile flex h-11 items-center justify-center gap-2 rounded-[12px] bg-maal text-[15px] font-semibold text-white urdu-ui">
+                <MessageSquare size={16} strokeWidth={SW} /> ہول سیل واٹس ایپ فہرست
               </a>
             </div>
           )}
@@ -123,14 +123,14 @@ export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => vo
         {forecast && forecast.items.length > 0 && (
           <div className="surface-card overflow-hidden">
             <div className="flex items-center justify-between px-4 pb-2 pt-3">
-              <span className="text-[15px] font-semibold">Reorder Priority</span>
+              <span className="text-[15px] font-semibold urdu-ui">منگوانے کی ترجیح</span>
               <Pill tone="amber">
                 <TrendingDown size={11} strokeWidth={SW} className="inline mr-1" />
-                {formatRs(forecast.total_reorder_cost_paisa)} needed
+                {formatRs(forecast.total_reorder_cost_paisa)} درکار
               </Pill>
             </div>
-            <div className="px-4 pb-2 text-[12px] text-ink-2">
-              Galla mein: {formatRs(forecast.cash_available_paisa)} · {forecast.affordable_count}/{forecast.items.length} afford kiye ja sakte hain
+            <div className="px-4 pb-2 text-[12px] text-ink-2 urdu-ui">
+              گلے میں: {formatRs(forecast.cash_available_paisa)} · {forecast.affordable_count}/{forecast.items.length} اشیاء نقد منگوائی جا سکتی ہیں
             </div>
             {forecast.items.map((item) => {
               const canAfford = item.reorder_cost_paisa <= forecast.cash_available_paisa;
@@ -138,13 +138,13 @@ export function PulseSheet({ pulse, onClose }: { pulse: Pulse; onClose: () => vo
                 <div key={item.product_id} className="hairline-t flex items-center justify-between px-4 py-2.5">
                   <div className="min-w-0 flex-1">
                     <div className="text-[14px] font-medium">{item.name}</div>
-                    <div className="text-[12px] text-ink-2">
-                      {item.days_of_stock === 0 ? "Aaj khatam" : `${item.days_of_stock}d mein khatam`} · Daily profit at risk: {formatRs(item.daily_profit_at_risk_paisa)}
+                    <div className="text-[12px] text-ink-2 urdu-ui">
+                      {item.days_of_stock === 0 ? "آج ختم" : `${item.days_of_stock} دن میں ختم`} · روزانہ منافع خطرے میں: {formatRs(item.daily_profit_at_risk_paisa)}
                     </div>
                   </div>
                   <div className="text-right">
                     <div className={`num text-[14px] font-bold ${canAfford ? "text-cash" : "text-udhaar"}`}>{formatRs(item.reorder_cost_paisa)}</div>
-                    <div className="text-[11px] text-ink-2">{canAfford ? "✓ afford" : "✗ short"}</div>
+                    <div className="text-[11px] text-ink-2 urdu-ui">{canAfford ? "✓ گنجائش ہے" : "✗ رقم کم"}</div>
                   </div>
                 </div>
               );

@@ -180,6 +180,10 @@ export function tryLocalTurn(
   if (onlineNav) return { kind: "navigate", ...onlineNav, trace: makeTrace("navigate", null) };
   if (wadaDate) return null;
 
+  if (parsed.intent === "pulse") {
+    return { kind: "pulse", pulse: buildLocalPulse(state), trace: makeTrace("pulse", null) };
+  }
+
   if (parsed.intent === "payment") {
     if (!parsed.customer_mention || parsed.payment_amount_rupees === null || parsed.payment_amount_rupees <= 0 || parsed.number_unresolved) {
       return null;
@@ -213,12 +217,12 @@ export function tryLocalTurn(
     if (proposal.lines.length === 0) return null;
 
     const allExactCatalog = proposal.lines.every(
-      (l) => l.kind === "catalog" && (l.match?.score ?? 0) === 1 && !l.number_unresolved && l.price_known,
+      (l) => l.kind === "catalog" && (l.match?.score ?? 0) >= 0.9 && !l.number_unresolved && l.price_known,
     );
     if (!allExactCatalog) return null;
 
     if (parsed.customer_mention) {
-      if (!proposal.customer.selected_id || proposal.customer.ambiguous || (proposal.customer.candidates[0]?.score ?? 0) < 1) {
+      if (!proposal.customer.selected_id || proposal.customer.ambiguous || (proposal.customer.candidates[0]?.score ?? 0) < 0.9) {
         return null;
       }
     }

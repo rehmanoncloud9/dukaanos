@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Box, Camera, Droplets, Home, MessageSquare, Milk, Search, Sparkles, Volume2, Wheat } from "lucide-react";
+import { AlertCircle, Box, Camera, Droplets, Home, MessageSquare, Milk, Search, ShieldCheck, Volume2, Wheat } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CommitResponse, StateProduct } from "@/lib/api/contracts";
 import { api, friendlyError, newKey } from "@/lib/client/api";
@@ -22,7 +22,7 @@ const CATEGORY_META: Record<ProductCategory, { label: string; bg: string; fg: st
   grains: { label: "دالیں / اناج", bg: "bg-amber-bg", fg: "text-amber-ink", Icon: Wheat },
   liquids: { label: "تیل / مشروبات", bg: "bg-maal-bg", fg: "text-maal", Icon: Droplets },
   dairy: { label: "ڈیری / بیکری", bg: "bg-cash-bg", fg: "text-cash-ink", Icon: Milk },
-  cosmetics: { label: "کاسمیٹکس", bg: "bg-udhaar-bg", fg: "text-udhaar-ink", Icon: Sparkles },
+  cosmetics: { label: "کاسمیٹکس", bg: "bg-udhaar-bg", fg: "text-udhaar-ink", Icon: ShieldCheck },
   household: { label: "گھریلو سامان", bg: "bg-surface-sunken", fg: "text-ink-2", Icon: Home },
   packaged: { label: "پیکٹ سامان", bg: "bg-surface-sunken", fg: "text-ink", Icon: Box },
 };
@@ -141,7 +141,7 @@ export function MaalTab() {
   if (!state) return <div className="surface-card h-[400px] animate-pulse" />;
 
   return (
-    <div className="space-y-3 pb-24">
+    <div className="space-y-2.5 pb-4">
       {negative.map((p) => (
         <div key={p.id} className="flex items-center gap-2.5 rounded-[14px] bg-udhaar-bg px-3.5 py-2.5">
           <AlertCircle size={16} strokeWidth={1.75} className="shrink-0 text-udhaar-ink" />
@@ -291,7 +291,7 @@ export function MaalTab() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 text-[15.5px] font-semibold truncate">
                       <span className="truncate">{p.name_ur || p.name}</span>
-                      {p.is_quick_added && <Pill tone="amber" className="h-5 px-1.5 text-[10.5px]">مقدار گِنیں</Pill>}
+                      {p.is_quick_added && <Pill tone="amber" className="h-5 px-1.5 text-[10.5px]">اس چیز کا مال ابھی درج نہیں ہے</Pill>}
                     </div>
                     <div className="text-[12.5px] text-ink-2 num">
                       {xrayOn ? `خرید ${formatAmount(p.cost_price_paisa)} · ` : ""}قیمت {formatAmount(p.unit_price_paisa)} روپے
@@ -313,9 +313,10 @@ export function MaalTab() {
                   type="button"
                   aria-label="قیمت سنیں"
                   onClick={() => void speak(`${p.name_ur || p.name}، قیمت ${Math.round(p.unit_price_paisa / 100)} روپے، اسٹاک ${stockLabel(p)}۔`)}
-                  className="tactile grid h-11 w-11 shrink-0 place-items-center rounded-full bg-surface-sunken text-ink-2"
+                  className="audio-btn tactile shrink-0 urdu-ui"
                 >
-                  <Volume2 size={16} strokeWidth={SW} />
+                  <Volume2 size={14} strokeWidth={SW} />
+                  <span>سنیں</span>
                 </button>
               </div>
             );

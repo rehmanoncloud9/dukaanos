@@ -161,13 +161,13 @@ export function normalizeUrduNumberWords(input: string): string {
   const noMarks = normalizeUrduNumerals(input).replace(/[\u064B-\u065F\u0670]/g, "");
   const protectedText = noMarks.replace(/(?<=\d)[,.](?=\d)/g, (separator) => separator === "." ? "\uE000" : "\uE001");
   return protectedText
-    .split(/([\s,،;:!?؟.()\[\]{}+])/)
+    .split(/([\s,،;:!?؟.۔()\[\]{}+])/)
     .map((piece) => {
       const key = piece.toLowerCase();
       return URDU_WORDS[piece] ?? ROMAN_WORDS[key] ?? piece;
     })
     .join("")
-    .replace(/[،;:!?؟.()\[\]{}+]/g, " ")
+    .replace(/[،;:!?؟.۔()\[\]{}+]/g, " ")
     .replace(/\uE000/g, ".")
     .replace(/\uE001/g, ",")
     .replace(/\s+/g, " ")

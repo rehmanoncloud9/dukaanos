@@ -114,23 +114,24 @@ export function KhataTab() {
   if (!state) return <div className="surface-card h-[400px] animate-pulse" />;
 
   return (
-    <div className="space-y-3 pb-24">
-      <div className="surface-card p-4">
+    <div className="space-y-2.5 pb-4">
+      <div className="surface-card p-4 pose-enter">
         <div className="flex items-center justify-between gap-2">
           <div className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("totalReceivable", lang)}</div>
           <button
             type="button"
-            aria-label={tr("listen", lang)}
+            aria-label="کل ادھار سنیں"
             onClick={() => void speak(`کل ادھار ${Math.round(receivable / 100)} روپے لینا ہے، ${active.length} کھاتوں پر۔`)}
-            className="tactile inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[11.5px] font-semibold text-ink-2"
+            className="audio-btn tactile urdu-ui"
           >
-            <Volume2 size={12} strokeWidth={1.75} /> {tr("listen", lang)}
+            <Volume2 size={13} strokeWidth={1.75} />
+            <span>سنیں</span>
           </button>
         </div>
-        <Money paisa={receivable} className="mt-1 block text-[34px] font-bold leading-[38px] tracking-[-0.03em] text-udhaar" />
-        <div className="hairline-t mt-3 flex justify-between pt-3 text-[14px]">
-          <span className="text-ink-2" dir="auto">{active.length} {tr("activeAccounts", lang)}</span>
-          <span className="font-semibold text-udhaar" dir="auto">{overdue.length} {tr("overdue", lang)}</span>
+        <Money paisa={receivable} className="mt-1.5 block text-[34px] font-bold leading-[38px] tracking-[-0.03em] text-udhaar" />
+        <div className="hairline-t mt-3 flex justify-between pt-3 text-[13.5px]">
+          <span className="inline-flex items-center gap-1 rounded-full bg-surface-sunken px-2.5 py-0.5 font-medium text-ink-2" dir="auto">{active.length} {tr("activeAccounts", lang)}</span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-udhaar-bg px-2.5 py-0.5 font-semibold text-udhaar-ink" dir="auto">{overdue.length} {tr("overdue", lang)}</span>
         </div>
       </div>
 
@@ -272,9 +273,10 @@ function RemindToday({ customers, bharosa, shop }: { customers: StateCustomer[];
                 logReminder(shopId, c.id, "voice");
                 void speak(voiceMsg);
               }}
-              className="tactile grid h-12 w-12 shrink-0 place-items-center rounded-[12px] bg-surface-sunken text-ink"
+              className="audio-btn tactile h-11 shrink-0 urdu-ui"
             >
-              <Volume2 size={18} strokeWidth={1.75} />
+              <Volume2 size={15} strokeWidth={1.75} />
+              <span>سنیں</span>
             </button>
             <button onClick={() => void shareVoiceReminder(c, voiceMsg)} disabled={busyId !== null}
               className="tactile flex h-12 shrink-0 items-center gap-1.5 rounded-[12px] bg-cash px-3.5 text-[13.5px] font-semibold text-white urdu-ui disabled:opacity-60">
@@ -394,9 +396,10 @@ function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: Bh
         <button
           type="button"
           onClick={() => void speak(customerOverviewSpeech(c, b))}
-          className="tactile flex h-9 items-center gap-1 rounded-full border border-black/10 bg-surface-sunken px-3 text-[13px] font-semibold text-ink"
+          className="audio-btn tactile h-9 urdu-ui"
         >
-          <Volume2 size={13} strokeWidth={1.75} /> {tr("listen", lang)}
+          <Volume2 size={13} strokeWidth={1.75} />
+          <span>سنیں</span>
         </button>
       </div>
     </div>
@@ -522,20 +525,20 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
                 <Volume2 size={13} strokeWidth={1.75} /> {tr("listen", lang)}
               </button>
               {c.phone && (
-                <a href={`tel:${c.phone}`} className="tactile inline-flex h-9 items-center gap-1 rounded-full bg-cash-bg px-3 text-[12.5px] font-semibold text-cash-ink">
-                  <Phone size={13} strokeWidth={1.75} /> Call
+                <a href={`tel:${c.phone}`} className="tactile inline-flex h-9 items-center gap-1 rounded-full bg-cash-bg px-3 text-[12.5px] font-semibold text-cash-ink urdu-ui">
+                  <Phone size={13} strokeWidth={1.75} /> فون کریں
                 </a>
               )}
             </div>
           </div>
-          <div className="text-[13px] text-ink-2">
-            {c.role_tag ?? "Customer"} · Last paid {shortDate(c.last_paid_at)}
-            {c.days_overdue ? ` · oldest unpaid ${c.days_overdue}d` : ""}
+          <div className="text-[13px] text-ink-2 urdu-ui">
+            {c.role_tag ?? "گاہک"} · آخری وصولی {shortDate(c.last_paid_at)}
+            {c.days_overdue ? ` · ${c.days_overdue} دن سے باقی` : ""}
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <PrimaryButton tone="cash" onClick={() => openSheet({ type: "wasooli", customerId: c.id })}>
-            Wasooli
+            وصولی درج کریں
           </PrimaryButton>
           <SecondaryButton
             onClick={() =>
@@ -555,25 +558,25 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
                 },
               })
             }
-            className="flex items-center justify-center gap-1.5"
+            className="flex items-center justify-center gap-1.5 urdu-ui"
           >
-            <Calendar size={14} strokeWidth={1.75} /> Set Wada Date
+            <Calendar size={14} strokeWidth={1.75} /> وعدے کی تاریخ
           </SecondaryButton>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => void handleKhataLink("wa")}
             disabled={linkBusy !== null}
-            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-cash/30 bg-cash-bg px-3 text-[13px] font-semibold text-cash-ink"
+            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-cash/30 bg-cash-bg px-3 text-[13px] font-semibold text-cash-ink urdu-ui"
           >
             {linkBusy === "wa" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />}
-            WhatsApp Statement
+            واٹس ایپ کھاتہ
           </button>
           <button
             onClick={() => openSheet({ type: "return", customerId: c.id })}
-            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13px] font-semibold"
+            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13px] font-semibold urdu-ui"
           >
-            <RotateCcw size={14} strokeWidth={1.75} /> Item Return
+            <RotateCcw size={14} strokeWidth={1.75} /> سامان واپسی
           </button>
         </div>
 

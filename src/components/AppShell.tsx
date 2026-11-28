@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Camera, Mic, Package, QrCode, WifiOff } from "lucide-react";
+import { BookOpen, Camera, Mic, Package, QrCode, Settings, WifiOff } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { newKey } from "@/lib/client/api";
@@ -8,7 +8,7 @@ import { tr } from "@/lib/client/i18n";
 import { DukaanProvider, useDukaan, type Tab } from "@/lib/client/store";
 import { CustomerSheet, KhataTab } from "./KhataTab";
 import { MaalTab, ProductSheet } from "./MaalTab";
-import { MunshiTab } from "./MunshiTab";
+import { MunshiDock, MunshiTab } from "./MunshiTab";
 import { CreateShop, Loading, SetupNeeded, Splash } from "./Onboarding";
 import { InsightsSheet } from "./InsightsSheet";
 import { EodSheet } from "./EodSheet";
@@ -34,24 +34,33 @@ export function DukaanApp() {
 }
 
 function Gate() {
-  const { configured, authReady, session, shops } = useDukaan();
+  const { authReady, session, shops } = useDukaan();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  if (!mounted) return <Loading />;
-  if (!configured) return <SetupNeeded />;
-  if (!authReady) return <Loading />;
+  if (!mounted) return <div className="phone-stage"><div className="phone-frame"><Loading /></div></div>;
+  if (!authReady) return <div className="phone-stage"><div className="phone-frame"><Loading /></div></div>;
   if (!session) return (
-    <>
-      <Splash />
-      <Toasts />
-    </>
+    <div className="phone-stage">
+      <div className="phone-frame">
+        <div className="phone-notch" aria-hidden="true"><span className="phone-notch-pill" /></div>
+        <div className="no-scrollbar flex-1 overflow-y-auto">
+          <Splash />
+        </div>
+        <Toasts />
+      </div>
+    </div>
   );
-  if (shops === null) return <Loading />;
+  if (shops === null) return <div className="phone-stage"><div className="phone-frame"><Loading /></div></div>;
   if (shops.length === 0) return (
-    <>
-      <CreateShop />
-      <Toasts />
-    </>
+    <div className="phone-stage">
+      <div className="phone-frame">
+        <div className="phone-notch" aria-hidden="true"><span className="phone-notch-pill" /></div>
+        <div className="no-scrollbar flex-1 overflow-y-auto">
+          <CreateShop />
+        </div>
+        <Toasts />
+      </div>
+    </div>
   );
   return <Shell />;
 }
@@ -86,22 +95,32 @@ function Shell() {
   }, [openSheet, setTab]);
 
   return (
-    <>
-      <div className="mx-auto min-h-dvh max-w-[430px] px-4 pb-[160px]">
+    <div className="phone-stage">
+      <div className="phone-frame">
+        <div className="phone-notch" aria-hidden="true">
+          <span className="phone-notch-pill" />
+        </div>
         <Header />
-        <JudgeBanner />
-        <OfflineBanner />
-        <PendingSyncBanner />
-        {stateError && !state && <div role="alert" aria-live="assertive" className="mb-3 rounded-[12px] bg-udhaar-bg px-3 py-2 text-[14px] text-udhaar-ink">{stateError}</div>}
-        {tab === "munshi" && <MunshiTab />}
-        {tab === "khata" && <KhataTab />}
-        {tab === "maal" && <MaalTab />}
+        <div className="no-scrollbar relative flex-1 overflow-y-auto px-3.5 pb-4 pt-1">
+          <JudgeBanner />
+          <OfflineBanner />
+          <PendingSyncBanner />
+          {stateError && !state && (
+            <div role="alert" aria-live="assertive" className="mb-3 rounded-[12px] bg-udhaar-bg px-3 py-2 text-[14px] text-udhaar-ink">
+              {stateError}
+            </div>
+          )}
+          {tab === "munshi" && <MunshiTab />}
+          {tab === "khata" && <KhataTab />}
+          {tab === "maal" && <MaalTab />}
+        </div>
+        {tab === "munshi" && <MunshiDock />}
+        <TabBar />
+        <UndoToast />
+        <Toasts />
       </div>
-      <TabBar />
-      <UndoToast />
-      <Toasts />
       <SheetRouter />
-    </>
+    </div>
   );
 }
 
@@ -132,59 +151,57 @@ function Header() {
   );
 
   return (
-    <header className="chrome-blur sticky top-0 z-20 -mx-4 mb-3 flex h-[60px] items-center gap-2 px-4">
-      {tab === "munshi" && (
-        <>
-          {titleButton(name)}
-          {reviewCount > 0 && (
-            <button
-              onClick={() => void openQueuedReview()}
-              aria-label={`Open ${reviewCount} queued review items`}
-              className="tactile inline-flex h-7 shrink-0 items-center gap-1 rounded-full bg-amber-bg px-2.5 text-[12px] font-semibold text-amber-ink"
-            >
-              Review {reviewCount}
-            </button>
-          )}
-          {helperMode && !xrayOn && (
-            <span className="ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-amber-bg px-2.5 text-[11px] font-semibold text-amber-ink">
-              Helper Mode
-            </span>
-          )}
-          {xrayOn && (
-            <button
-              aria-label="Open X-Ray Inspector"
-              aria-pressed={xrayOn}
-              onClick={() => openSheet({ type: "xray" })}
-              className="tactile ml-auto h-7 shrink-0 rounded-full border border-ink bg-ink px-2.5 font-mono text-[12.5px] font-semibold text-white"
-            >
-              {"</>"} X-Ray
-            </button>
-          )}
-        </>
-      )}
-      {tab === "khata" && (
-        <>
-          {titleButton(tr("khata", lang))}
-          {helperMode && !xrayOn && (
-            <span className="ml-auto inline-flex h-6 shrink-0 items-center rounded-full bg-amber-bg px-2.5 text-[11px] font-semibold text-amber-ink">
-              Helper Mode
-            </span>
-          )}
-          {xrayOn && (
-            <button onClick={() => openSheet({ type: "passport" })} className="tactile ml-auto flex h-8 items-center gap-1.5 rounded-full bg-ink px-3 text-[13.5px] font-semibold text-white">
-              <QrCode size={14} strokeWidth={SW} /> SMEConnect
-            </button>
-          )}
-        </>
-      )}
-      {tab === "maal" && (
-        <>
-          {titleButton(tr("maal", lang))}
-          <button onClick={() => openSheet({ type: "parchi" })} className={cx("tactile ml-auto flex h-8 items-center gap-1.5 rounded-full bg-maal px-3 text-[13.5px] font-semibold text-white", lang === "ur" && "urdu-ui")} dir="auto">
+    <header className="chrome-blur hairline-b z-20 flex h-[56px] shrink-0 items-center justify-between gap-2 px-4">
+      <div className="flex min-w-0 items-center gap-2">
+        {tab === "munshi" && titleButton(name)}
+        {tab === "khata" && titleButton(tr("khata", lang))}
+        {tab === "maal" && titleButton(tr("maal", lang))}
+        {tab === "munshi" && reviewCount > 0 && (
+          <button
+            onClick={() => void openQueuedReview()}
+            aria-label={`Open ${reviewCount} queued review items`}
+            className="tactile inline-flex h-7 shrink-0 items-center gap-1 rounded-full bg-amber-bg px-2.5 text-[12px] font-semibold text-amber-ink"
+          >
+            {lang === "ur" ? `${reviewCount} تصدیق باقی` : `Review ${reviewCount}`}
+          </button>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1.5">
+        {helperMode && !xrayOn && (
+          <span className="inline-flex h-7 shrink-0 items-center rounded-full bg-amber-bg px-2.5 text-[11px] font-semibold text-amber-ink">
+            {lang === "ur" ? "مددگار" : "Helper"}
+          </span>
+        )}
+        {tab === "munshi" && xrayOn && (
+          <button
+            aria-label="Open X-Ray Inspector"
+            aria-pressed={xrayOn}
+            onClick={() => openSheet({ type: "xray" })}
+            className="tactile h-8 shrink-0 rounded-full border border-ink bg-ink px-2.5 font-mono text-[12px] font-semibold text-white"
+          >
+            {"</>"} X-Ray
+          </button>
+        )}
+        {tab === "khata" && xrayOn && (
+          <button onClick={() => openSheet({ type: "passport" })} className="tactile flex h-8 items-center gap-1.5 rounded-full bg-ink px-3 text-[13px] font-semibold text-white">
+            <QrCode size={14} strokeWidth={SW} /> SMEConnect
+          </button>
+        )}
+        {tab === "maal" && (
+          <button onClick={() => openSheet({ type: "parchi" })} className={cx("tactile flex h-8 items-center gap-1.5 rounded-full bg-maal px-3 text-[13px] font-semibold text-white", lang === "ur" && "urdu-ui")} dir="auto">
             <Camera size={14} strokeWidth={SW} /> {tr("scanParchi", lang)}
           </button>
-        </>
-      )}
+        )}
+        <button
+          type="button"
+          onClick={() => openSheet({ type: "settings" })}
+          aria-label={tr("settings", lang)}
+          className="tactile grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface-sunken text-ink-2"
+        >
+          <Settings size={17} strokeWidth={SW} />
+        </button>
+      </div>
     </header>
   );
 }
@@ -250,20 +267,28 @@ function TabBar() {
     { id: "maal", label: tr("maal", lang), Icon: Package },
   ];
   return (
-    <nav aria-label="بنیادی مینو" className="tabbar-blur hairline-t fixed inset-x-0 bottom-0 z-40 pb-safe">
-      <div role="tablist" className="mx-auto grid h-[64px] max-w-[430px] grid-cols-3">
-        {items.map(({ id, label, Icon }) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={tab === id}
-            onClick={() => setTab(id)}
-            className={cx("flex min-h-[56px] flex-col items-center justify-center gap-1 text-[12px] font-bold", tab === id ? "text-ink" : "text-ink-3")}
-          >
-            <Icon size={22} strokeWidth={SW} />
-            <span dir="auto" className="urdu-ui text-[13px] leading-none">{label}</span>
-          </button>
-        ))}
+    <nav aria-label="بنیادی مینو" className="tabbar-blur hairline-t z-40 shrink-0 pb-safe">
+      <div role="tablist" className="grid h-[64px] w-full grid-cols-3 px-2">
+        {items.map(({ id, label, Icon }) => {
+          const active = tab === id;
+          return (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(id)}
+              className={cx(
+                "tactile flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-[14px] text-[12px] font-bold transition-colors",
+                active ? "text-ink" : "text-ink-3",
+              )}
+            >
+              <span className={cx("grid h-7 w-12 place-items-center rounded-full transition-colors", active && "bg-surface-sunken")}>
+                <Icon size={20} strokeWidth={active ? 2.1 : SW} />
+              </span>
+              <span dir="auto" className={cx("text-[12.5px] leading-none", lang === "ur" && "urdu-ui")}>{label}</span>
+            </button>
+          );
+        })}
       </div>
     </nav>
   );
@@ -274,7 +299,7 @@ function UndoToast() {
   if (!undo) return null;
   const left = Math.max(0, undo.until - Date.now());
   return (
-    <div role="status" aria-live="polite" className="fixed inset-x-0 bottom-[156px] z-[55] mx-auto max-w-[430px] px-4">
+    <div role="status" aria-live="polite" className="absolute inset-x-0 bottom-[148px] z-[55] px-4">
       <div dir="rtl" className="relative flex h-12 items-center overflow-hidden rounded-xl bg-[#0A0A0A] pr-4 pl-1 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
         <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium urdu-ui">{undo.message}</span>
         <button onClick={() => void doUndo()} className="tactile h-10 rounded-lg px-3 text-[14px] font-bold text-[#34D399] urdu-ui">
@@ -289,7 +314,7 @@ function UndoToast() {
 function Toasts() {
   const { toasts } = useDukaan();
   return (
-    <div aria-live="polite" className="pointer-events-none fixed inset-x-0 top-3 z-[60] mx-auto flex max-w-[430px] flex-col gap-2 px-4">
+    <div aria-live="polite" className="pointer-events-none absolute inset-x-0 top-14 z-[60] flex flex-col gap-2 px-4">
       {toasts.map((t) => (
         <div
           key={t.id}
@@ -300,7 +325,7 @@ function Toasts() {
             t.tone === "ok" && "bg-cash-bg text-cash-ink",
             t.tone === "warn" && "bg-amber-bg text-amber-ink",
             t.tone === "err" && "bg-udhaar-bg text-udhaar-ink",
-            t.tone === "info" && "bg-surface text-ink",
+            t.tone === "info" && "bg-surface text-ink border border-black/10",
           )}
         >
           <span className="flex-1">{t.message}</span>
