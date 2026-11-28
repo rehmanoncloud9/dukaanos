@@ -15,7 +15,7 @@
 | **Track** | FinTech & Financial Inclusion *(also applies Urdu & Regional Tech)* |
 | **Public Repository** | [github.com/rehmanoncloud9/dukaanos](https://github.com/rehmanoncloud9/dukaanos) |
 | **Live Web App** | [dukaanos-xi.vercel.app](https://dukaanos-xi.vercel.app) *(verified live in Private/Incognito window)* |
-| **Demo Video (≤ 2 min)** | *Add unlisted YouTube / Google Drive link here* |
+| **Demo Video (≤ 2 min)** | [youtu.be/lPcsUBMmyYs](https://youtu.be/lPcsUBMmyYs) *(Unlisted walkthrough, 1:55)* |
 | **Pitch Deck (PDF / PPTX)** | *Add public PDF / PPTX link here* |
 | **Design System** | [`DESIGN.md`](DESIGN.md) |
 | **Security Policy** | [`SECURITY.md`](SECURITY.md) |
