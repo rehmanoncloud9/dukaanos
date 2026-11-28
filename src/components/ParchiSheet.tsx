@@ -3,7 +3,7 @@
 import { AlertTriangle, Camera, Check, ChevronDown, ChevronUp, FileImage, Pencil, Plus, ShieldAlert, Trash2, Volume2, Wand2, ZoomIn } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CommitResponse } from "@/lib/api/contracts";
-import type { ParchiParseResult, ParchiReviewLine } from "@/lib/ai/parchi";
+import { interpretParchiOcr, type ParchiParseResult, type ParchiReviewLine } from "@/lib/ai/parchi";
 import { api, friendlyError, newKey } from "@/lib/client/api";
 import { renderStagedParchi } from "@/lib/client/canvas";
 import { prepareImage, type PreparedImage } from "@/lib/client/image";
@@ -80,7 +80,7 @@ function blankResult(): ParchiParseResult & { api_ms: number } {
 }
 
 export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; autoSample?: boolean }) {
-  const { state, commitPurchase, refresh, toast, openSheet, xrayOn } = useDukaan();
+  const { state, commitPurchase, refresh, toast, openSheet, xrayOn, configured } = useDukaan();
   const [updatingRetailId, setUpdatingRetailId] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>("capture");
   const [img, setImg] = useState<PreparedImage | null>(null);
@@ -132,22 +132,42 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
       const form = new FormData();
       form.append("image", new File([prepared.blob], "parchi.jpg", { type: "image/jpeg" }));
       let result: ParchiParseResult & { api_ms: number };
-      try {
-        result = await api<ParchiParseResult & { api_ms: number }>("/api/parchi/parse", { form, timeoutMs: 60_000 });
-      } catch (firstErr) {
-        // Hedged 503 retry: single retry with 800ms ± 200ms jittered backoff (Phase C)
-        const isTransient = firstErr instanceof Error && /503|504|UNAVAILABLE|timeout/i.test(firstErr.message);
-        if (isTransient) {
-          await new Promise((r) => setTimeout(r, 600 + Math.random() * 400));
-          try {
-            const form2 = new FormData();
-            form2.append("image", new File([prepared.blob], "parchi.jpg", { type: "image/jpeg" }));
-            result = await api<ParchiParseResult & { api_ms: number }>("/api/parchi/parse", { form: form2, timeoutMs: 60_000 });
-          } catch {
+      if (!configured) {
+        const parsed = interpretParchiOcr(
+          {
+            supplier_name: "Al-Madina Wholesale",
+            bill_date: "24/11",
+            legibility: "good",
+            bill_total_raw: "13970",
+            lines: [
+              { name_raw: "Surf Excel 1kg", quantity_raw: "10", unit_raw: "pcs", rate_raw: "480", line_total_raw: "4800", confidence: 0.96 },
+              { name_raw: "Dalda Oil 5L", quantity_raw: "3", unit_raw: "tin", rate_raw: "2450", line_total_raw: "7650", confidence: 0.95 },
+              { name_raw: "Tapal Danedar 190g", quantity_raw: "4", unit_raw: "pcs", rate_raw: "380", line_total_raw: "1520", confidence: 0.94 },
+            ],
+          },
+          products,
+          "local-ocr-demo",
+          18,
+        );
+        result = { ...parsed, api_ms: 18 };
+      } else {
+        try {
+          result = await api<ParchiParseResult & { api_ms: number }>("/api/parchi/parse", { form, timeoutMs: 60_000 });
+        } catch (firstErr) {
+          // Hedged 503 retry: single retry with 800ms ± 200ms jittered backoff (Phase C)
+          const isTransient = firstErr instanceof Error && /503|504|UNAVAILABLE|timeout/i.test(firstErr.message);
+          if (isTransient) {
+            await new Promise((r) => setTimeout(r, 600 + Math.random() * 400));
+            try {
+              const form2 = new FormData();
+              form2.append("image", new File([prepared.blob], "parchi.jpg", { type: "image/jpeg" }));
+              result = await api<ParchiParseResult & { api_ms: number }>("/api/parchi/parse", { form: form2, timeoutMs: 60_000 });
+            } catch {
+              throw firstErr;
+            }
+          } else {
             throw firstErr;
           }
-        } else {
-          throw firstErr;
         }
       }
       setRes(result);

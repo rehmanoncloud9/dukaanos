@@ -11,6 +11,7 @@ import { useDukaan } from "@/lib/client/store";
 import { formatBaseQty } from "@/lib/domain/desi-units";
 import { formatRs } from "@/lib/domain/money";
 import type { SaleProposal } from "@/lib/domain/types";
+import { buildLocalPulse } from "@/lib/client/local-turn";
 import { MicButton } from "./MicButton";
 import { AajKiSalahCard } from "./AajKiSalahCard";
 import { VirtualList } from "./VirtualList";
@@ -165,11 +166,14 @@ export function MunshiTab() {
   }, [shopId]);
 
   useEffect(() => {
-    if (!head) return;
-    api<Pulse>("/api/shop/pulse").then(setPulse).catch(() => undefined);
+    if (!head || !state) return;
+    setPulse(buildLocalPulse(state));
+    if (shopId !== "local-demo-shop") {
+      api<Pulse>("/api/shop/pulse").then(setPulse).catch(() => undefined);
+    }
     setExtraFeed([]);
     setNextSeq(null);
-  }, [head]);
+  }, [head, state, shopId]);
 
   const dailySummaryScript = state
     ? (() => {

@@ -14,6 +14,7 @@ import { applyOptimisticOverlay, dequeue, dequeueCommit, enqueue, enqueueCommit,
 import { browserSupabase, supabaseConfigured } from "./supabase";
 import { normalizePkPhone } from "@/lib/domain/starter-catalog";
 import { loadSnapshot, saveSnapshot, SHOPS_SNAPSHOT, stateSnapshotKey } from "./offline-cache";
+import { applyLocalDemoMutation, buildLocalDemoShopState, LOCAL_DEMO_SHOP_ID } from "./local-demo";
 import { tryLocalTurn } from "./local-turn";
 
 export type Tab = "munshi" | "khata" | "maal";
@@ -202,7 +203,45 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       void navigator.storage.persist().catch(() => undefined);
     }
     if (!configured) {
-      setAuthReady(true);
+      const demoShop: MyShop = {
+        id: LOCAL_DEMO_SHOP_ID,
+        name: "Bismillah Kiryana",
+        city: "G-10 Markaz, Islamabad",
+        role: "owner",
+        is_demo_shop: true,
+        is_stage_shop: false,
+      };
+      const localSession = {
+        access_token: "local-demo-token",
+        refresh_token: "local-demo-refresh",
+        expires_in: 86400,
+        token_type: "bearer",
+        user: {
+          id: "local-demo-user",
+          aud: "authenticated",
+          role: "authenticated",
+          email: "demo@dukaanos.local",
+          app_metadata: {},
+          user_metadata: {},
+          created_at: new Date().toISOString(),
+        },
+      } as unknown as Session;
+      localStorage.setItem(SHOP_KEY, LOCAL_DEMO_SHOP_ID);
+      setApiShop(LOCAL_DEMO_SHOP_ID);
+      shopRef.current = LOCAL_DEMO_SHOP_ID;
+      setSession(localSession);
+      setShops([demoShop]);
+      setShopIdState(LOCAL_DEMO_SHOP_ID);
+      void loadSnapshot<ShopState>(stateSnapshotKey(LOCAL_DEMO_SHOP_ID)).then((cached) => {
+        if (cached && cached.data.products.length > 0) {
+          setRawState(cached.data);
+        } else {
+          const seeded = buildLocalDemoShopState();
+          setRawState(seeded);
+          void saveSnapshot(stateSnapshotKey(LOCAL_DEMO_SHOP_ID), seeded);
+        }
+        setAuthReady(true);
+      });
       return;
     }
     const sb = browserSupabase();
@@ -222,6 +261,21 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   }, [configured]);
 
   const reloadShops = useCallback(async () => {
+    if (!configured || shopRef.current === LOCAL_DEMO_SHOP_ID) {
+      const demoShop: MyShop = {
+        id: LOCAL_DEMO_SHOP_ID,
+        name: "Bismillah Kiryana",
+        city: "G-10 Markaz, Islamabad",
+        role: "owner",
+        is_demo_shop: true,
+        is_stage_shop: false,
+      };
+      setShops([demoShop]);
+      setApiShop(LOCAL_DEMO_SHOP_ID);
+      shopRef.current = LOCAL_DEMO_SHOP_ID;
+      setShopIdState(LOCAL_DEMO_SHOP_ID);
+      return;
+    }
     let list: MyShop[];
     try {
       list = await api<MyShop[]>("/api/system/shops", { shop: false });
@@ -242,7 +296,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     } else {
       setShopIdState(null);
     }
-  }, []);
+  }, [configured]);
 
   const userId = session?.user.id;
   useEffect(() => {
@@ -290,6 +344,18 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     if (!shopRef.current) return;
     const shop = shopRef.current;
+    if (!configured || shop === LOCAL_DEMO_SHOP_ID) {
+      const cached = await loadSnapshot<ShopState>(stateSnapshotKey(LOCAL_DEMO_SHOP_ID));
+      if (cached && cached.data.products.length > 0) {
+        setRawState((cur) => cur ?? cached.data);
+      } else {
+        const seeded = buildLocalDemoShopState();
+        setRawState(seeded);
+        void saveSnapshot(stateSnapshotKey(LOCAL_DEMO_SHOP_ID), seeded);
+      }
+      setStateError(null);
+      return;
+    }
     try {
       const s = await api<ShopState>("/api/shop/state");
       setRawState(s);
@@ -304,7 +370,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       }
       setStateError(friendlyError(e));
     }
-  }, []);
+  }, [configured]);
 
   const updatePending = useCallback(async () => {
     if (!shopRef.current) return;
@@ -371,6 +437,14 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       rpc_ms: 0,
     });
 
+    if (!configured || shop === LOCAL_DEMO_SHOP_ID) {
+      const current = rawState ?? buildLocalDemoShopState();
+      const { nextState, response } = applyLocalDemoMutation(current, endpoint, payload, idempotencyKey);
+      setRawState(nextState);
+      void saveSnapshot(stateSnapshotKey(LOCAL_DEMO_SHOP_ID), nextState);
+      return { res: response, queued: false };
+    }
+
     if (isOffline() && shop) {
       try {
         await enqueueCommit({ idempotency_key: idempotencyKey, shop_id: shop, endpoint, payload, optimistic });
@@ -397,7 +471,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       }
       throw e;
     }
-  }, [updatePending, toast]);
+  }, [updatePending, toast, configured, rawState]);
 
   const confirmSale = useCallback(async (p: SaleProposal, key: string, trace: TurnTrace | null, opts?: { auto?: boolean }) => {
     const base = toCommitInput(p, key, {});
@@ -650,6 +724,26 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       toast(input.blob ? "انٹرنیٹ نہیں — آواز فون میں محفوظ ہے" : "انٹرنیٹ نہیں — بات فون میں محفوظ ہے", "info");
       if (typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") !== "0") void speak(savedCopy);
     };
+    if (!configured || shop === LOCAL_DEMO_SHOP_ID) {
+      if (input.text) {
+        const local = tryLocalTurn(input.text, state, { offline: true });
+        if (local) {
+          if (
+            local.kind === "sale" &&
+            local.proposal.credit_paisa === 0 &&
+            local.proposal.discount_paisa === 0 &&
+            local.proposal.lines.every((l) => l.kind === "catalog" && (l.match?.score ?? 0) >= 0.9 && l.price_known && !l.number_unresolved)
+          ) {
+            await confirmSale(local.proposal, key, local.trace, { auto: true });
+            return;
+          }
+          await handleTurn(local, key);
+          return;
+        }
+      }
+      toast("بات واضح نہیں ہوئی — دوبارہ بولیں یا لکھیں", "warn");
+      return;
+    }
     if (isOffline()) {
       if (input.text && !input.blob) {
         const local = tryLocalTurn(input.text, state, { offline: true });
@@ -694,7 +788,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     } finally {
       setThinking(false);
     }
-  }, [confirmSale, postTurn, handleTurn, toast, updatePending, state]);
+  }, [confirmSale, postTurn, handleTurn, toast, updatePending, state, configured]);
 
   const openQueuedReview = useCallback(async (key?: string) => {
     const shop = shopRef.current;
@@ -799,7 +893,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     void refresh();
     void updatePending().then(() => flushRef.current());
     const onVisible = () => {
-      if (document.visibilityState !== "visible" || isOffline()) return;
+      if (document.visibilityState !== "visible" || isOffline() || !configured || shopId === LOCAL_DEMO_SHOP_ID) return;
       const headSeq = headSeqRef.current;
       if (typeof headSeq === "number") {
         void api<{ items: Array<{ seq: number }> }>("/api/shop/feed?limit=1")
@@ -813,7 +907,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [shopId, refresh, updatePending]);
+  }, [shopId, refresh, updatePending, configured]);
 
   useEffect(() => {
     if (!undo) return;
@@ -823,6 +917,16 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
 
   /* ── sign-in flows (Flow 1) ─────────────────────────────────────────── */
   const signInSandbox = useCallback(async (turnstileToken?: string) => {
+    if (!configured) {
+      const seeded = buildLocalDemoShopState();
+      localStorage.setItem(SHOP_KEY, LOCAL_DEMO_SHOP_ID);
+      setApiShop(LOCAL_DEMO_SHOP_ID);
+      shopRef.current = LOCAL_DEMO_SHOP_ID;
+      setShopIdState(LOCAL_DEMO_SHOP_ID);
+      setRawState(seeded);
+      void saveSnapshot(stateSnapshotKey(LOCAL_DEMO_SHOP_ID), seeded);
+      return;
+    }
     const r = await api<{ email: string; password: string; shop_id: string }>("/api/demo/sandbox", {
       json: turnstileToken ? { turnstile_token: turnstileToken } : {},
       auth: false,
@@ -832,7 +936,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(SHOP_KEY, r.shop_id);
     const { error } = await browserSupabase().auth.signInWithPassword({ email: r.email, password: r.password });
     if (error) throw new Error(error.message);
-  }, []);
+  }, [configured]);
 
   const signInPassword = useCallback(async (email: string, password: string) => {
     const { error } = await browserSupabase().auth.signInWithPassword({ email, password });
@@ -863,11 +967,20 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    if (!configured || shopRef.current === LOCAL_DEMO_SHOP_ID) {
+      const fresh = buildLocalDemoShopState();
+      setRawState(fresh);
+      void saveSnapshot(stateSnapshotKey(LOCAL_DEMO_SHOP_ID), fresh);
+      setSheet(null);
+      setLastCommit(null);
+      toast("ڈیمو دکان دوبارہ تازہ ہو گئی ✓", "ok");
+      return;
+    }
     await browserSupabase().auth.signOut();
     localStorage.removeItem(SHOP_KEY);
     setSheet(null);
     setLastCommit(null);
-  }, []);
+  }, [configured, toast]);
 
   const createShop = useCallback(async (b: { name: string; owner_name?: string; phone?: string; city?: string; seed_starter?: boolean }) => {
     const r = await api<{ shop_id: string }>("/api/system/shops", { json: b, shop: false });

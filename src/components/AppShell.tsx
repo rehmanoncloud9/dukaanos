@@ -34,11 +34,10 @@ export function DukaanApp() {
 }
 
 function Gate() {
-  const { configured, authReady, session, shops } = useDukaan();
+  const { authReady, session, shops } = useDukaan();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) return <div className="phone-stage"><div className="phone-frame"><Loading /></div></div>;
-  if (!configured) return <div className="phone-stage"><div className="phone-frame"><SetupNeeded /></div></div>;
   if (!authReady) return <div className="phone-stage"><div className="phone-frame"><Loading /></div></div>;
   if (!session) return (
     <div className="phone-stage">
