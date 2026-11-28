@@ -18,6 +18,24 @@ const SILENCE_MS = 1350;
 const MIN_SPEECH_MS = 700;
 const MAX_SEGMENT_MS = 14_000;
 
+interface SpeechRecognitionInstance extends EventTarget {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((e: Event) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+}
+
+function getSpeechRecognition(): (new () => SpeechRecognitionInstance) | null {
+  if (typeof window === "undefined") return null;
+  return (window as unknown as Record<string, unknown>).SpeechRecognition as (new () => SpeechRecognitionInstance)
+    ?? (window as unknown as Record<string, unknown>).webkitSpeechRecognition as (new () => SpeechRecognitionInstance)
+    ?? null;
+}
+
 export function WalkieTalkieBar() {
   const { submitTurn, thinking, undo, doUndo, toast } = useDukaan();
   const [active, setActive] = useState(false);
@@ -29,6 +47,8 @@ export function WalkieTalkieBar() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const srRef = useRef<SpeechRecognitionInstance | null>(null);
+  const lastTranscriptRef = useRef<string>("");
   const chunksRef = useRef<BlobPart[]>([]);
   const speechStartRef = useRef<number>(0);
   const lastVoiceRef = useRef<number>(0);
@@ -52,6 +72,9 @@ export function WalkieTalkieBar() {
       try { recorderRef.current.stop(); } catch { /* ignore */ }
     }
     recorderRef.current = null;
+    try { srRef.current?.stop(); } catch { /* ignore */ }
+    srRef.current = null;
+    lastTranscriptRef.current = "";
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     void audioCtxRef.current?.close().catch(() => undefined);
@@ -80,6 +103,8 @@ export function WalkieTalkieBar() {
     mr.onstop = () => {
       const dur = Date.now() - speechStartRef.current;
       const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+      const transcript = lastTranscriptRef.current.trim();
+      lastTranscriptRef.current = "";
       chunksRef.current = [];
       recorderRef.current = null;
       if (dur >= MIN_SPEECH_MS && blob.size >= 1200 && activeRef.current && !segmentInFlightRef.current) {
@@ -87,7 +112,11 @@ export function WalkieTalkieBar() {
         setLastStatus("منشی سن کر اندراج کر رہا ہے…");
         void (async () => {
           try {
-            await submitTurn({ blob, mime: blob.type || "audio/webm", ambient: true }, newKey("walkie"));
+            if (transcript && (typeof navigator !== "undefined" && !navigator.onLine)) {
+              await submitTurn({ text: transcript, ambient: true }, newKey("walkie"));
+            } else {
+              await submitTurn({ blob, mime: blob.type || "audio/webm", text: transcript || undefined, ambient: true }, newKey("walkie"));
+            }
             muteUntilRef.current = Date.now() + 2500;
             setLastStatus("آواز سن لی گئی — عام گفتگو نظر انداز ہو گی");
           } finally {
@@ -127,8 +156,35 @@ export function WalkieTalkieBar() {
 
       activeRef.current = true;
       setActive(true);
-      setLastStatus("کمانڈ سے پہلے منشی کہیں — دوسری باتیں نظر انداز ہوں گی");
-      void speak("کاؤنٹر مائیک آن ہے۔ اندراج کے لیے بات شروع کرنے سے پہلے منشی کہیں۔ دوسری گفتگو نظر انداز ہو گی۔");
+      setLastStatus("قدرتی طور پر بات کریں — غیر متعلقہ گفتگو نظر انداز ہو گی");
+      void speak("کاؤنٹر مائیک آن ہے۔ دکان کا کام بولیں، دوسری گفتگو نظر انداز ہو گی۔");
+
+      const SR = getSpeechRecognition();
+      if (SR) {
+        try {
+          const sr = new SR();
+          sr.lang = "ur-PK";
+          sr.continuous = true;
+          sr.interimResults = true;
+          sr.onresult = (e: Event) => {
+            const ev = e as unknown as { results: ArrayLike<{ [key: number]: { transcript: string } }> };
+            const idx = ev.results.length - 1;
+            if (idx >= 0) {
+              const t = ev.results[idx]?.[0]?.transcript ?? "";
+              if (t.trim()) lastTranscriptRef.current = t.trim();
+            }
+          };
+          sr.onend = () => {
+            if (activeRef.current) {
+              try { sr.start(); } catch { /* ignore */ }
+            }
+          };
+          sr.start();
+          srRef.current = sr;
+        } catch {
+          /* optional browser SpeechRecognition */
+        }
+      }
 
       const loop = () => {
         if (!activeRef.current) return;

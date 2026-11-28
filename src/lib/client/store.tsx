@@ -335,7 +335,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   const negativeStockToast = useCallback((res: CommitResponse) => {
     const w = res.warnings?.[0];
     if (w) {
-      toast(`${w.name} کی مقدار ${formatBaseQty(w.stock_after, w.base_unit)} رہ گئی ہے — نیا مال درج کریں؟`, "warn", {
+      toast(`${w.name} کا درج شدہ مال کم تھا، فروخت پھر بھی درج ہو گئی۔`, "warn", {
         label: "مال درج کریں",
         run: () => setSheet({ type: "parchi" }),
       });
@@ -439,13 +439,17 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       const cust =
         selectedCust?.name ??
         (newCustomerId ? (typeof base.new_customer_name === "string" ? base.new_customer_name : p.customer.mention) : null);
+      const hasStockWarning = Boolean(res.warnings && res.warnings.length > 0);
+      const stockSuffix = hasStockWarning && res.warnings?.[0]
+        ? ` ${res.warnings[0].name} کا درج شدہ مال کم تھا، فروخت پھر بھی درج ہو گئی۔`
+        : "";
       const speech = queued
-        ? `${cust ? `${cust} کے لیے ` : ""}${amt} روپے کا اندراج فون میں محفوظ ہو گیا ہے۔ انٹرنیٹ آنے پر حساب میں شامل ہو جائے گا۔`
+        ? `${cust ? `${cust} کے لیے ` : ""}${amt} روپے کی فروخت درج ہو گئی۔${stockSuffix}`
         : p.credit_paisa > 0 && cust
           ? p.cash_paid_paisa > 0
-            ? `${cust} کے کھاتے میں ${Math.round(p.credit_paisa / 100)} روپے ادھار اور ${Math.round(p.cash_paid_paisa / 100)} نقد لکھ دیے۔`
-            : `${cust} کے کھاتے میں ${amt} روپے لکھ دیے۔`
-          : `${amt} روپے نقد بل محفوظ ہو گیا۔`;
+            ? `${cust} کے کھاتے میں ${Math.round(p.credit_paisa / 100)} روپے لکھ دیا اور ${Math.round(p.cash_paid_paisa / 100)} روپے نقد وصول ہوئے۔${stockSuffix}`
+            : `${cust} کے کھاتے میں لکھ دیا۔${stockSuffix}`
+          : `${amt} روپے نقد وصول ہوئے، فروخت درج ہو گئی۔${stockSuffix}`;
       void speak(speech);
     }
     negativeStockToast(res);
@@ -555,6 +559,10 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
         }
         if (opts?.deferSheet) {
           return { status: "review", patch: { review_kind: "sale", proposal: res.proposal, trace: res.trace } };
+        }
+        if (res.proposal.customer.ambiguous && res.proposal.customer.mention && typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") !== "0") {
+          const count = Math.max(2, res.proposal.customer.candidates.length);
+          void speak(`${res.proposal.customer.mention} نام کے ${count === 2 ? "دو" : count} کھاتے ہیں، کس والے میں لکھوں؟`);
         }
         setSheet({ type: "review", proposal: res.proposal, key, trace: res.trace });
         return "review";
