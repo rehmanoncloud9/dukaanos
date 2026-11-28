@@ -187,7 +187,7 @@ In full compliance with the Capital Youth Expo disclosure requirement:
 1. **Hands-Free Walkie-Talkie & Disambiguation (0:00–0:35):** Toggle **Walkie-Talkie** (or tap Mic) → speak back-to-back orders including *"Chhote Ali ko dedh pao cheeni, 250 ka khula oil, 30 rupay chhor do, 400 cash diya baqi khate mein"* → 3-Ali chips → Confirm → bilingual WhatsApp/SMS receipt.
 2. **Parchi OCR & Margin Shield (0:35–1:05):** `Maal` → Scan Parchi → resolve `MATH_MISMATCH` → Restock Commit + **Margin Shield** (`منافع بچاؤ`) inflation alert & 1-tap Rs. 5-rounded retail price update.
 3. **Aaj Ki Salah, Pulse & EOD Galla (1:05–1:30):** Listen to **Aaj Ki Salah** (`آج کی صلاح` Friday stockouts + 45-day dead stock) → ask *"Subah ka hisaab batao"* → **EOD *Galla* Reconciliation**.
-4. **Offline Queue, X-Ray & Trade Passport (1:30–2:00):** Toggle **Simulate Offline** → commit a sale → reconnect & flush (`0 dupes`) → **`</>` X-Ray** Replay Test (`200 OK`) → **`/report`** & scan Ed25519 QR to verify client-side at **`/verify`**.
+4. **Offline Queue, X-Ray & Trade Passport (1:30–2:00):** Open `?xray=1` for Judge X-Ray Mode → toggle **Simulate Offline** → commit a sale → reconnect & flush (`0 dupes`) → **`</>` X-Ray** Replay Test (`200 OK`) & Tamper Test → **`/report`** & scan Ed25519 QR to verify client-side at **`/verify`**. *(Tip: 2 s logo long-press opens real-audio Replays.)*
 
 ---
 
