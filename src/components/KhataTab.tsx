@@ -9,7 +9,7 @@ import { isoDate, pktToday, wadaLabel } from "@/lib/domain/wada";
 import { tr } from "@/lib/client/i18n";
 import { speak } from "@/lib/client/speak";
 import { useDukaan } from "@/lib/client/store";
-import { verifyPassport, type PassportPayload, type TradeSummary } from "@/lib/crypto/passport";
+import { computeBharosaIndex, verifyPassport, type PassportPayload, type TradeSummary } from "@/lib/crypto/passport";
 import { rankReminders, reminderText, smsLink, waLink } from "@/lib/domain/messages";
 import { formatRs, formatRsCompact, rupeesToPaisa } from "@/lib/domain/money";
 import { FeedRow } from "./MunshiTab";
@@ -733,8 +733,33 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
 
   const s = p?.summary;
   const pl = p?.payload;
+  const bharosa = s ? computeBharosaIndex(s) : null;
+  const passportSpeech = () => {
+    if (!s || !pl || !bharosa) return "";
+    const gmvRs = Math.round(s.gmv_paisa / 100);
+    const recPct = Math.round(pl.rec_bp / 100);
+    return `${s.shop_name} کا ${pl.pd} دن کا تصدیق شدہ کاروبار ${gmvRs} روپے ہے، وصولی ${recPct} فیصد اور بھروسہ اسکور ${bharosa.score} از سو ہے۔`;
+  };
   return (
-    <Sheet open onClose={onClose} title={xrayOn ? "SMEConnect Trade Passport" : "Karobar Summary (QR)"} right={<button onClick={onClose} className="text-[16px] font-semibold">Done</button>}>
+    <Sheet
+      open
+      onClose={onClose}
+      title={xrayOn ? "SMEConnect Trade Passport" : "Karobar Summary (QR)"}
+      right={
+        <div className="flex items-center gap-2">
+          {p && (
+            <button
+              type="button"
+              onClick={() => void speak(passportSpeech())}
+              className="tactile inline-flex h-8 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[12px] font-semibold text-ink"
+            >
+              <Volume2 size={13} strokeWidth={1.75} /> سنیں
+            </button>
+          )}
+          <button onClick={onClose} className="text-[16px] font-semibold">Done</button>
+        </div>
+      }
+    >
       <div className="space-y-3 px-4 pb-[max(16px,env(safe-area-inset-bottom))]">
         <Segmented<"7" | "30" | "90">
           value={days}
@@ -752,13 +777,20 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
           ) : (
             <>
               <div className="px-5 pt-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-[15px]">
                     <b>DukaanOS</b> <span className="text-pass-muted">{xrayOn ? "SMEConnect" : "Karobar"}</span>
                   </span>
-                  <span className="rounded-full border border-pass-emerald/50 px-2 py-0.5 font-mono text-[10.5px] tracking-wide text-pass-emerald">
-                    {sigOk === false ? "SIG INVALID" : xrayOn ? "Ed25519 VERIFIED" : "VERIFIED ✓"}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {bharosa && (
+                      <span className="rounded-full bg-pass-emerald/15 px-2 py-0.5 font-mono text-[10.5px] font-semibold text-pass-emerald">
+                        Bharosa {bharosa.score}/100
+                      </span>
+                    )}
+                    <span className="rounded-full border border-pass-emerald/50 px-2 py-0.5 font-mono text-[10.5px] tracking-wide text-pass-emerald">
+                      {sigOk === false ? "SIG INVALID" : xrayOn ? "Ed25519 VERIFIED" : "VERIFIED ✓"}
+                    </span>
+                  </div>
                 </div>
                 <div className="mt-3 text-[24px] font-bold tracking-[-0.02em]">{s!.shop_name}</div>
                 <div className="text-[13.5px] text-pass-muted">
