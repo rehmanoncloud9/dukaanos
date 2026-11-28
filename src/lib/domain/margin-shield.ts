@@ -34,7 +34,7 @@ export function analyzeMargins(
     // Target retail price = cost / (1 - targetMarginPct / 100), rounded up to nearest Rs. 5
     const rawTarget = mulDiv(p.cost_price_paisa, 100, Math.max(1, 100 - targetMarginPct));
     const suggested = Math.max(roundUpRs5(rawTarget), p.unit_price_paisa + 500);
-    const unitsPerPack = p.base_unit === "pcs" ? 1 : p.pack_size_base_units || 1000;
+    const unitsPerPack = Math.max(1, p.pack_size_base_units || (p.base_unit === "pcs" ? 1 : 1000));
     const soldUnits = p.sold_7d > 0 ? p.sold_7d / unitsPerPack : 0;
     const weeklyGain = Math.round(soldUnits * (suggested - p.unit_price_paisa));
 

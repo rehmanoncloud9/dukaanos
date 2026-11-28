@@ -87,6 +87,12 @@ describe("Munshi structured extraction", () => {
     expect(conflict.parsed.items[0]?.number_unresolved).toBe(true);
   });
 
+  it("preserves Tier 1 cash evidence when transcript uses Urdu script نقد", async () => {
+    mockJson(extraction({ transcript: "ڈھائی کلو چینی نقد", transcript_roman: "dhai kilo cheeni naqd" }));
+    const result = await parseTurn(input);
+    expect(result.parsed.tier1_evidence_verified).toBe(true);
+  });
+
   it("falls back deterministically on typed text, never granting auto-commit authority", async () => {
     // Simulate a model failure: generateContentOnce rejects, parseTurn must fall back to rules.
     // Use mockRejectedValueOnce so Vitest does not intercept the rejection as an unhandled one.

@@ -473,7 +473,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     }
   }, [updatePending, toast, configured, rawState]);
 
-  const confirmSale = useCallback(async (p: SaleProposal, key: string, trace: TurnTrace | null, opts?: { auto?: boolean }) => {
+  const confirmSale = useCallback(async (p: SaleProposal, key: string, trace: TurnTrace | null, opts?: { auto?: boolean; ambient?: boolean }) => {
     const base = toCommitInput(p, key, {});
     const replayPayload = { ...base };
     const payload = { ...base, audit_meta: auditMeta(trace, { tier: p.tier, tier_reasons: p.tier_reasons, channel: opts?.auto ? "tier1-auto" : "tier2-confirm", replay_payload: replayPayload }) };
@@ -510,22 +510,29 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
         until: Date.now() + 5000,
       });
     }
-    if (typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") !== "0") {
+    const hasQueuedWalkie = typeof window !== "undefined" && Boolean((window as unknown as { __dukaanWalkieQueued?: number }).__dukaanWalkieQueued);
+    if (!hasQueuedWalkie && typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") !== "0") {
       const amt = Math.round((res.totals.total_paisa ?? p.total_paisa) / 100);
       const cust =
         selectedCust?.name ??
         (newCustomerId ? (typeof base.new_customer_name === "string" ? base.new_customer_name : p.customer.mention) : null);
       const hasStockWarning = Boolean(res.warnings && res.warnings.length > 0);
       const stockSuffix = hasStockWarning && res.warnings?.[0]
-        ? ` ${res.warnings[0].name} کا درج شدہ مال کم تھا، فروخت پھر بھی درج ہو گئی۔`
+        ? ` ${res.warnings[0].name} کا اسٹاک کم ہے۔`
         : "";
-      const speech = queued
-        ? `${cust ? `${cust} کے لیے ` : ""}${amt} روپے کی فروخت درج ہو گئی۔${stockSuffix}`
-        : p.credit_paisa > 0 && cust
-          ? p.cash_paid_paisa > 0
-            ? `${cust} کے کھاتے میں ${Math.round(p.credit_paisa / 100)} روپے لکھ دیا اور ${Math.round(p.cash_paid_paisa / 100)} روپے نقد وصول ہوئے۔${stockSuffix}`
-            : `${cust} کے کھاتے میں لکھ دیا۔${stockSuffix}`
-          : `${amt} روپے نقد وصول ہوئے، فروخت درج ہو گئی۔${stockSuffix}`;
+      const speech = opts?.ambient
+        ? queued
+          ? `${amt} روپے محفوظ`
+          : p.credit_paisa > 0 && cust
+            ? `${cust} ${Math.round(p.credit_paisa / 100)} روپے ادھار`
+            : `${amt} روپے نقد${stockSuffix}`
+        : queued
+          ? `${cust ? `${cust} کے لیے ` : ""}${amt} روپے کی فروخت درج ہو گئی۔${stockSuffix}`
+          : p.credit_paisa > 0 && cust
+            ? p.cash_paid_paisa > 0
+              ? `${cust} کے کھاتے میں ${Math.round(p.credit_paisa / 100)} روپے لکھ دیا اور ${Math.round(p.cash_paid_paisa / 100)} روپے نقد وصول ہوئے۔${stockSuffix}`
+              : `${cust} کے کھاتے میں لکھ دیا۔${stockSuffix}`
+            : `${amt} روپے نقد وصول ہوئے، فروخت درج ہو گئی۔${stockSuffix}`;
       void speak(speech);
     }
     negativeStockToast(res);
@@ -626,11 +633,17 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   }, [undo, reverse, toast]);
 
   /* ── turns ─────────────────────────────────────────── */
-  const handleTurn = useCallback(async (res: TurnResponse, key: string, opts?: { deferSheet?: boolean }): Promise<FlushOutcome> => {
+  const handleTurn = useCallback(async (res: TurnResponse, key: string, opts?: { deferSheet?: boolean; ambient?: boolean }): Promise<FlushOutcome> => {
+    const emitOutcome = (kind: string) => {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("dukaan:turn-outcome", { detail: { kind, transcript: res.trace.transcript } }));
+      }
+    };
     switch (res.kind) {
       case "sale":
+        emitOutcome("sale");
         if (res.proposal.tier === 1) {
-          await confirmSale(res.proposal, key, res.trace, { auto: true });
+          await confirmSale(res.proposal, key, res.trace, { auto: true, ambient: opts?.ambient });
           return "done";
         }
         if (opts?.deferSheet) {
@@ -683,8 +696,9 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       case "unknown":
         if (res.trace.intent !== "ambient_ignored") {
           toast("بات واضح نہیں ہوئی — اندراج کے لیے منشی کہہ کر دوبارہ بولیں", "warn");
-        } else if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("dukaan:turn-outcome", { detail: { kind: "ambient_ignored" } }));
+          emitOutcome("unknown");
+        } else {
+          emitOutcome("ambient_ignored");
         }
         return "done";
       default:
@@ -779,7 +793,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       if (input.blob && res.trace.transcript) {
         void saveReplay({ id: key, blob: input.blob, mime: input.mime ?? input.blob.type, transcript: res.trace.transcript, created_at: Date.now() });
       }
-      await handleTurn(res, key);
+      await handleTurn(res, key, { ambient: input.ambient });
     } catch (e) {
       if (e instanceof ClientApiError && (e.network || ["AI_TIMEOUT", "AI_UNAVAILABLE", "RATE_LIMITED", "AUTH_REQUIRED"].includes(e.code))) {
         if (e.code === "AUTH_REQUIRED") toast("دوبارہ داخل ہوں — اندراج فون میں محفوظ ہے", "warn");

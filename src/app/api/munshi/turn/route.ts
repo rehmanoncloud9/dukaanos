@@ -83,7 +83,7 @@ export const POST = handle(async (req: Request) => {
     .slice(0, 10)
     .map((c) => c.name);
 
-  const turn = await parseTurn({ audio, text, catalog, shopName: state.shop.name, shopId, context: { topSkus, topCustomers } });
+  const turn = await parseTurn({ audio, text, ambient, catalog, shopName: state.shop.name, shopId, context: { topSkus, topCustomers } });
   const p = turn.parsed;
   const baseTrace = (pakphone: PakPhoneTrace | null): TurnTrace => ({
     transcript: p.transcript,

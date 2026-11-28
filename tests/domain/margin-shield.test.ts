@@ -36,4 +36,20 @@ describe("Margin Shield (Munafa Bachao)", () => {
     expect(alerts[1].margin_pct).toBeLessThan(5);
     expect(alerts[1].weekly_gain_paisa).toBeGreaterThan(0);
   });
+
+  it("scales weekly gain by pack_size_base_units for multi-piece packs like darjan eggs", () => {
+    const eggs = prod({
+      id: "eggs",
+      name: "Anday (Darjan)",
+      base_unit: "pcs",
+      pack_size_base_units: 12,
+      cost_price_paisa: 34_000,
+      unit_price_paisa: 34_000,
+      sold_7d: 120,
+    });
+    const alerts = analyzeMargins([eggs]);
+    expect(alerts).toHaveLength(1);
+    const soldPacks = 120 / 12;
+    expect(alerts[0].weekly_gain_paisa).toBe(soldPacks * (alerts[0].suggested_price_paisa - eggs.unit_price_paisa));
+  });
 });

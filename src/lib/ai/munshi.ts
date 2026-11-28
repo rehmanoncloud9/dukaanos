@@ -102,6 +102,7 @@ export function systemPrompt(shopName: string, context?: { topSkus?: string[]; t
 export interface TurnInput {
   audio?: { base64: string; mimeType: string } | null;
   text?: string | null;
+  ambient?: boolean;
   catalog: Catalog;
   shopName: string;
   shopId?: string;
@@ -187,7 +188,8 @@ function normalizeModelTurn(value: z.infer<typeof ParsedTurnZ>): ParsedTurn & { 
   };
 
   const normalizedTranscript = normalizeUrduNumberWords(value.transcript).toLowerCase();
-  const explicitCashWord = /\b(cash|naqd|nakad)\b/.test(normalizedTranscript);
+  const normalizedRoman = normalizeUrduNumberWords(value.transcript_roman).toLowerCase();
+  const explicitCashWord = /\b(cash|naqd|nakad)\b|نقد/.test(normalizedTranscript) || /\b(cash|naqd|nakad)\b/.test(normalizedRoman);
   parsed.tier1_evidence_verified = !numberUnresolved
     && value.intent === "sale"
     && value.payment_mode === "cash"
@@ -215,7 +217,11 @@ export async function parseTurn(input: TurnInput): Promise<TurnParse> {
 
   const parts: Array<Record<string, unknown>> = [];
   if (input.audio) parts.push({ inlineData: { mimeType: input.audio.mimeType, data: input.audio.base64 } });
-  parts.push({ text: input.audio ? "Transcribe this counter audio and extract the structured fields." : `Shopkeeper typed: """${text}"""\nExtract the structured fields.` });
+  const audioPrompt = input.ambient
+    ? "Transcribe this counter walkie-talkie audio and extract the structured fields. Ignore pure casual chatter/greetings (return intent 'unknown'), but DO extract even short shop commands like '2 lays' or 'cheeni ek kilo'."
+    : "Transcribe this counter audio and extract the structured fields.";
+  const hintSuffix = input.audio && text ? ` (Noisy device ASR hint, verify against audio: "${text}")` : "";
+  parts.push({ text: input.audio ? `${audioPrompt}${hintSuffix}` : `Shopkeeper typed: """${text}"""\nExtract the structured fields.` });
 
   try {
     const call = await generateContentOnce(env.fastModel(), {
