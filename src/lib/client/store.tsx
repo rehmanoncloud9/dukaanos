@@ -683,6 +683,8 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       case "unknown":
         if (res.trace.intent !== "ambient_ignored") {
           toast("بات واضح نہیں ہوئی — اندراج کے لیے منشی کہہ کر دوبارہ بولیں", "warn");
+        } else if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("dukaan:turn-outcome", { detail: { kind: "ambient_ignored" } }));
         }
         return "done";
       default:

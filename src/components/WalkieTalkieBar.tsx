@@ -10,13 +10,14 @@ import { Radio, Square } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { newKey } from "@/lib/client/api";
 import { tr } from "@/lib/client/i18n";
-import { speak } from "@/lib/client/speak";
+import { isTtsSpeaking, speak } from "@/lib/client/speak";
 import { useDukaan } from "@/lib/client/store";
 import { cx, SW } from "./ui";
 
-const VAD_THRESHOLD = 0.025;
-const SILENCE_MS = 1350;
-const MIN_SPEECH_MS = 700;
+const MIN_VAD_THRESHOLD = 0.014;
+const MAX_VAD_THRESHOLD = 0.055;
+const SILENCE_MS = 1150;
+const MIN_SPEECH_MS = 600;
 const MAX_SEGMENT_MS = 14_000;
 
 interface SpeechRecognitionInstance extends EventTarget {
@@ -57,6 +58,9 @@ export function WalkieTalkieBar() {
   const thinkingRef = useRef(thinking);
   const segmentInFlightRef = useRef(false);
   const muteUntilRef = useRef(0);
+  const noiseFloorRef = useRef(0.005);
+  const srRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const srErrorsRef = useRef(0);
 
   useEffect(() => {
     thinkingRef.current = thinking;
@@ -73,8 +77,13 @@ export function WalkieTalkieBar() {
       try { recorderRef.current.stop(); } catch { /* ignore */ }
     }
     recorderRef.current = null;
+    if (srRestartTimerRef.current) {
+      clearTimeout(srRestartTimerRef.current);
+      srRestartTimerRef.current = null;
+    }
     try { srRef.current?.stop(); } catch { /* ignore */ }
     srRef.current = null;
+    srErrorsRef.current = 0;
     lastTranscriptRef.current = "";
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
@@ -96,6 +105,7 @@ export function WalkieTalkieBar() {
           : "";
     const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
     chunksRef.current = [];
+    lastTranscriptRef.current = "";
     speechStartRef.current = Date.now();
     lastVoiceRef.current = Date.now();
     mr.ondataavailable = (e) => {
@@ -157,6 +167,8 @@ export function WalkieTalkieBar() {
 
       activeRef.current = true;
       setActive(true);
+      noiseFloorRef.current = 0.005;
+      muteUntilRef.current = Date.now() + 5500;
       setLastStatus("قدرتی طور پر بات کریں — غیر متعلقہ گفتگو نظر انداز ہو گی");
       void speak("کاؤنٹر مائیک آن ہے۔ دکان کا کام بولیں، دوسری گفتگو نظر انداز ہو گی۔");
 
@@ -168,16 +180,24 @@ export function WalkieTalkieBar() {
           sr.continuous = true;
           sr.interimResults = true;
           sr.onresult = (e: Event) => {
-            const ev = e as unknown as { results: ArrayLike<{ [key: number]: { transcript: string } }> };
+            srErrorsRef.current = 0;
+            const ev = e as unknown as { results: ArrayLike<{ isFinal?: boolean; [key: number]: { transcript: string } }> };
             const idx = ev.results.length - 1;
             if (idx >= 0) {
               const t = ev.results[idx]?.[0]?.transcript ?? "";
               if (t.trim()) lastTranscriptRef.current = t.trim();
             }
           };
+          sr.onerror = () => {
+            srErrorsRef.current += 1;
+          };
           sr.onend = () => {
-            if (activeRef.current) {
-              try { sr.start(); } catch { /* ignore */ }
+            if (activeRef.current && srErrorsRef.current < 3) {
+              srRestartTimerRef.current = setTimeout(() => {
+                if (activeRef.current) {
+                  try { sr.start(); } catch { /* ignore */ }
+                }
+              }, 300);
             }
           };
           sr.start();
@@ -197,9 +217,15 @@ export function WalkieTalkieBar() {
         setLevels([norm * 0.6, norm * 0.9, norm, norm * 0.85, norm * 0.55]);
 
         const now = Date.now();
-        if (rms > VAD_THRESHOLD) {
+        const ttsBusy = isTtsSpeaking() || now < muteUntilRef.current;
+        if (!recorderRef.current && !ttsBusy) {
+          noiseFloorRef.current = noiseFloorRef.current * 0.97 + Math.min(rms, 0.03) * 0.03;
+        }
+        const threshold = Math.min(MAX_VAD_THRESHOLD, Math.max(MIN_VAD_THRESHOLD, noiseFloorRef.current * 2.4));
+
+        if (!ttsBusy && rms > threshold) {
           lastVoiceRef.current = now;
-          if (!recorderRef.current && !segmentInFlightRef.current && !thinkingRef.current && now >= muteUntilRef.current) {
+          if (!recorderRef.current && !segmentInFlightRef.current && !thinkingRef.current) {
             startSegment(stream);
           }
         }
@@ -208,7 +234,11 @@ export function WalkieTalkieBar() {
           const totalDur = now - speechStartRef.current;
           if (silentFor >= SILENCE_MS || totalDur >= MAX_SEGMENT_MS) {
             setSpeakingNow(false);
-            recorderRef.current.stop();
+            try {
+              recorderRef.current.stop();
+            } catch {
+              recorderRef.current = null;
+            }
           }
         }
         rafRef.current = requestAnimationFrame(loop);
@@ -224,8 +254,26 @@ export function WalkieTalkieBar() {
     const stopWhenHidden = () => {
       if (document.visibilityState === "hidden" && activeRef.current) stopAll();
     };
+    const onTtsState = (e: Event) => {
+      const speaking = (e as CustomEvent<{ speaking?: boolean }>).detail?.speaking;
+      if (speaking === false && activeRef.current) {
+        muteUntilRef.current = Math.max(muteUntilRef.current, Date.now() + 1400);
+      }
+    };
+    const onTurnOutcome = (e: Event) => {
+      const kind = (e as CustomEvent<{ kind?: string }>).detail?.kind;
+      if (kind === "ambient_ignored" && activeRef.current) {
+        setLastStatus("عام گفتگو نظر انداز کی گئی — کاروباری بات بولیں");
+      }
+    };
     document.addEventListener("visibilitychange", stopWhenHidden);
-    return () => document.removeEventListener("visibilitychange", stopWhenHidden);
+    window.addEventListener("dukaan:tts-state", onTtsState);
+    window.addEventListener("dukaan:turn-outcome", onTurnOutcome);
+    return () => {
+      document.removeEventListener("visibilitychange", stopWhenHidden);
+      window.removeEventListener("dukaan:tts-state", onTtsState);
+      window.removeEventListener("dukaan:turn-outcome", onTurnOutcome);
+    };
   }, [stopAll]);
 
   return (

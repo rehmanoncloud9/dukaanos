@@ -23,6 +23,20 @@ async function pickUrduVoice(): Promise<SpeechSynthesisVoice | null> {
 const audioCache = new Map<string, Blob>();
 const inflight = new Map<string, Promise<Blob>>();
 let activeAudio: HTMLAudioElement | null = null;
+let speakingNow = false;
+
+export function isTtsSpeaking(): boolean {
+  if (speakingNow) return true;
+  if (typeof speechSynthesis !== "undefined" && speechSynthesis.speaking) return true;
+  return false;
+}
+
+function setSpeakingState(val: boolean): void {
+  speakingNow = val;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("dukaan:tts-state", { detail: { speaking: val } }));
+  }
+}
 
 async function fetchTtsBlob(text: string, budgetMs: number): Promise<Blob> {
   const key = text.trim();
@@ -76,8 +90,20 @@ async function playBlob(blob: Blob): Promise<void> {
   const url = URL.createObjectURL(blob);
   const audio = new Audio(url);
   activeAudio = audio;
-  audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
-  await audio.play();
+  setSpeakingState(true);
+  const cleanup = () => {
+    URL.revokeObjectURL(url);
+    if (activeAudio === audio) activeAudio = null;
+    setSpeakingState(false);
+  };
+  audio.addEventListener("ended", cleanup, { once: true });
+  audio.addEventListener("error", cleanup, { once: true });
+  try {
+    await audio.play();
+  } catch (e) {
+    cleanup();
+    throw e;
+  }
 }
 
 /** F-12 query-only readout: server ur-PK neural TTS (with blob cache), else browser speechSynthesis (ur-PK). */

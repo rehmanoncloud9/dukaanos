@@ -99,14 +99,17 @@ export const POST = handle(async (req: Request) => {
   });
 
   // A foreground counter mic may hear customers, radio, or shop staff. Ambient audio
-  // is ignored unless it begins with the wake phrase OR is an explicit, high-confidence
-  // business command with clear transactional cues (product/quantity/payment/khata).
+  // is ignored unless it begins with the wake phrase OR is an explicit business command
+  // (sale with items, payment with amount/customer, pulse, reversal, or high-confidence Q&A/promise).
   const romanTranscript = (p as { transcript_roman?: string }).transcript_roman ?? "";
   const hasAmbientWakePhrase = AMBIENT_WAKE_PREFIX.test(romanTranscript) || AMBIENT_WAKE_PREFIX.test(p.transcript);
+  const hasBusinessCue = AMBIENT_BUSINESS_CUE.test(romanTranscript) || AMBIENT_BUSINESS_CUE.test(p.transcript);
   const hasClearBusinessIntent =
-    (p.intent === "sale" || p.intent === "payment" || p.intent === "pulse") &&
-    p.confidence >= 0.85 &&
-    (AMBIENT_BUSINESS_CUE.test(romanTranscript) || AMBIENT_BUSINESS_CUE.test(p.transcript));
+    (p.intent === "sale" && p.items.length > 0 && p.confidence >= 0.72) ||
+    (p.intent === "payment" && (Boolean(p.customer_mention) || Boolean(p.payment_amount_phrase)) && p.confidence >= 0.72) ||
+    ((p.intent === "pulse" || p.intent === "reversal") && p.confidence >= 0.75) ||
+    (p.intent === "question" && hasBusinessCue && p.confidence >= 0.78) ||
+    (hasBusinessCue && p.confidence >= 0.8);
   if (ambient && !hasAmbientWakePhrase && !hasClearBusinessIntent) {
     return ok<TurnResponse>({ kind: "unknown", trace: { ...baseTrace(null), intent: "ambient_ignored" } });
   }
@@ -203,7 +206,7 @@ export const POST = handle(async (req: Request) => {
 });
 
 const AMBIENT_WAKE_PREFIX = /^\s*(?:(?:hey|o|oye|اوئے?|ارے)\s+)?(?:munshi|منشی)(?:\s+(?:ji|jee|جی))?(?=$|[\s,:،۔!؛])/iu;
-const AMBIENT_BUSINESS_CUE = /\b(khate\s+mein|khaate|khata|udhaa?r|cash|naqd|nakad|de\s+do|dedo|likh\s+do|likh\s+dena|jama\s+karwa|wasooli|kilo|kg|pao|litre|liter|packet|darjan|rupay|rupees)\b|کھاتے میں|کھاتہ|ادھار|نقد|لکھ دو|لکھ دینا|دے دو|کلو|پاؤ|لیٹر|پیکٹ|درجن|روپے|وصولی/iu;
+const AMBIENT_BUSINESS_CUE = /\b(khate\s+mein|khaate|khata|udhaa?r|cash|naqd|nakad|de\s+do|dedo|likh\s+do|likh\s+dena|jama\s+karwa|wasooli|wapas|hisaab|hisab|bikri|galla|stock|maal|bill|parchi|kilo|kg|pao|litre|liter|packet|darjan|rupay|rupees|paise|paisay)\b|کھاتے میں|کھاتہ|ادھار|نقد|لکھ دو|لکھ دینا|دے دو|کلو|پاؤ|لیٹر|پیکٹ|درجن|روپے|وصولی|واپس|حساب|بکری|گلہ|اسٹاک|مال|بل|پرچی/iu;
 
 /**
  * Server-side dialect fallback: QuickAdd lines get one more chance against the 100+
