@@ -6,9 +6,10 @@
  * and speaks back a 2-second Urdu TTS confirmation.
  */
 
-import { Radio, Square, Volume2 } from "lucide-react";
+import { Radio, Square } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { newKey } from "@/lib/client/api";
+import { tr } from "@/lib/client/i18n";
 import { speak } from "@/lib/client/speak";
 import { useDukaan } from "@/lib/client/store";
 import { cx, SW } from "./ui";
@@ -37,7 +38,7 @@ function getSpeechRecognition(): (new () => SpeechRecognitionInstance) | null {
 }
 
 export function WalkieTalkieBar() {
-  const { submitTurn, thinking, undo, doUndo, toast } = useDukaan();
+  const { submitTurn, thinking, undo, doUndo, toast, lang } = useDukaan();
   const [active, setActive] = useState(false);
   const [speakingNow, setSpeakingNow] = useState(false);
   const [levels, setLevels] = useState([0, 0, 0, 0, 0]);
@@ -229,63 +230,60 @@ export function WalkieTalkieBar() {
 
   return (
     <div
-      dir="rtl"
+      dir={lang === "ur" ? "rtl" : "ltr"}
       className={cx(
-        "surface-card flex items-center gap-3 px-4 py-3 transition-colors",
+        "surface-card flex items-center justify-between gap-3 px-3.5 py-2.5 transition-colors",
         active ? "border-cash/40 bg-cash-bg/40" : "bg-surface",
       )}
     >
-      <button
-        type="button"
-        onClick={() => void toggle()}
-        aria-pressed={active}
-        className={cx(
-          "tactile flex h-14 min-w-[56px] shrink-0 items-center justify-center gap-2 rounded-[14px] px-4 text-[14px] font-bold text-white",
-          active ? "bg-udhaar" : "bg-cash",
-        )}
-      >
-        {active ? <Square size={18} strokeWidth={SW} /> : <Radio size={18} strokeWidth={SW} />}
-        <span className="urdu-ui">{active ? "بند کریں" : "واکی ٹاکی"}</span>
-      </button>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="urdu-ui truncate text-[14px] font-bold text-ink">
-            {active ? (speakingNow ? "آواز ریکارڈ ہو رہی ہے…" : "لائیو کاؤنٹر مائیک آن") : "لائیو کاؤنٹر مائیک"}
-          </span>
-          {active && (
-            <div className="flex h-4 items-end gap-0.5" aria-hidden="true">
-              {levels.map((lvl, i) => (
-                <span
-                  key={i}
-                  className="w-1 rounded-full bg-cash transition-all duration-75"
-                  style={{ height: `${Math.max(20, Math.round(lvl * 100))}%` }}
-                />
-              ))}
-            </div>
-          )}
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        <span className={cx("grid h-10 w-10 shrink-0 place-items-center rounded-[12px]", active ? "bg-cash text-white" : "bg-cash-bg text-cash-ink")}>
+          <Radio size={18} strokeWidth={SW} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className={cx("truncate text-[14px] font-bold text-ink", lang === "ur" && "urdu-ui")}>
+              {active ? (speakingNow ? "آواز ریکارڈ ہو رہی ہے…" : tr("walkieTalkie", lang)) : tr("walkieTalkie", lang)}
+            </span>
+            {active && (
+              <div className="flex h-3.5 items-end gap-0.5" aria-hidden="true">
+                {levels.map((lvl, i) => (
+                  <span
+                    key={i}
+                    className="w-1 rounded-full bg-cash transition-all duration-75"
+                    style={{ height: `${Math.max(20, Math.round(lvl * 100))}%` }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="urdu-ui truncate text-[12px] text-ink-2">{lastStatus}</div>
         </div>
-        <div className="urdu-ui truncate text-[12px] text-ink-2">{lastStatus}</div>
       </div>
 
-      {undo ? (
+      <div className="flex shrink-0 items-center gap-1.5">
+        {undo && (
+          <button
+            type="button"
+            onClick={() => void doUndo()}
+            className="tactile h-11 shrink-0 rounded-[12px] bg-ink px-3 text-[12.5px] font-bold text-white urdu-ui"
+          >
+            واپس
+          </button>
+        )}
         <button
           type="button"
-          onClick={() => void doUndo()}
-          className="tactile h-11 shrink-0 rounded-[12px] bg-ink px-3 text-[12.5px] font-bold text-white urdu-ui"
+          onClick={() => void toggle()}
+          aria-pressed={active}
+          className={cx(
+            "tactile flex h-11 min-w-[56px] shrink-0 items-center justify-center gap-1.5 rounded-[12px] px-3.5 text-[13.5px] font-bold text-white",
+            active ? "bg-udhaar" : "bg-cash",
+          )}
         >
-          واپس
+          {active ? <Square size={15} strokeWidth={SW} /> : <Radio size={15} strokeWidth={SW} />}
+          <span className={cx(lang === "ur" && "urdu-ui")}>{active ? tr("walkieStop", lang) : tr("walkieBtn", lang)}</span>
         </button>
-      ) : (
-        <button
-          type="button"
-          aria-label="وضاحت سنیں"
-          onClick={() => void speak("واکی ٹاکی آن کریں، گاہک سے اردو یا پنجابی میں بات کریں، منشی خود بل اور ادھار لکھ کر آواز میں بتا دے گا۔")}
-          className="tactile grid h-11 w-11 shrink-0 place-items-center rounded-[12px] bg-surface-sunken text-ink"
-        >
-          <Volume2 size={18} strokeWidth={SW} />
-        </button>
-      )}
+      </div>
     </div>
   );
 }

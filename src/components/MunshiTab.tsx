@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Camera, ChevronDown, ChevronUp, HelpCircle, Keyboard, PauseCircle, Plus, RefreshCw, RotateCcw, SendHorizontal, Volume2, X, Zap } from "lucide-react";
+import { AlertCircle, Banknote, BarChart3, BookOpen, Camera, ChevronDown, ChevronUp, HelpCircle, Keyboard, Package, PauseCircle, Plus, RefreshCw, RotateCcw, SendHorizontal, Volume2, X, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FeedTx, Pulse, StateProduct } from "@/lib/api/contracts";
 import { api, newKey } from "@/lib/client/api";
@@ -244,41 +244,51 @@ export function MunshiTab() {
   };
 
   return (
-    <div className={cx("space-y-2.5", typing ? "pb-44" : "pb-24")}>
-      <div className="grid grid-cols-2 gap-2.5">
-        <div className="surface-card p-3.5">
-          <div className="flex items-center justify-between gap-1">
-            <div className={cx("section-label flex items-center gap-1.5", lang === "ur" && "urdu-ui")} dir="auto">
-              <span className="h-1.5 w-1.5 rounded-full bg-cash" /> {tr("todayCash", lang)}
-            </div>
+    <div className={cx("space-y-3", typing ? "pb-36" : "pb-24")}>
+      {/* 2-Column Hero KPI Strip (Von Restorff, Law of Proximity, Icon Badges instead of tiny dots) */}
+      <div className="grid grid-cols-2 gap-2.5 pose-enter">
+        <div className="surface-card flex flex-col justify-between p-3.5">
+          <div className="flex items-center justify-between gap-1.5">
+            <span className={cx("inline-flex items-center gap-1.5 rounded-full bg-cash-bg px-2.5 py-1 text-[11.5px] font-bold text-cash-ink", lang === "ur" && "urdu-ui")} dir="auto">
+              <Banknote size={13} strokeWidth={SW} className="shrink-0" />
+              <span>{tr("todayCash", lang)}</span>
+            </span>
             <button
               type="button"
-              aria-label={tr("listen", lang)}
+              aria-label="آج کا نقد حساب سنیں"
               onClick={() => void speak(dailySummaryScript)}
-              className="tactile inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[11.5px] font-semibold text-ink-2"
+              className="audio-btn tactile urdu-ui shrink-0"
             >
-              <Volume2 size={12} strokeWidth={SW} /> {tr("listen", lang)}
+              <Volume2 size={13} strokeWidth={SW} />
+              <span>سنیں</span>
             </button>
           </div>
-          <Money paisa={today.cash_sales_paisa} className="mt-1.5 block text-[22px] font-bold leading-[26px] tracking-[-0.02em]" />
-          <div className="mt-1 text-[13px] text-ink-2" dir="auto">{today.sales_count} {tr("sales", lang)}</div>
+          <Money paisa={today.cash_sales_paisa} className="mt-2.5 block text-[23px] font-bold leading-[27px] tracking-[-0.02em] text-ink" />
+          <div className="mt-1 flex items-center justify-between text-[12.5px] text-ink-2" dir="auto">
+            <span>{today.sales_count} {tr("sales", lang)}</span>
+          </div>
         </div>
-        <div className="surface-card p-3.5">
-          <div className="flex items-center justify-between gap-1">
-            <div className={cx("section-label flex items-center gap-1.5", lang === "ur" && "urdu-ui")} dir="auto">
-              <span className="h-1.5 w-1.5 rounded-full bg-udhaar" /> {tr("todayUdhaar", lang)}
-            </div>
+
+        <div className="surface-card flex flex-col justify-between p-3.5">
+          <div className="flex items-center justify-between gap-1.5">
+            <span className={cx("inline-flex items-center gap-1.5 rounded-full bg-udhaar-bg px-2.5 py-1 text-[11.5px] font-bold text-udhaar-ink", lang === "ur" && "urdu-ui")} dir="auto">
+              <BookOpen size={13} strokeWidth={SW} className="shrink-0" />
+              <span>{tr("todayUdhaar", lang)}</span>
+            </span>
             <button
               type="button"
-              aria-label={tr("listen", lang)}
+              aria-label="آج کا ادھار سنیں"
               onClick={() => void speak(`آج کا ادھار ${Math.round(today.udhaar_paisa / 100)} روپے ہے، ${today.udhaar_accounts} کھاتوں پر۔`)}
-              className="tactile inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2 text-[11px] font-semibold text-ink-2"
+              className="audio-btn tactile urdu-ui shrink-0"
             >
-              <Volume2 size={12} strokeWidth={SW} />
+              <Volume2 size={13} strokeWidth={SW} />
+              <span>سنیں</span>
             </button>
           </div>
-          <Money paisa={today.udhaar_paisa} className="mt-1.5 block text-[22px] font-bold leading-[26px] tracking-[-0.02em] text-udhaar" />
-          <div className="mt-1 text-[13px] text-ink-2" dir="auto">{today.udhaar_accounts} {tr("accounts", lang)}</div>
+          <Money paisa={today.udhaar_paisa} className="mt-2.5 block text-[23px] font-bold leading-[27px] tracking-[-0.02em] text-udhaar" />
+          <div className="mt-1 flex items-center justify-between text-[12.5px] text-ink-2" dir="auto">
+            <span>{today.udhaar_accounts} {tr("accounts", lang)}</span>
+          </div>
         </div>
       </div>
 
@@ -289,15 +299,15 @@ export function MunshiTab() {
       {/* Quick-Sell Top-4 strip — rush-hour 1-tap cash sale, Rs. 0 LLM */}
       <QuickSellStrip products={state.products} />
 
-      {/* Primary action + progressive disclosure for secondary tools */}
+      {/* Primary action + progressive disclosure for secondary tools (Hick's Law & Miller's Law) */}
       <div className="flex flex-wrap items-center gap-2 py-0.5">
-        <button type="button" onClick={openBlankBill} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
-          <Plus size={13} strokeWidth={SW} /> {tr("newBill", lang)}
+        <button type="button" onClick={openBlankBill} className={cx("tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+          <Plus size={14} strokeWidth={SW} /> {tr("newBill", lang)}
         </button>
         <button
           type="button"
           onClick={() => setMoreActions((m) => !m)}
-          className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold text-ink-2", lang === "ur" && "urdu-ui")}
+          className={cx("tactile flex h-9 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold text-ink-2", lang === "ur" && "urdu-ui")}
           dir="auto"
         >
           {tr("more", lang)} {moreActions ? <ChevronUp size={13} strokeWidth={SW} /> : <ChevronDown size={13} strokeWidth={SW} />}
@@ -305,26 +315,26 @@ export function MunshiTab() {
         {moreActions && (
           <>
             {!helperMode && (
-              <button type="button" onClick={() => openSheet({ type: "insights" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
-                <BarChart3 size={13} strokeWidth={SW} className="text-cash" /> {tr("insights", lang)}
+              <button type="button" onClick={() => openSheet({ type: "insights" })} className={cx("tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+                <BarChart3 size={14} strokeWidth={SW} className="text-cash" /> {tr("insights", lang)}
               </button>
             )}
-            <button type="button" onClick={() => openSheet({ type: "return" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
-              <RotateCcw size={13} strokeWidth={SW} className="text-udhaar" /> {tr("returnItem", lang)}
+            <button type="button" onClick={() => openSheet({ type: "return" })} className={cx("tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+              <RotateCcw size={14} strokeWidth={SW} className="text-udhaar" /> {tr("returnItem", lang)}
             </button>
-            <button type="button" onClick={() => openSheet({ type: "eod" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+            <button type="button" onClick={() => openSheet({ type: "eod" })} className={cx("tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
               {tr("closeDay", lang)}
             </button>
-            <button type="button" onClick={() => openSheet({ type: "margin" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+            <button type="button" onClick={() => openSheet({ type: "margin" })} className={cx("tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
               {tr("marginShield", lang)}
             </button>
             <button
               type="button"
               onClick={() => setShowGuide((g) => !g)}
-              className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold text-ink-2", lang === "ur" && "urdu-ui")}
+              className={cx("tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-black/10 bg-surface px-3.5 text-[13px] font-semibold text-ink-2", lang === "ur" && "urdu-ui")}
               dir="auto"
             >
-              <HelpCircle size={13} strokeWidth={SW} /> {tr("guide", lang)}
+              <HelpCircle size={14} strokeWidth={SW} /> {tr("guide", lang)}
             </button>
           </>
         )}
@@ -359,7 +369,8 @@ export function MunshiTab() {
         </div>
       )}
 
-      {(showGuide || (list.length === 0 && !thinking)) && (
+      {/* Progressive Disclosure: Only show onboarding guide when feed is empty or user explicitly opened Guide */}
+      {(showGuide && list.length === 0 && !thinking) && (
         <div className="surface-card p-3.5">
           <div className="flex items-center justify-between">
             <span className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("guideTitle", lang)}</span>
@@ -367,27 +378,25 @@ export function MunshiTab() {
               <button
                 type="button"
                 onClick={() => void speak("مائیک دبا کر بولیں: ایک کلو چینی نقد، یا علی کو پانچ سو ادھار، یا صبح کا حساب بتاؤ۔")}
-                className="tactile inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2.5 text-[11.5px] font-semibold"
+                className="audio-btn tactile urdu-ui"
               >
-                <Volume2 size={12} strokeWidth={SW} /> {tr("listen", lang)}
+                <Volume2 size={12} strokeWidth={SW} /> سنیں
               </button>
-              {showGuide && (
-                <button
-                  type="button"
-                  aria-label="Dismiss guide"
-                  onClick={() => {
-                    try {
-                      localStorage.setItem("dukaanos.guide.dismissed", "1");
-                    } catch {
-                      /* ignore */
-                    }
-                    setShowGuide(false);
-                  }}
-                  className="grid h-7 w-7 place-items-center text-ink-3"
-                >
-                  <X size={14} strokeWidth={SW} />
-                </button>
-              )}
+              <button
+                type="button"
+                aria-label="Dismiss guide"
+                onClick={() => {
+                  try {
+                    localStorage.setItem("dukaanos.guide.dismissed", "1");
+                  } catch {
+                    /* ignore */
+                  }
+                  setShowGuide(false);
+                }}
+                className="grid h-7 w-7 place-items-center text-ink-3"
+              >
+                <X size={14} strokeWidth={SW} />
+              </button>
             </div>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -408,14 +417,19 @@ export function MunshiTab() {
 
       {pulse && (pulse.overdue.count > 0 || pulse.stockout.count > 0) && (
         <div className="surface-card overflow-hidden">
-          <button onClick={() => setStripOpen((o) => !o)} className="flex h-10 w-full items-center gap-2 px-4 text-[13.5px] font-medium">
-            <span className="h-1.5 w-1.5 rounded-full bg-udhaar" />
-            <span className="num" dir="auto">
-              {pulse.overdue.count} {tr("overdueAccounts", lang)} · {formatRs(pulse.overdue.total_paisa)}
-            </span>
-            <span className="text-ink-3">·</span>
-            <span className="h-1.5 w-1.5 rounded-full bg-maal" />
-            <span dir="auto">{pulse.stockout.count} {tr("lowStockCount", lang)}</span>
+          <button onClick={() => setStripOpen((o) => !o)} className="flex min-h-[46px] w-full items-center gap-2 px-3.5 py-2 text-[13px] font-semibold">
+            {pulse.overdue.count > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-udhaar-bg px-2.5 py-0.5 text-[12px] font-bold text-udhaar-ink num" dir="auto">
+                <AlertCircle size={12} strokeWidth={SW} />
+                {pulse.overdue.count} {tr("overdueAccounts", lang)} · {formatRs(pulse.overdue.total_paisa)}
+              </span>
+            )}
+            {pulse.stockout.count > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-maal-bg px-2.5 py-0.5 text-[12px] font-bold text-maal" dir="auto">
+                <Package size={12} strokeWidth={SW} />
+                {pulse.stockout.count} {tr("lowStockCount", lang)}
+              </span>
+            )}
             <span className="ml-auto text-ink-2">{stripOpen ? <ChevronUp size={16} strokeWidth={SW} /> : <ChevronDown size={16} strokeWidth={SW} />}</span>
           </button>
           {stripOpen && (
@@ -425,7 +439,7 @@ export function MunshiTab() {
                   <div className={cx("text-[15px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">{tr("recoverUdhaar", lang)}</div>
                   <div className="truncate text-[13px] text-ink-2" dir="auto">{lang === "ur" ? "15 دن سے زیادہ پرانا ادھار · واٹس ایپ یا ایس ایم ایس" : "15+ days stuck · 1-tap WhatsApp/SMS"}</div>
                 </div>
-                <Pill tone="udhaar" onClick={() => goFilter("khata", "overdue")} className="h-7 px-3 text-[13px]">
+                <Pill tone="udhaar" onClick={() => goFilter("khata", "overdue")} className="h-8 px-3 text-[13px]">
                   {tr("remind", lang)}
                 </Pill>
               </div>
@@ -436,7 +450,7 @@ export function MunshiTab() {
                     {pulse.stockout.items.length ? pulse.stockout.items.map((i) => i.name.replace(/\s*\(.*\)/, "").replace(/ 5L$/, "")).join(" & ") : tr("allShelvesHealthy", lang)}
                   </div>
                 </div>
-                <Pill tone="maal" onClick={() => openSheet({ type: "pulse", pulse })} className="h-7 px-3 text-[13px]">
+                <Pill tone="maal" onClick={() => openSheet({ type: "pulse", pulse })} className="h-8 px-3 text-[13px]">
                   {tr("order", lang)}
                 </Pill>
               </div>
@@ -496,8 +510,8 @@ export function MunshiTab() {
         )}
       </div>
 
-      {/* Dock */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-[60px] z-30 mx-auto max-w-[430px] bg-gradient-to-t from-canvas via-canvas/95 to-transparent px-4 pb-2 pt-5 pb-safe">
+      {/* Dock — Sticky inside Phone Frame so it never overlaps ledger cards or floats outside the phone */}
+      <div className="pointer-events-none sticky inset-x-0 bottom-0 z-30 -mx-4 bg-gradient-to-t from-canvas via-canvas/95 to-transparent px-4 pb-2 pt-4">
         {typing && (
           <div className="pointer-events-auto mb-3 rounded-[16px] border border-black/10 bg-surface p-2 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
             {(shop?.is_demo_shop || shop?.is_stage_shop) && (
