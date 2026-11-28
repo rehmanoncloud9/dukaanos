@@ -23,7 +23,7 @@ interface Health {
 }
 
 export function SettingsSheet({ onClose }: { onClose: () => void }) {
-  const { shops, shop, setShopId, state, pending, queue, queuedCommits, flush, openQueuedReview, discardQueued, retryQueuedTurn, retryCommit, discardCommit, simulatedOffline, setSimulatedOffline, xrayOn, setXrayOn, helperMode, setHelperMode, refresh, reloadShops, toast, signOut, openSheet, session, lang } = useDukaan();
+  const { shops, shop, setShopId, state, pending, queue, queuedCommits, flush, openQueuedReview, discardQueued, retryQueuedTurn, retryCommit, discardCommit, simulatedOffline, setSimulatedOffline, xrayOn, setXrayOn, helperMode, setHelperMode, refresh, reloadShops, toast, signOut, openSheet, session, lang, setLang } = useDukaan();
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
@@ -84,7 +84,35 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
     <Sheet open onClose={onClose} title={tr("settings", lang)}>
       <div className="space-y-4 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">
         <section>
-          <div className="section-label mb-2" dir="rtl">زبان: اردو</div>
+          <div className="section-label mb-2" dir="auto">{tr("language", lang)} · زبان / Language</div>
+          <div className="grid grid-cols-2 gap-2 rounded-[12px] bg-surface-sunken p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setLang("ur");
+                toast("زبان اردو منتخب ہو گئی (آواز ہمیشہ اردو رہے گی)", "info");
+              }}
+              className={cx(
+                "tactile flex h-10 items-center justify-center rounded-[10px] text-[14px] font-bold urdu-ui transition-colors",
+                lang === "ur" ? "bg-surface text-ink shadow-sm" : "text-ink-2",
+              )}
+            >
+              اردو (Urdu)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLang("en");
+                toast("English display active — spoken audio remains in Urdu", "info");
+              }}
+              className={cx(
+                "tactile flex h-10 items-center justify-center rounded-[10px] text-[14px] font-bold transition-colors",
+                lang === "en" ? "bg-surface text-ink shadow-sm" : "text-ink-2",
+              )}
+            >
+              English (اردو آواز)
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -97,7 +125,7 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
               }
               toast(next ? "ہر اندراج کی آواز میں تصدیق آن ہے" : "آواز میں تصدیق بند ہے", "info");
             }}
-            className="tactile mt-2 flex h-10 w-full items-center justify-between rounded-[12px] bg-surface px-3.5 text-[13.5px] font-medium"
+            className="tactile mt-2 flex h-11 w-full items-center justify-between rounded-[12px] bg-surface px-3.5 text-[13.5px] font-medium"
           >
             <span className="flex items-center gap-2"><Volume2 size={15} strokeWidth={SW} /> {tr("autoSpeak", lang)}</span>
             <Pill tone={autoSpeak ? "cash" : "neutral"}>{autoSpeak ? tr("on", lang) : tr("off", lang)}</Pill>

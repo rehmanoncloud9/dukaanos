@@ -191,10 +191,12 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setXrayOn(new URLSearchParams(window.location.search).get("xray") === "1");
     setHelperModeState(localStorage.getItem("dukaanos.helperMode") === "1");
-    // This build targets owners who read Urdu. Older saved English preferences
-    // must not make part of the shop interface inaccessible.
-    localStorage.setItem(LANG_KEY, "ur");
-    setLangState("ur");
+    const savedLang = localStorage.getItem(LANG_KEY);
+    const initialLang: Lang = savedLang === "en" || savedLang === "ur" ? savedLang : "ur";
+    localStorage.setItem(LANG_KEY, initialLang);
+    setLangState(initialLang);
+    document.documentElement.lang = initialLang;
+    document.documentElement.dir = initialLang === "ur" ? "rtl" : "ltr";
     setOnline(!isOffline());
     if (typeof navigator !== "undefined" && navigator.storage?.persist) {
       void navigator.storage.persist().catch(() => undefined);
@@ -888,9 +890,16 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setLang = useCallback((l: Lang) => {
-    void l;
-    localStorage.setItem(LANG_KEY, "ur");
-    setLangState("ur");
+    try {
+      localStorage.setItem(LANG_KEY, l);
+    } catch {
+      /* ignore */
+    }
+    setLangState(l);
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = l;
+      document.documentElement.dir = l === "ur" ? "rtl" : "ltr";
+    }
   }, []);
 
   const shop = useMemo(() => shops?.find((s) => s.id === shopId) ?? null, [shops, shopId]);
