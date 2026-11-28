@@ -10,7 +10,7 @@ import type { PaymentProposal, SaleProposal } from "@/lib/domain/types";
 import { api, ClientApiError, friendlyError, isOffline, newKey, onOfflineChange, registerAuthHandlers, setApiShop, setSimulateOffline as setSimOffline, isSimulatedOffline } from "./api";
 import { LANG_KEY, type Lang } from "./i18n";
 import { speak } from "./speak";
-import { applyOptimisticOverlay, dequeue, dequeueCommit, enqueue, enqueueCommit, flushCommits, flushQueue, listCommits, listQueue, pendingCount, resetCommitForRetry, saveReplay, type FlushOutcome, type OptimisticDelta, type QueuedCommit, type QueuedTurn } from "./queue";
+import { applyOptimisticOverlay, dequeue, dequeueCommit, enqueue, enqueueCommit, flushOperations, listCommits, listQueue, pendingCount, resetCommitForRetry, resetQueuedTurnForRetry, saveReplay, type FlushOutcome, type OptimisticDelta, type QueuedCommit, type QueuedTurn } from "./queue";
 import { browserSupabase, supabaseConfigured } from "./supabase";
 import { normalizePkPhone } from "@/lib/domain/starter-catalog";
 import { loadSnapshot, saveSnapshot, SHOPS_SNAPSHOT, stateSnapshotKey } from "./offline-cache";
@@ -107,10 +107,11 @@ interface Store {
   flush: () => Promise<void>;
   openQueuedReview: (key?: string) => Promise<void>;
   discardQueued: (key: string) => Promise<void>;
+  retryQueuedTurn: (key: string) => Promise<void>;
   retryCommit: (key: string) => Promise<void>;
   discardCommit: (key: string) => Promise<void>;
   thinking: boolean;
-  submitTurn: (input: { blob?: Blob; mime?: string; text?: string }, key?: string) => Promise<void>;
+  submitTurn: (input: { blob?: Blob; mime?: string; text?: string; ambient?: boolean }, key?: string) => Promise<void>;
   confirmSale: (p: SaleProposal, key: string, trace: TurnTrace | null, opts?: { auto?: boolean }) => Promise<CommitResponse>;
   confirmPayment: (customerId: string, amountPaisa: number, key: string, trace?: TurnTrace | null) => Promise<CommitResponse>;
   reverse: (txId: string | null, reason: string) => Promise<CommitResponse>;
@@ -158,7 +159,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [xrayOn, setXrayOn] = useState(false);
   const [helperMode, setHelperModeState] = useState(false);
-  const [lang, setLangState] = useState<Lang>("en");
+  const [lang, setLangState] = useState<Lang>("ur");
   const [online, setOnline] = useState(true);
   const [simulatedOffline, setSimulatedOfflineState] = useState(false);
   const [pending, setPending] = useState(0);
@@ -172,6 +173,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   const flushing = useRef(false);
   const shopRef = useRef<string | null>(null);
   const sheetRef = useRef<Sheet | null>(null);
+  const flushRef = useRef<() => Promise<void>>(async () => undefined);
   useEffect(() => {
     sheetRef.current = sheet;
   }, [sheet]);
@@ -189,8 +191,10 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setXrayOn(new URLSearchParams(window.location.search).get("xray") === "1");
     setHelperModeState(localStorage.getItem("dukaanos.helperMode") === "1");
-    const savedLang = localStorage.getItem(LANG_KEY);
-    if (savedLang === "ur" || savedLang === "en") setLangState(savedLang);
+    // This build targets owners who read Urdu. Older saved English preferences
+    // must not make part of the shop interface inaccessible.
+    localStorage.setItem(LANG_KEY, "ur");
+    setLangState("ur");
     setOnline(!isOffline());
     if (typeof navigator !== "undefined" && navigator.storage?.persist) {
       void navigator.storage.persist().catch(() => undefined);
@@ -255,7 +259,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       onAuthExpired: () => {
         setSession(null);
         setSheet(null);
-        toast("Session khatam ho gaya — dobara sign in karein", "warn");
+      toast("دوبارہ داخل ہوں", "warn");
       },
       onShopForbidden: () => {
         localStorage.removeItem(SHOP_KEY);
@@ -331,8 +335,8 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   const negativeStockToast = useCallback((res: CommitResponse) => {
     const w = res.warnings?.[0];
     if (w) {
-      toast(`${w.name} stock is now ${formatBaseQty(w.stock_after, w.base_unit)} — Log Restock?`, "warn", {
-        label: "Restock",
+      toast(`${w.name} کی مقدار ${formatBaseQty(w.stock_after, w.base_unit)} رہ گئی ہے — نیا مال درج کریں؟`, "warn", {
+        label: "مال درج کریں",
         run: () => setSheet({ type: "parchi" }),
       });
     }
@@ -369,7 +373,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       try {
         await enqueueCommit({ idempotency_key: idempotencyKey, shop_id: shop, endpoint, payload, optimistic });
       } catch {
-        toast("Phone ki storage full ho rahi hai — internet on kar ke sync karein", "err");
+        toast("فون میں جگہ کم ہے — انٹرنیٹ آنے پر محفوظ اندراجات ہم وقت کریں", "err");
         throw new ClientApiError("Phone storage full", "OFFLINE", 0);
       }
       await updatePending();
@@ -383,7 +387,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
         try {
           await enqueueCommit({ idempotency_key: idempotencyKey, shop_id: shop, endpoint, payload, optimistic });
         } catch {
-          toast("Phone ki storage full ho rahi hai — internet on kar ke sync karein", "err");
+          toast("فون میں جگہ کم ہے — انٹرنیٹ آنے پر محفوظ اندراجات ہم وقت کریں", "err");
           throw e;
         }
         await updatePending();
@@ -398,10 +402,11 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     const replayPayload = { ...base };
     const payload = { ...base, audit_meta: auditMeta(trace, { tier: p.tier, tier_reasons: p.tier_reasons, channel: opts?.auto ? "tier1-auto" : "tier2-confirm", replay_payload: replayPayload }) };
     const selectedCust = p.customer.candidates.find((c) => c.id === p.customer.selected_id) ?? null;
+    const newCustomerId = typeof base.new_customer_id === "string" ? base.new_customer_id : null;
     const { res, queued } = await commitOrQueue("/api/transactions/commit", payload, key, {
       type: "sale",
-      customer_id: p.customer.selected_id,
-      customer_name: selectedCust?.name ?? p.customer.mention,
+      customer_id: p.customer.selected_id ?? newCustomerId,
+      customer_name: selectedCust?.name ?? (newCustomerId ? p.customer.mention : null),
       total_paisa: p.total_paisa,
       cash_paid_paisa: p.cash_paid_paisa,
       credit_paisa: p.credit_paisa,
@@ -424,14 +429,24 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     if (opts?.auto && !queued) {
       setUndo({
         id: newKey("u"),
-        message: `Cash ${formatRs(res.totals.total_paisa ?? p.total_paisa)} saved (${summarizeLines(p.lines)})`,
+        message: `${formatRs(res.totals.total_paisa ?? p.total_paisa)} محفوظ (${summarizeLines(p.lines)})`,
         txId: res.transaction_id,
         until: Date.now() + 5000,
       });
     }
-    if (!queued && typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") === "1") {
+    if (typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") !== "0") {
       const amt = Math.round((res.totals.total_paisa ?? p.total_paisa) / 100);
-      void speak(`${amt} rupay darj ho gaye.`);
+      const cust =
+        selectedCust?.name ??
+        (newCustomerId ? (typeof base.new_customer_name === "string" ? base.new_customer_name : p.customer.mention) : null);
+      const speech = queued
+        ? `${cust ? `${cust} کے لیے ` : ""}${amt} روپے کا اندراج فون میں محفوظ ہو گیا ہے۔ انٹرنیٹ آنے پر حساب میں شامل ہو جائے گا۔`
+        : p.credit_paisa > 0 && cust
+          ? p.cash_paid_paisa > 0
+            ? `${cust} کے کھاتے میں ${Math.round(p.credit_paisa / 100)} روپے ادھار اور ${Math.round(p.cash_paid_paisa / 100)} نقد لکھ دیے۔`
+            : `${cust} کے کھاتے میں ${amt} روپے لکھ دیے۔`
+          : `${amt} روپے نقد بل محفوظ ہو گیا۔`;
+      void speak(speech);
     }
     negativeStockToast(res);
     return res;
@@ -455,6 +470,11 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     navigator.vibrate?.(12);
     if (!queued) void refresh();
     void updatePending();
+    if (queued && typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") !== "0") {
+      void speak(`${custName ?? "گاہک"} سے ${Math.round(amountPaisa / 100)} روپے وصولی فون میں محفوظ ہو گئی ہے۔ انٹرنیٹ آنے پر حساب میں شامل ہو جائے گی۔`);
+    } else if (!queued && typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") !== "0") {
+      void speak(`${custName ?? "گاہک"} سے ${Math.round(amountPaisa / 100)} روپے وصول ہو گئے۔`);
+    }
     return res;
   }, [commitOrQueue, rawState?.customers, recordCommit, refresh, updatePending]);
 
@@ -473,6 +493,9 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     if (!queued) {
       recordCommit(res, "/api/transactions/reverse", payload, null, null, "Reversal");
       void refresh();
+    }
+    if (typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") !== "0") {
+      void speak(queued ? "واپسی کی درخواست فون میں محفوظ ہو گئی ہے۔ انٹرنیٹ آنے پر حساب درست ہو جائے گا۔" : "پچھلا اندراج واپس کر دیا گیا ہے۔");
     }
     return res;
   }, [commitOrQueue, recordCommit, refresh]);
@@ -494,6 +517,10 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       void refresh();
     }
     navigator.vibrate?.(12);
+    if (typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") !== "0") {
+      const totalRupees = Math.round((res.totals.total_paisa ?? total) / 100);
+      void speak(queued ? `${totalRupees} روپے کی مال آمد فون میں محفوظ ہو گئی ہے۔ انٹرنیٹ آنے پر گودام میں شامل ہو جائے گی۔` : `${totalRupees} روپے کا نیا مال گودام میں درج ہو گیا ہے۔`);
+    }
     return res;
   }, [commitOrQueue, recordCommit, refresh]);
 
@@ -512,7 +539,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     try {
       await reverse(u.txId, "undo-5s");
       navigator.vibrate?.(12);
-      toast("Entry wapas ho gayi ✓", "ok");
+      toast("اندراج واپس ہو گیا ✓", "ok");
     } catch (e) {
       toast(friendlyError(e), "err");
     }
@@ -569,37 +596,49 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
           else if (res.sheet === "return") setSheet({ type: "return" });
         }
         return "done";
+      case "unknown":
+        if (res.trace.intent !== "ambient_ignored") {
+          toast("بات واضح نہیں ہوئی — اندراج کے لیے منشی کہہ کر دوبارہ بولیں", "warn");
+        }
+        return "done";
       default:
-        toast(`Samajh nahi aaya${res.trace.transcript ? `: “${res.trace.transcript}”` : ""} — dobara bolein`, "warn");
+        toast("بات واضح نہیں ہوئی — دوبارہ بولیں", "warn");
         return "done";
     }
   }, [confirmSale, toast]);
 
-  const postTurn = useCallback(async (input: { blob?: Blob; mime?: string; text?: string }) => {
+  const postTurn = useCallback(async (input: { blob?: Blob; mime?: string; text?: string; ambient?: boolean }) => {
     if (input.blob) {
       const cleanMime = (input.mime ?? input.blob.type ?? "audio/webm").split(";")[0].trim() || "audio/webm";
       const ext = cleanMime.split("/")[1] || "webm";
       const form = new FormData();
       form.append("audio", new File([input.blob], `clip.${ext}`, { type: cleanMime }));
       if (input.text) form.append("text", input.text);
+      if (input.ambient) form.append("mode", "ambient");
       return api<TurnResponse>("/api/munshi/turn", { form, timeoutMs: 60_000 });
     }
     return api<TurnResponse>("/api/munshi/turn", { json: { text: input.text }, timeoutMs: 60_000 });
   }, []);
 
-  const submitTurn = useCallback(async (input: { blob?: Blob; mime?: string; text?: string }, givenKey?: string) => {
+  const submitTurn = useCallback(async (input: { blob?: Blob; mime?: string; text?: string; ambient?: boolean }, givenKey?: string) => {
     const shop = shopRef.current;
     if (!shop) return;
     const key = givenKey ?? newKey("turn");
     const queueIt = async () => {
       try {
-        await enqueue({ idempotency_key: key, shop_id: shop, kind: input.blob ? "audio" : "text", blob: input.blob, mime: input.mime, text: input.text });
+        await enqueue({ idempotency_key: key, shop_id: shop, kind: input.blob ? "audio" : "text", blob: input.blob, mime: input.mime, text: input.text, ambient: input.ambient });
       } catch {
-        toast("Phone ki storage bhar gayi hai — purani entries sync ya delete karein", "err");
+        toast("فون میں جگہ ختم ہے — پہلے محفوظ اندراجات ہم وقت کریں", "err");
         return;
       }
       await updatePending();
-      if (input.blob) toast("Internet band hai — awaz phone par mehfooz ho gayi", "info");
+      const savedCopy = input.blob
+        ? input.ambient
+          ? "کاؤنٹر کی آواز فون میں محفوظ ہے؛ انٹرنیٹ آنے پر کمانڈ پڑھی جائے گی۔"
+          : "آواز فون میں محفوظ ہے؛ انٹرنیٹ آنے پر اندراج تیار ہوگا۔"
+        : "آپ کی بات فون میں محفوظ ہے؛ انٹرنیٹ آنے پر اندراج تیار ہوگا۔";
+      toast(input.blob ? "انٹرنیٹ نہیں — آواز فون میں محفوظ ہے" : "انٹرنیٹ نہیں — بات فون میں محفوظ ہے", "info");
+      if (typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") !== "0") void speak(savedCopy);
     };
     if (isOffline()) {
       if (input.text && !input.blob) {
@@ -637,7 +676,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       await handleTurn(res, key);
     } catch (e) {
       if (e instanceof ClientApiError && (e.network || ["AI_TIMEOUT", "AI_UNAVAILABLE", "RATE_LIMITED", "AUTH_REQUIRED"].includes(e.code))) {
-        if (e.code === "AUTH_REQUIRED") toast("Session khatam — dobara sign in karein", "warn");
+        if (e.code === "AUTH_REQUIRED") toast("دوبارہ داخل ہوں — اندراج فون میں محفوظ ہے", "warn");
         await queueIt();
       } else {
         toast(friendlyError(e), "err");
@@ -669,12 +708,20 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       setSheet({ type: "reversal", target: target.target ?? null, key: target.idempotency_key });
       return;
     }
-    await submitTurn({ blob: target.blob, mime: target.mime, text: target.text }, target.idempotency_key);
-  }, [submitTurn]);
+    await resetQueuedTurnForRetry(target.idempotency_key);
+    await updatePending();
+    await flushRef.current();
+  }, [updatePending]);
 
   const discardQueued = useCallback(async (key: string) => {
     await dequeue(key);
     await updatePending();
+  }, [updatePending]);
+
+  const retryQueuedTurn = useCallback(async (key: string) => {
+    await resetQueuedTurnForRetry(key);
+    await updatePending();
+    await flushRef.current();
   }, [updatePending]);
 
   const discardCommit = useCallback(async (key: string) => {
@@ -690,14 +737,16 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
       const [beforeTurns, queuedCommits] = await Promise.all([pendingCount(shop), listCommits(shop)]);
       const pendingCommits = queuedCommits.filter((c) => c.status === "pending").length;
       if (!beforeTurns && !pendingCommits) return;
-      const cRes = await flushCommits(shop, (c) => api<CommitResponse>(c.endpoint, { json: c.payload }));
-      const r = await flushQueue(shop, async (q) => {
-        const res = await postTurn({ blob: q.blob, mime: q.mime, text: q.text });
+      const r = await flushOperations(
+        shop,
+        async (q) => {
+        const res = await postTurn({ blob: q.blob, mime: q.mime, text: q.text, ambient: q.ambient });
         return handleTurn(res, q.idempotency_key, { deferSheet: true });
-      });
+        },
+        (c) => api<CommitResponse>(c.endpoint, { json: c.payload }),
+      );
       await updatePending();
       await refresh();
-      void cRes;
       if (r.review > 0 && !sheetRef.current) {
         await openQueuedReview();
       }
@@ -731,7 +780,6 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
     headSeqRef.current = rawState?.chain_head?.seq;
   }, [rawState?.chain_head?.seq]);
 
-  const flushRef = useRef(flush);
   useEffect(() => {
     flushRef.current = flush;
   }, [flush]);
@@ -832,8 +880,9 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setLang = useCallback((l: Lang) => {
-    localStorage.setItem(LANG_KEY, l);
-    setLangState(l);
+    void l;
+    localStorage.setItem(LANG_KEY, "ur");
+    setLangState("ur");
   }, []);
 
   const shop = useMemo(() => shops?.find((s) => s.id === shopId) ?? null, [shops, shopId]);
@@ -848,7 +897,7 @@ export function DukaanProvider({ children }: { children: ReactNode }) {
   const value: Store = {
     configured, authReady, session, shops, shopId, shop, setShopId, state, stateError, refresh,
     tab, setTab, sheet, openSheet, closeSheet, xrayOn, setXrayOn, helperMode, setHelperMode, lang, setLang, online, simulatedOffline, setSimulatedOffline,
-    pending, failedCount, reviewCount, queue, queuedCommits: commits, flush, openQueuedReview, discardQueued, retryCommit, discardCommit, thinking, submitTurn, confirmSale, confirmPayment, reverse, commitPurchase,
+    pending, failedCount, reviewCount, queue, queuedCommits: commits, flush, openQueuedReview, discardQueued, retryQueuedTurn, retryCommit, discardCommit, thinking, submitTurn, confirmSale, confirmPayment, reverse, commitPurchase,
     lastCommit, replayTest, undo, doUndo, dismissUndo: () => setUndo(null), toasts, toast, highlightTx,
     signInSandbox, signInPassword, signInMagic, verifyEmailOtp, signInPhoneOtp, verifyPhoneOtp, signOut, createShop, reloadShops,
   };

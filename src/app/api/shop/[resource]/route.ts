@@ -176,7 +176,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     }
     case "product": {
       const b = await parseJson(req, AddProduct);
-      return ok(await rpc(sb, "add_product", { p_shop_id: shopId, p_payload: b }));
+      return ok(await rpc(sb, "add_product_with_count_flag", { p_shop_id: shopId, p_payload: b }));
     }
     case "passport-revoke": {
       return ok(await rpc(sb, "rotate_passport_tokens", { p_shop_id: shopId }));

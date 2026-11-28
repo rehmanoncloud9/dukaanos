@@ -70,6 +70,8 @@ export interface StateProduct extends ProductRow {
   is_quick_added: boolean;
   sold_7d: number;
   days_left: number | null;
+  created_at?: string;
+  last_sold_at?: string | null;
 }
 
 export interface Galla {

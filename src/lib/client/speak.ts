@@ -1,6 +1,6 @@
 "use client";
 
-import { api } from "./api";
+import { api, isOffline } from "./api";
 
 async function pickUrduVoice(): Promise<SpeechSynthesisVoice | null> {
   let voices = speechSynthesis.getVoices();
@@ -52,6 +52,16 @@ async function fetchTtsBlob(text: string, budgetMs: number): Promise<Blob> {
   return pending;
 }
 
+/** Return a shareable server-generated Urdu audio file when connected. */
+export async function getSpeakAudioBlob(text: string, budgetMs = 7000): Promise<Blob | null> {
+  if (isOffline() || !text.trim()) return null;
+  try {
+    return await fetchTtsBlob(text.trim(), budgetMs);
+  } catch {
+    return null;
+  }
+}
+
 /** Silently pre-warm Urdu audio in memory so Suniye plays in 0 ms when tapped. */
 export function prefetchSpeak(text: string): void {
   if (typeof window === "undefined" || !text.trim()) return;
@@ -73,6 +83,19 @@ async function playBlob(blob: Blob): Promise<void> {
 /** F-12 query-only readout: server ur-PK neural TTS (with blob cache), else browser speechSynthesis (ur-PK). */
 export async function speak(text: string, budgetMs = 7000): Promise<"tts" | "browser" | "none"> {
   const key = text.trim();
+  // Avoid waiting for a server timeout when the shop is offline. Device Urdu
+  // voices are the fast path; the server voice is used when a network is up.
+  if (isOffline()) {
+    if (typeof speechSynthesis === "undefined") return "none";
+    const u = new SpeechSynthesisUtterance(key);
+    u.voice = await pickUrduVoice();
+    u.lang = u.voice?.lang ?? "ur-PK";
+    u.rate = 0.9;
+    u.pitch = 0.98;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+    return "browser";
+  }
   try {
     const blob = await fetchTtsBlob(key, budgetMs);
     await playBlob(blob);

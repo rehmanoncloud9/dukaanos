@@ -8,8 +8,8 @@ const notoArabic = Noto_Sans_Arabic({ variable: "--font-noto-arabic", subsets: [
 const nastaliq = Noto_Nastaliq_Urdu({ variable: "--font-nastaliq", subsets: ["arabic"], weight: ["400"], display: "swap" });
 
 export const metadata: Metadata = {
-  title: "DukaanOS — Voice & Parchi Khata",
-  description: "Bol kar aur parchi scan kar ke apni kiryana dukaan ka hisaab, udhaar aur maal rakhein. Sirf Aap Ka Record.",
+  title: "دکان او ایس — دکان کا حساب",
+  description: "آواز سے فروخت، ادھار، گودام اور پرچی کا حساب رکھیں۔",
   applicationName: "DukaanOS",
   appleWebApp: { capable: true, title: "DukaanOS", statusBarStyle: "default" },
   icons: {
@@ -32,7 +32,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrains.variable} ${notoArabic.variable} ${nastaliq.variable} h-full`}>
+    <html lang="ur" dir="rtl" className={`${inter.variable} ${jetbrains.variable} ${notoArabic.variable} ${nastaliq.variable} h-full`}>
       <body className="min-h-full bg-canvas text-ink">{children}</body>
     </html>
   );

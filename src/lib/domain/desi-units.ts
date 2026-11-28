@@ -16,6 +16,7 @@ export interface UnitDef {
 const UNIT_TABLE: Array<[string[], UnitDef]> = [
   [["g", "gm", "gms", "gram", "grams", "giram", "گرام"], { family: "mass", base: 1, canonical: "g" }],
   [["kg", "kgs", "kilo", "kilos", "killo", "kilogram", "kg.", "کلو", "کلوگرام"], { family: "mass", base: 1000, canonical: "kilo" }],
+  [["mann", "man", "mun", "من"], { family: "mass", base: 40_000, canonical: "mann" }],
   [["pao", "pau", "paao", "paav", "pav", "paoo", "پاؤ", "پاو"], { family: "mass", base: 250, canonical: "pao" }],
   [["ml", "mili", "millilitre", "milliliter", "ملی لیٹر"], { family: "volume", base: 1, canonical: "ml" }],
   [["l", "ltr", "litre", "liter", "litr", "leter", "لیٹر", "لٹر"], { family: "volume", base: 1000, canonical: "litre" }],
@@ -140,23 +141,23 @@ export interface LineResolution {
 
 /** Format integer base units for user-facing review. */
 export function formatBaseQty(qty: number, unit: BaseUnit): string {
-  if (unit === "pcs") return `${qty} pcs`;
-  const big = unit === "g" ? "kg" : "L";
+  if (unit === "pcs") return `${qty} عدد`;
+  const big = unit === "g" ? "کلو" : "لیٹر";
   if (Math.abs(qty) >= 1000) {
     const v = qty / 1000;
-    return `${Number.isInteger(v) ? v : v.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}${big}`;
+    return `${Number.isInteger(v) ? v : v.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")} ${big}`;
   }
-  return `${qty}${unit}`;
+  return `${qty} ${unit === "g" ? "گرام" : "ملی لیٹر"}`;
 }
 
 /** Format a catalog price with its unit basis. */
 export function formatUnitPrice(product: ProductUnitInfo): string {
   const per = product.base_unit === "pcs"
-    ? product.pack_size_base_units === 1 ? "pc" : `${product.pack_size_base_units} pcs`
+    ? product.pack_size_base_units === 1 ? "عدد" : `${product.pack_size_base_units} عدد`
     : product.pack_size_base_units === 1000
-      ? product.base_unit === "g" ? "kg" : "L"
+      ? product.base_unit === "g" ? "کلو" : "لیٹر"
       : formatBaseQty(product.pack_size_base_units, product.base_unit);
-  return `Rs. ${formatAmount(product.unit_price_paisa)}/${per}`;
+  return `${formatAmount(product.unit_price_paisa)} روپے فی ${per}`;
 }
 
 /** Convert a parsed spoken quantity into product inventory base units. */

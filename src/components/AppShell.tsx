@@ -206,17 +206,17 @@ function OfflineBanner() {
   const { online, pending, simulatedOffline, setSimulatedOffline } = useDukaan();
   if (online) return null;
   return (
-    <div className="mb-3 flex items-center gap-2 rounded-[12px] bg-amber-bg px-3 py-2 text-[13.5px] font-medium text-amber-ink">
+    <div dir="rtl" className="mb-3 flex items-center gap-2 rounded-[12px] bg-amber-bg px-3 py-2 text-[13.5px] font-medium text-amber-ink urdu-ui">
       <WifiOff size={15} strokeWidth={SW} />
       <span className="flex-1">
-        Internet band hai — hisaab phone par mehfooz hai{pending > 0 ? ` (${pending})` : ""}
+        انٹرنیٹ بند ہے — حساب فون پر محفوظ ہے{pending > 0 ? ` (${pending})` : ""}
       </span>
       {simulatedOffline && (
         <button
           onClick={() => setSimulatedOffline(false)}
-          className="tactile h-7 rounded-full bg-surface px-3 text-[12.5px] font-semibold"
+          className="tactile h-8 rounded-full bg-surface px-3 text-[12.5px] font-semibold"
         >
-          Reconnect
+          آن لائن کریں
         </button>
       )}
     </div>
@@ -227,16 +227,16 @@ function PendingSyncBanner() {
   const { online, failedCount, openSheet } = useDukaan();
   if (!online || failedCount === 0) return null;
   return (
-    <div className="mb-3 flex items-center gap-2 rounded-[12px] bg-udhaar-bg px-3 py-2 text-[13px] font-medium text-udhaar-ink">
+    <div dir="rtl" className="mb-3 flex items-center gap-2 rounded-[12px] bg-udhaar-bg px-3 py-2 text-[13px] font-medium text-udhaar-ink urdu-ui">
       <span className="flex-1">
-        {`${failedCount} entry sync nahi ho saki — check karein`}
+        {`${failedCount} اندراج سنک نہیں ہو سکا — چیک کریں`}
       </span>
       <button
         type="button"
         onClick={() => openSheet({ type: "settings" })}
-        className="tactile h-7 rounded-full bg-surface px-3 text-[12px] font-semibold text-ink"
+        className="tactile h-8 rounded-full bg-surface px-3 text-[12px] font-semibold text-ink"
       >
-        Check
+        دیکھیں
       </button>
     </div>
   );
@@ -250,18 +250,18 @@ function TabBar() {
     { id: "maal", label: tr("maal", lang), Icon: Package },
   ];
   return (
-    <nav aria-label="Main navigation" className="tabbar-blur hairline-t fixed inset-x-0 bottom-0 z-40 pb-safe">
-      <div role="tablist" className="mx-auto grid h-[58px] max-w-[430px] grid-cols-3">
+    <nav aria-label="بنیادی مینو" className="tabbar-blur hairline-t fixed inset-x-0 bottom-0 z-40 pb-safe">
+      <div role="tablist" className="mx-auto grid h-[64px] max-w-[430px] grid-cols-3">
         {items.map(({ id, label, Icon }) => (
           <button
             key={id}
             role="tab"
             aria-selected={tab === id}
             onClick={() => setTab(id)}
-            className={cx("flex min-h-[48px] flex-col items-center justify-center gap-0.5 text-[11px] font-semibold", tab === id ? "text-ink" : "text-ink-3")}
+            className={cx("flex min-h-[56px] flex-col items-center justify-center gap-1 text-[12px] font-bold", tab === id ? "text-ink" : "text-ink-3")}
           >
-            <Icon size={20} strokeWidth={SW} />
-            <span dir="auto" className={lang === "ur" ? "urdu-ui text-[12px] leading-none" : ""}>{label}</span>
+            <Icon size={22} strokeWidth={SW} />
+            <span dir="auto" className="urdu-ui text-[13px] leading-none">{label}</span>
           </button>
         ))}
       </div>
@@ -274,11 +274,11 @@ function UndoToast() {
   if (!undo) return null;
   const left = Math.max(0, undo.until - Date.now());
   return (
-    <div role="status" aria-live="polite" className="fixed inset-x-0 bottom-[150px] z-[55] mx-auto max-w-[430px] px-4">
-      <div className="relative flex h-11 items-center overflow-hidden rounded-xl bg-[#0A0A0A] pl-4 pr-1 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
-        <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">{undo.message}</span>
-        <button onClick={() => void doUndo()} className="tactile h-9 rounded-lg px-3 text-[14px] font-bold text-[#34D399]">
-          UNDO
+    <div role="status" aria-live="polite" className="fixed inset-x-0 bottom-[156px] z-[55] mx-auto max-w-[430px] px-4">
+      <div dir="rtl" className="relative flex h-12 items-center overflow-hidden rounded-xl bg-[#0A0A0A] pr-4 pl-1 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
+        <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium urdu-ui">{undo.message}</span>
+        <button onClick={() => void doUndo()} className="tactile h-10 rounded-lg px-3 text-[14px] font-bold text-[#34D399] urdu-ui">
+          واپس
         </button>
         <span key={undo.id} className="countdown absolute bottom-0 left-0 h-[2px] w-full bg-[#34D399]" style={{ animationDuration: `${left}ms` }} />
       </div>

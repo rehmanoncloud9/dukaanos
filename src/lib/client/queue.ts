@@ -16,7 +16,9 @@ export interface QueuedTurn {
   blob?: Blob;
   mime?: string;
   text?: string;
+  ambient?: boolean;
   created_at: number;
+  seq_local?: number;
   attempts: number;
   status: "pending" | "review" | "failed";
   last_error?: string;
@@ -30,18 +32,86 @@ const pending = typeof indexedDB !== "undefined" ? createStore("dukaanos-queue",
 const commits = typeof indexedDB !== "undefined" ? createStore("dukaanos-commits", "commits") : undefined;
 const replays = typeof indexedDB !== "undefined" ? createStore("dukaanos-replays", "clips") : undefined;
 
-export async function enqueue(item: Omit<QueuedTurn, "attempts" | "status" | "created_at">): Promise<void> {
-  await set(item.idempotency_key, { ...item, attempts: 0, status: "pending", created_at: Date.now() } satisfies QueuedTurn, pending);
+let localSeqCounter = 0;
+let sequenceDbPromise: Promise<IDBDatabase | null> | null = null;
+
+function openSequenceDb(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === "undefined") return Promise.resolve(null);
+  if (sequenceDbPromise) return sequenceDbPromise;
+  sequenceDbPromise = new Promise((resolve) => {
+    try {
+      const request = indexedDB.open("dukaanos-operation-order", 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains("sequence")) request.result.createObjectStore("sequence");
+      };
+      request.onsuccess = () => {
+        request.result.onversionchange = () => request.result.close();
+        resolve(request.result);
+      };
+      request.onerror = () => resolve(null);
+      request.onblocked = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+  return sequenceDbPromise;
+}
+
+async function nextLocalSequence(): Promise<number> {
+  const db = await openSequenceDb();
+  if (!db) {
+    localSeqCounter = Math.max(Date.now() * 1000, localSeqCounter + 1);
+    return localSeqCounter;
+  }
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction("sequence", "readwrite");
+      const store = tx.objectStore("sequence");
+      const request = store.get("counter");
+      let next = 0;
+      request.onsuccess = () => {
+        const previous = typeof request.result === "number" ? request.result : 0;
+        next = Math.max(Date.now() * 1000, previous + 1);
+        store.put(next, "counter");
+      };
+      tx.oncomplete = () => resolve(next);
+      tx.onerror = () => {
+        localSeqCounter = Math.max(Date.now() * 1000, localSeqCounter + 1);
+        resolve(localSeqCounter);
+      };
+      tx.onabort = () => {
+        localSeqCounter = Math.max(Date.now() * 1000, localSeqCounter + 1);
+        resolve(localSeqCounter);
+      };
+    } catch {
+      localSeqCounter = Math.max(Date.now() * 1000, localSeqCounter + 1);
+      resolve(localSeqCounter);
+    }
+  });
+}
+
+export async function enqueue(item: Omit<QueuedTurn, "attempts" | "status" | "created_at" | "seq_local">): Promise<void> {
+  const now = Date.now();
+  const seq_local = await nextLocalSequence();
+  await set(item.idempotency_key, { ...item, attempts: 0, status: "pending", created_at: now, seq_local } satisfies QueuedTurn, pending);
 }
 
 export async function listQueue(shopId?: string): Promise<QueuedTurn[]> {
   const all = (await entries<string, QueuedTurn>(pending)).map(([, v]) => v);
-  return all.filter((q) => !shopId || q.shop_id === shopId).sort((a, b) => a.created_at - b.created_at);
+  return all
+    .filter((q) => !shopId || q.shop_id === shopId)
+    .sort((a, b) => (a.seq_local ?? a.created_at * 1000) - (b.seq_local ?? b.created_at * 1000));
 }
 
 export async function updateQueued(key: string, patch: Partial<QueuedTurn>): Promise<void> {
   const cur = await get<QueuedTurn>(key, pending);
   if (cur) await set(key, { ...cur, ...patch }, pending);
+}
+
+/** Retry a failed turn in place so it keeps its original FIFO position and idempotency key. */
+export async function resetQueuedTurnForRetry(key: string): Promise<void> {
+  const cur = await get<QueuedTurn>(key, pending);
+  if (cur) await set(key, { ...cur, status: "pending", attempts: 0, last_error: undefined }, pending);
 }
 
 export async function dequeue(key: string): Promise<void> {
@@ -73,7 +143,7 @@ export type FlushOutcome =
 export async function flushQueue(shopId: string, process: (q: QueuedTurn) => Promise<FlushOutcome>): Promise<{ done: number; review: number; failed: number }> {
   const out = { done: 0, review: 0, failed: 0 };
   for (const q of await listQueue(shopId)) {
-    if (q.status !== "pending") continue;
+    if (q.status !== "pending") break;
     try {
       const r = await process(q);
       if (r === "done") {
@@ -89,8 +159,8 @@ export async function flushQueue(shopId: string, process: (q: QueuedTurn) => Pro
       const permanent = isPermanentFailure(e);
       await updateQueued(q.idempotency_key, { attempts, last_error: e instanceof Error ? e.message : String(e), status: permanent || attempts >= 5 ? "failed" : "pending" });
       out.failed++;
-      if (permanent) continue; // a rejected clip must not block the rest of the queue
-      break; // keep order: stop on first transient failure, retry on next reconnect
+      // Keep later writes behind the failed operation until the owner retries or discards it.
+      break;
     }
   }
   return out;
@@ -144,20 +214,25 @@ export interface QueuedCommit {
   payload: Record<string, unknown>;
   optimistic: OptimisticDelta;
   created_at: number;
+  seq_local?: number;
   attempts: number;
   status: "pending" | "failed";
   last_error?: string;
 }
 
-export async function enqueueCommit(item: Omit<QueuedCommit, "attempts" | "status" | "created_at">): Promise<void> {
+export async function enqueueCommit(item: Omit<QueuedCommit, "attempts" | "status" | "created_at" | "seq_local">): Promise<void> {
   if (!commits) return;
-  await set(item.idempotency_key, { ...item, attempts: 0, status: "pending", created_at: Date.now() } satisfies QueuedCommit, commits);
+  const now = Date.now();
+  const seq_local = await nextLocalSequence();
+  await set(item.idempotency_key, { ...item, attempts: 0, status: "pending", created_at: now, seq_local } satisfies QueuedCommit, commits);
 }
 
 export async function listCommits(shopId?: string): Promise<QueuedCommit[]> {
   if (!commits) return [];
   const all = (await entries<string, QueuedCommit>(commits)).map(([, v]) => v);
-  return all.filter((c) => !shopId || c.shop_id === shopId).sort((a, b) => a.created_at - b.created_at);
+  return all
+    .filter((c) => !shopId || c.shop_id === shopId)
+    .sort((a, b) => (a.seq_local ?? a.created_at * 1000) - (b.seq_local ?? b.created_at * 1000));
 }
 
 export async function dequeueCommit(key: string): Promise<void> {
@@ -178,7 +253,7 @@ export async function flushCommits(
 ): Promise<{ done: number; failed: number }> {
   const out = { done: 0, failed: 0 };
   for (const c of await listCommits(shopId)) {
-    if (c.status !== "pending") continue;
+    if (c.status !== "pending") break;
     try {
       await send(c);
       await dequeueCommit(c.idempotency_key);
@@ -194,8 +269,77 @@ export async function flushCommits(
         );
       }
       out.failed++;
-      if (permanent) continue;
-      break; // strict FIFO: stop on first transient/network failure
+      break; // strict FIFO: the owner retries or discards a failed operation before later writes.
+    }
+  }
+  return out;
+}
+
+/**
+ * Flush text/audio turns and direct ledger writes in one local FIFO. A turn requiring
+ * review blocks later ledger writes until the shopkeeper resolves it.
+ */
+export async function flushOperations(
+  shopId: string,
+  processTurn: (turn: QueuedTurn) => Promise<FlushOutcome>,
+  sendCommit: (commit: QueuedCommit) => Promise<unknown>,
+): Promise<{ done: number; review: number; failed: number }> {
+  const out = { done: 0, review: 0, failed: 0 };
+  const [turns, commitsForShop] = await Promise.all([listQueue(shopId), listCommits(shopId)]);
+  const operations = [
+    ...turns.map((turn) => ({ kind: "turn" as const, order: turn.seq_local ?? turn.created_at * 1000, turn })),
+    ...commitsForShop.map((commit) => ({ kind: "commit" as const, order: commit.seq_local ?? commit.created_at * 1000, commit })),
+  ].sort((a, b) => a.order - b.order || a.kind.localeCompare(b.kind));
+
+  for (const operation of operations) {
+    if (operation.kind === "turn") {
+      const turn = operation.turn;
+      // A failed item or a proposal awaiting owner review holds its place in
+      // the FIFO. The owner can retry, review, or discard it from the queue.
+      if (turn.status !== "pending") break;
+      try {
+        const result = await processTurn(turn);
+        if (result === "done") {
+          await dequeue(turn.idempotency_key);
+          out.done++;
+          continue;
+        }
+        const patch = typeof result === "object" && result.patch ? result.patch : {};
+        await updateQueued(turn.idempotency_key, { ...patch, status: "review" });
+        out.review++;
+        break;
+      } catch (error) {
+        const attempts = turn.attempts + 1;
+        const permanent = isPermanentFailure(error);
+        await updateQueued(turn.idempotency_key, {
+          attempts,
+          last_error: error instanceof Error ? error.message : String(error),
+          status: permanent || attempts >= 5 ? "failed" : "pending",
+        });
+        out.failed++;
+        break;
+      }
+    }
+
+    const commit = operation.commit;
+    if (commit.status !== "pending") break;
+    try {
+      await sendCommit(commit);
+      await dequeueCommit(commit.idempotency_key);
+      out.done++;
+    } catch (error) {
+      const attempts = commit.attempts + 1;
+      const permanent = isPermanentFailure(error);
+      if (commits) {
+        await set(commit.idempotency_key, {
+          ...commit,
+          attempts,
+          last_error: error instanceof Error ? error.message : String(error),
+          status: permanent || attempts >= 8 ? "failed" : "pending",
+        } satisfies QueuedCommit, commits);
+      }
+      out.failed++;
+      break;
     }
   }
   return out;
@@ -221,6 +365,20 @@ export function applyOptimisticOverlay(state: ShopState | null, pendingCommits: 
       today.udhaar_paisa += o.credit_paisa;
       today.cash_in_galla_paisa += o.cash_paid_paisa;
       if (o.cash_paid_paisa > 0 && o.credit_paisa === 0) today.cash_sales_count += 1;
+      if (o.customer_id && o.customer_name && !customers.some((x) => x.id === o.customer_id)) {
+        customers.push({
+          id: o.customer_id,
+          code: null,
+          name: o.customer_name,
+          role_tag: null,
+          phone: null,
+          aliases: [],
+          balance_paisa: 0,
+          last_paid_at: null,
+          oldest_unpaid_at: null,
+          days_overdue: null,
+        });
+      }
       if (o.customer_id && o.credit_paisa !== 0) {
         const cust = customers.find((x) => x.id === o.customer_id);
         if (cust) cust.balance_paisa += o.credit_paisa;
@@ -243,7 +401,10 @@ export function applyOptimisticOverlay(state: ShopState | null, pendingCommits: 
       for (const l of o.lines ?? []) {
         if (!l.product_id) continue;
         const prod = products.find((p) => p.id === l.product_id);
-        if (prod) prod.stock_base_units += l.qty_base_units;
+        if (prod) {
+          prod.stock_base_units += l.qty_base_units;
+          prod.is_quick_added = false;
+        }
       }
     }
 

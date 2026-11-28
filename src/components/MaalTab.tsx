@@ -1,18 +1,33 @@
 "use client";
 
-import { AlertCircle, Camera, MessageSquare, Search } from "lucide-react";
+import { AlertCircle, Box, Camera, Droplets, Home, MessageSquare, Milk, Search, Sparkles, Volume2, Wheat } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CommitResponse, StateProduct } from "@/lib/api/contracts";
 import { api, friendlyError, newKey } from "@/lib/client/api";
 import { tr } from "@/lib/client/i18n";
+import { inferProductCategory, type ProductCategory } from "@/lib/client/local-db";
+import { speak } from "@/lib/client/speak";
 import { useDukaan } from "@/lib/client/store";
 import { formatBaseQty } from "@/lib/domain/desi-units";
 import { computeReorderForecast, formatReorderLine } from "@/lib/domain/forecast";
 import { analyzeMargins } from "@/lib/domain/margin-shield";
 import { waLink } from "@/lib/domain/messages";
 import { formatAmount, formatRs, rupeesToPaisa } from "@/lib/domain/money";
+import { normalizeText } from "@/lib/domain/pakphone";
 import { startContinuousScan, isBarcodeDetectorSupported } from "@/lib/client/barcode";
+import { VirtualList } from "./VirtualList";
 import { cx, Pill, PrimaryButton, Segmented, Sheet, shortDate, SW } from "./ui";
+
+const CATEGORY_META: Record<ProductCategory, { label: string; bg: string; fg: string; Icon: typeof Wheat }> = {
+  grains: { label: "دالیں / اناج", bg: "bg-amber-bg", fg: "text-amber-ink", Icon: Wheat },
+  liquids: { label: "تیل / مشروبات", bg: "bg-maal-bg", fg: "text-maal", Icon: Droplets },
+  dairy: { label: "ڈیری / بیکری", bg: "bg-cash-bg", fg: "text-cash-ink", Icon: Milk },
+  cosmetics: { label: "کاسمیٹکس", bg: "bg-udhaar-bg", fg: "text-udhaar-ink", Icon: Sparkles },
+  household: { label: "گھریلو سامان", bg: "bg-surface-sunken", fg: "text-ink-2", Icon: Home },
+  packaged: { label: "پیکٹ سامان", bg: "bg-surface-sunken", fg: "text-ink", Icon: Box },
+};
+
+const EMPTY_PRODUCTS: StateProduct[] = [];
 
 /** "4.2 / 25 kg", "2 / 12 tin", "24 / 12 pcs" */
 export function stockLabel(p: Pick<StateProduct, "stock_base_units" | "reorder_level_base_units" | "base_unit" | "pack_size_base_units">): string {
@@ -20,10 +35,10 @@ export function stockLabel(p: Pick<StateProduct, "stock_base_units" | "reorder_l
   const r = p.reorder_level_base_units ?? 0;
   if (p.base_unit !== "pcs" && p.pack_size_base_units > 1000) {
     const f = (v: number) => (v / p.pack_size_base_units).toFixed(Number.isInteger(v / p.pack_size_base_units) ? 0 : 1);
-    return `${f(s)} / ${f(r)} tin`;
+    return `${f(s)} / ${f(r)} پیٹی`;
   }
-  if (p.base_unit === "pcs") return `${s} / ${r} pcs`;
-  const big = p.base_unit === "g" ? "kg" : "L";
+  if (p.base_unit === "pcs") return `${s} / ${r} عدد`;
+  const big = p.base_unit === "g" ? "کلو" : "لیٹر";
   const f = (v: number) => (v / 1000).toFixed(Math.abs(v) % 1000 === 0 ? 0 : 1);
   return `${f(s)} / ${f(r)} ${big}`;
 }
@@ -34,17 +49,50 @@ export function isLow(p: StateProduct) {
 
 export function MaalTab() {
   const { state, openSheet, refresh, lang, toast, xrayOn } = useDukaan();
-  const [filter, setFilter] = useState<"all" | "low">("all");
+  const [filter, setFilter] = useState<"all" | "low" | "untracked">("all");
+  const [catFilter, setCatFilter] = useState<ProductCategory | "all">("all");
   const [query, setQuery] = useState("");
   const [scanning, setScanning] = useState(false);
   const [newSku, setNewSku] = useState<string | null>(null);
   const scannerRef = useRef<ReturnType<typeof startContinuousScan> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const products = state?.products ?? EMPTY_PRODUCTS;
+  const searchIndex = useMemo(
+    () => new Map(products.map((p) => [p.id, {
+      search: normalizeText([p.name, p.name_ur ?? "", ...(p.aliases ?? [])].join(" ")),
+      sort: normalizeText(p.name_ur || p.name),
+    }])),
+    [products],
+  );
+
+  const negative = useMemo(() => products.filter((p) => p.stock_base_units < 0), [products]);
+  const marginAlerts = useMemo(() => analyzeMargins(products), [products]);
+  const sorted = useMemo(
+    () => products.slice().sort((a, b) => Number(isLow(b)) - Number(isLow(a)) || (searchIndex.get(a.id)?.sort ?? "").localeCompare(searchIndex.get(b.id)?.sort ?? "")),
+    [products, searchIndex],
+  );
+  const filtered = useMemo(() => {
+    const base = filter === "low" ? sorted.filter(isLow) : filter === "untracked" ? sorted.filter((p) => p.is_quick_added) : sorted;
+    if (catFilter === "all") return base;
+    return base.filter((p) => inferProductCategory(p.name, [p.name_ur ?? "", ...(p.aliases ?? [])]) === catFilter);
+  }, [filter, sorted, catFilter]);
+  const q = normalizeText(query);
+  const list = useMemo(
+    () => {
+      const queryTerms = q.split(" ").filter(Boolean);
+      return queryTerms.length ? filtered.filter((p) => {
+        const text = searchIndex.get(p.id)?.search ?? "";
+        return queryTerms.every((term) => text.includes(term));
+      }) : filtered;
+    },
+    [q, filtered, searchIndex],
+  );
+  const forecast = filter === "low" && state ? computeReorderForecast(products, state.today.cash_in_galla_paisa, 3, 6) : null;
 
   useEffect(() => {
     const h = (e: Event) => {
       const d = (e as CustomEvent<{ tab: string; filter: string }>).detail;
-      if (d.tab === "maal") setFilter(d.filter === "low" ? "low" : "all");
+      if (d.tab === "maal") setFilter(d.filter === "low" ? "low" : d.filter === "untracked" ? "untracked" : "all");
     };
     window.addEventListener("dukaan:filter", h);
     return () => window.removeEventListener("dukaan:filter", h);
@@ -53,7 +101,7 @@ export function MaalTab() {
   const startScan = useCallback(async () => {
     if (!isBarcodeDetectorSupported()) {
       // Fallback: open search with camera icon hint
-      toast("Barcode scanner is not supported on this browser — search manually", "warn");
+      toast("اس ڈیوائس پر بارکوڈ اسکین نہیں ہو سکتا — سامان تلاش کریں", "warn");
       return;
     }
     if (!state) return;
@@ -73,7 +121,7 @@ export function MaalTab() {
           openSheet({ type: "product", productId: result.product.id });
         } else {
           setNewSku(result.barcode);
-          toast(`New barcode ${result.barcode} — 5s mein add karein`, "info");
+          toast(`نیا بارکوڈ ${result.barcode} — سامان کا نام درج کریں`, "info");
         }
       });
       scannerRef.current = stop;
@@ -85,19 +133,12 @@ export function MaalTab() {
         setScanning(false);
       }, 15_000);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Scan failed", "err");
+      toast("اسکین مکمل نہیں ہوا — دوبارہ کوشش کریں", "err");
       setScanning(false);
     }
   }, [state, openSheet, toast]);
 
   if (!state) return <div className="surface-card h-[400px] animate-pulse" />;
-  const negative = state.products.filter((p) => p.stock_base_units < 0);
-  const marginAlerts = analyzeMargins(state.products);
-  const sorted = state.products.slice().sort((a, b) => Number(isLow(b)) - Number(isLow(a)) || a.name.localeCompare(b.name));
-  const q = query.trim().toLowerCase();
-  const filtered = filter === "low" ? sorted.filter(isLow) : sorted;
-  const list = q ? filtered.filter((p) => p.name.toLowerCase().includes(q) || (p.aliases ?? []).some((a) => a.toLowerCase().includes(q))) : filtered;
-  const forecast = filter === "low" ? computeReorderForecast(state.products, state.today.cash_in_galla_paisa, 3, 6) : null;
 
   return (
     <div className="space-y-3 pb-24">
@@ -105,13 +146,24 @@ export function MaalTab() {
         <div key={p.id} className="flex items-center gap-2.5 rounded-[14px] bg-udhaar-bg px-3.5 py-2.5">
           <AlertCircle size={16} strokeWidth={1.75} className="shrink-0 text-udhaar-ink" />
           <span className="flex-1 text-[13.5px] font-medium text-udhaar-ink" dir="auto">
-            {p.name} ({formatBaseQty(p.stock_base_units, p.base_unit)})
+            {p.name_ur || p.name} ({formatBaseQty(p.stock_base_units, p.base_unit)})
           </span>
           <button onClick={() => openSheet({ type: "product", productId: p.id })} className="tactile h-8 rounded-full bg-surface px-3 text-[13px] font-semibold text-udhaar-ink">
             {tr("fix", lang)}
           </button>
         </div>
       ))}
+      {state.products.some((p) => p.is_quick_added) && filter !== "untracked" && (
+        <button
+          type="button"
+          onClick={() => setFilter("untracked")}
+          className="tactile flex w-full items-center justify-between rounded-[14px] bg-amber-bg px-3.5 py-2.5 text-right text-[13.5px] font-semibold text-amber-ink urdu-ui"
+          dir="rtl"
+        >
+          <span>{state.products.filter((p) => p.is_quick_added).length} اشیاء کی مقدار ابھی گنی نہیں گئی</span>
+          <span>دیکھیں ←</span>
+        </button>
+      )}
       {marginAlerts.length > 0 && (
         <button
           type="button"
@@ -127,12 +179,13 @@ export function MaalTab() {
         </button>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <Segmented<"all" | "low">
+        <Segmented<"all" | "low" | "untracked">
           value={filter}
           onChange={setFilter}
           options={[
             { value: "all", label: `${tr("all", lang)} (${state.products.length})` },
             { value: "low", label: `${tr("lowStock", lang)} (${sorted.filter(isLow).length})` },
+            { value: "untracked", label: `گنتی باقی (${state.products.filter((p) => p.is_quick_added).length})` },
           ]}
         />
         {isBarcodeDetectorSupported() && (
@@ -161,7 +214,7 @@ export function MaalTab() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={tr("searchProducts", lang)}
-          aria-label="Search products"
+          aria-label="سامان تلاش کریں"
           dir="auto"
           className="h-11 w-full rounded-[12px] border border-black/10 bg-surface pl-10 pr-3 text-[15px] outline-none focus:border-ink"
         />
@@ -170,7 +223,7 @@ export function MaalTab() {
         <div className="surface-card p-3.5">
           <div className="flex items-center justify-between">
             <span className={cx("section-label", lang === "ur" && "urdu-ui")} dir="auto">{tr("reorderList", lang)}</span>
-            <span className="num text-[12.5px] font-semibold text-maal">Est. {formatRs(forecast.total_reorder_cost_paisa)}</span>
+            <span className="num text-[12.5px] font-semibold text-maal">اندازاً {formatRs(forecast.total_reorder_cost_paisa)}</span>
           </div>
           <div className="mt-1.5 space-y-1 text-[12.5px] text-ink-2">
             {forecast.items.slice(0, 3).map((item) => (
@@ -183,41 +236,91 @@ export function MaalTab() {
             rel="noreferrer"
             className="tactile mt-2.5 flex h-10 w-full items-center justify-center gap-1.5 rounded-[10px] bg-maal text-[13.5px] font-semibold text-white"
           >
-            <MessageSquare size={14} strokeWidth={SW} /> Send Wholesale Order (WhatsApp)
+            <MessageSquare size={14} strokeWidth={SW} /> ہول سیل آرڈر واٹس ایپ کریں
           </a>
         </div>
       )}
-      <div className="surface-card overflow-hidden">
-        {list.map((p) => {
-          const low = isLow(p);
-          const pct = Math.max(0, Math.min(1, (p.reorder_level_base_units ?? 0) > 0 ? p.stock_base_units / (p.reorder_level_base_units as number) : 1));
+      <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-0.5" dir="rtl">
+        <button
+          type="button"
+          onClick={() => setCatFilter("all")}
+          className={cx("tactile h-9 shrink-0 rounded-full px-3 text-[12.5px] font-semibold urdu-ui", catFilter === "all" ? "bg-ink text-white" : "bg-surface text-ink-2 border border-black/10")}
+        >
+          تمام ({state.products.length})
+        </button>
+        {(Object.keys(CATEGORY_META) as ProductCategory[]).map((cat) => {
+          const meta = CATEGORY_META[cat];
+          const Icon = meta.Icon;
           return (
-            <button key={p.id} onClick={() => openSheet({ type: "product", productId: p.id })} className="hairline-b block w-full px-4 py-3.5 text-left last:border-b-0">
-              <div className="flex items-start gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 text-[16px] font-semibold">
-                    {p.name}
-                    {p.is_quick_added && <Pill tone="maal" className="h-5 px-1.5 text-[10.5px]">QuickAdd</Pill>}
-                  </div>
-                  <div className="text-[13px] text-ink-2 num">
-                    {xrayOn ? `Cost Rs. ${formatAmount(p.cost_price_paisa)} · ` : ""}Sell Rs. {formatAmount(p.unit_price_paisa)}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className={cx("num text-[15px] font-bold", low ? "text-udhaar" : "text-ink")}>{stockLabel(p)}</div>
-                  {(p.stock_base_units < 0 || low) && (
-                    <div className="text-[12.5px] font-semibold text-udhaar" dir="auto">
-                      {p.stock_base_units < 0 ? tr("negative", lang) : tr("lowStock", lang)}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="mt-2 h-1 rounded-full bg-surface-sunken">
-                <div className={cx("h-1 rounded-full", pct <= 0.25 ? "bg-udhaar" : "bg-maal")} style={{ width: `${Math.max(2, pct * 100)}%` }} />
-              </div>
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setCatFilter(cat)}
+              className={cx("tactile flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-semibold urdu-ui", catFilter === cat ? "bg-ink text-white" : "bg-surface text-ink-2 border border-black/10")}
+            >
+              <Icon size={13} strokeWidth={SW} />
+              <span>{meta.label}</span>
             </button>
           );
         })}
+      </div>
+
+      <div className="surface-card overflow-hidden">
+        {list.length === 0 && <div className="px-4 py-6 text-center text-[14px] text-ink-2 urdu-ui">گودام میں کوئی سامان نہیں ملا</div>}
+        <VirtualList
+          items={list}
+          itemHeight={78}
+          maxHeightClass="max-h-[56dvh]"
+          getKey={(p) => p.id}
+          renderItem={(p) => {
+            const low = isLow(p);
+            const pct = Math.max(0, Math.min(1, (p.reorder_level_base_units ?? 0) > 0 ? p.stock_base_units / (p.reorder_level_base_units as number) : 1));
+            const cat = inferProductCategory(p.name, [p.name_ur ?? "", ...(p.aliases ?? [])]);
+            const meta = CATEGORY_META[cat];
+            const CatIcon = meta.Icon;
+            return (
+              <div className="hairline-b flex h-[78px] items-center gap-2.5 px-4 last:border-b-0">
+                <button
+                  type="button"
+                  onClick={() => openSheet({ type: "product", productId: p.id })}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                >
+                  <span className={cx("grid h-10 w-10 shrink-0 place-items-center rounded-[12px]", meta.bg, meta.fg)} aria-hidden="true">
+                    <CatIcon size={18} strokeWidth={SW} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 text-[15.5px] font-semibold truncate">
+                      <span className="truncate">{p.name_ur || p.name}</span>
+                      {p.is_quick_added && <Pill tone="amber" className="h-5 px-1.5 text-[10.5px]">مقدار گِنیں</Pill>}
+                    </div>
+                    <div className="text-[12.5px] text-ink-2 num">
+                      {xrayOn ? `خرید ${formatAmount(p.cost_price_paisa)} · ` : ""}قیمت {formatAmount(p.unit_price_paisa)} روپے
+                    </div>
+                    <div className="mt-1.5 h-1 rounded-full bg-surface-sunken">
+                      <div className={cx("h-1 rounded-full", pct <= 0.25 ? "bg-udhaar" : "bg-maal")} style={{ width: `${Math.max(2, pct * 100)}%` }} />
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className={cx("num text-[14.5px] font-bold", low ? "text-udhaar" : "text-ink")}>{stockLabel(p)}</div>
+                    {(p.stock_base_units < 0 || low) && (
+                      <div className="text-[11.5px] font-semibold text-udhaar urdu-ui" dir="auto">
+                        {p.stock_base_units < 0 ? tr("negative", lang) : tr("lowStock", lang)}
+                      </div>
+                    )}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  aria-label="قیمت سنیں"
+                  onClick={() => void speak(`${p.name_ur || p.name}، قیمت ${Math.round(p.unit_price_paisa / 100)} روپے، اسٹاک ${stockLabel(p)}۔`)}
+                  className="tactile grid h-11 w-11 shrink-0 place-items-center rounded-full bg-surface-sunken text-ink-2"
+                >
+                  <Volume2 size={16} strokeWidth={SW} />
+                </button>
+              </div>
+            );
+          }}
+        />
       </div>
       {newSku !== null && <NewProductSheet initialSku={newSku} onClose={() => setNewSku(null)} onSaved={() => { setNewSku(null); void refresh(); }} />}
     </div>
@@ -251,7 +354,7 @@ function NewProductSheet({ initialSku, onClose, onSaved }: { initialSku: string;
           ...(reorder.trim() ? { reorder_level_base_units: Math.max(0, Math.round(Number(reorder) * mult)) } : {}),
         },
       });
-      toast(`${name.trim()} Maal mein add ho gaya`, "ok");
+      toast(`${name.trim()} گودام میں شامل ہو گیا`, "ok");
       onSaved();
     } catch (e) {
       toast(friendlyError(e), "err");
@@ -261,25 +364,25 @@ function NewProductSheet({ initialSku, onClose, onSaved }: { initialSku: string;
   };
 
   return (
-    <Sheet open onClose={onClose} title="Naya item add karein">
+    <Sheet open onClose={onClose} title="نیا سامان شامل کریں">
       <div className="space-y-2.5 px-5 pb-[max(16px,env(safe-area-inset-bottom))]">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Item ka naam (e.g. Tapal 95g)" className="h-12 w-full rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
-        <input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="Barcode / SKU (optional)" className="num h-11 w-full rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="سامان کا نام" className="h-12 w-full rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
+        <input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="بارکوڈ (اختیاری)" className="num h-11 w-full rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
         <div className="flex flex-wrap items-center gap-2">
-          <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ""))} placeholder="Sell price (Rs.)" className="num h-12 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
-          <input inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value.replace(/[^\d.]/g, ""))} placeholder="Cost (Rs.)" className="num h-12 w-28 rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
+          <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ""))} placeholder="فروخت کی قیمت (روپے)" className="num h-12 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
+          <input inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value.replace(/[^\d.]/g, ""))} placeholder="خرید قیمت" className="num h-12 w-28 rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
           <select value={unit} onChange={(e) => setUnit(e.target.value as "pcs" | "g" | "ml")} className="h-12 rounded-[12px] bg-canvas px-3 text-[15px] outline-none">
-            <option value="pcs">per pc</option>
-            <option value="g">per kg</option>
-            <option value="ml">per L</option>
+            <option value="pcs">فی عدد</option>
+            <option value="g">فی کلو</option>
+            <option value="ml">فی لیٹر</option>
           </select>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <input inputMode="decimal" value={opening} onChange={(e) => setOpening(e.target.value.replace(/[^\d.]/g, ""))} placeholder={`Opening (${unit === "pcs" ? "pcs" : unit === "g" ? "kg" : "L"})`} className="num h-11 rounded-[12px] bg-canvas px-3 text-[14px] outline-none" />
-          <input inputMode="decimal" value={reorder} onChange={(e) => setReorder(e.target.value.replace(/[^\d.]/g, ""))} placeholder={`Alert below (${unit === "pcs" ? "pcs" : unit === "g" ? "kg" : "L"})`} className="num h-11 rounded-[12px] bg-canvas px-3 text-[14px] outline-none" />
+          <input inputMode="decimal" value={opening} onChange={(e) => setOpening(e.target.value.replace(/[^\d.]/g, ""))} placeholder={`موجود مقدار (${unit === "pcs" ? "عدد" : unit === "g" ? "کلو" : "لیٹر"})`} className="num h-11 rounded-[12px] bg-canvas px-3 text-[14px] outline-none" />
+          <input inputMode="decimal" value={reorder} onChange={(e) => setReorder(e.target.value.replace(/[^\d.]/g, ""))} placeholder={`کم مقدار کی خبر (${unit === "pcs" ? "عدد" : unit === "g" ? "کلو" : "لیٹر"})`} className="num h-11 rounded-[12px] bg-canvas px-3 text-[14px] outline-none" />
         </div>
         <PrimaryButton className="w-full" busy={busy} disabled={!name.trim() || Number(price) <= 0} onClick={() => void save()}>
-          Save to Maal
+          گودام میں محفوظ کریں
         </PrimaryButton>
       </div>
     </Sheet>
@@ -294,7 +397,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
   const [restockQty, setRestockQty] = useState("");
   const [restockByPack, setRestockByPack] = useState(Boolean(p && p.pack_size_base_units > 1 && p.pack_size_base_units !== 1000));
   const [restockCost, setRestockCost] = useState("");
-  const [restockSupplier, setRestockSupplier] = useState("Wholesale");
+  const [restockSupplier, setRestockSupplier] = useState("");
   const [restockPaid, setRestockPaid] = useState<"cash" | "credit">("cash");
   const [restockBusy, setRestockBusy] = useState(false);
   const [reorderInput, setReorderInput] = useState(
@@ -320,10 +423,10 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
   }, [state, p]);
 
   if (!p) return null;
-  const unitLabel = p.base_unit === "pcs" ? "pcs" : p.base_unit === "g" ? "kg" : "L";
+  const unitLabel = p.base_unit === "pcs" ? "عدد" : p.base_unit === "g" ? "کلو" : "لیٹر";
   const hasPackUnit = p.pack_size_base_units > 1 && !(p.base_unit !== "pcs" && p.pack_size_base_units === 1000);
-  const packLabel = p.base_unit === "ml" && p.pack_size_base_units >= 4000 ? "tin" : "pack";
-  const per = p.base_unit === "pcs" ? (p.pack_size_base_units === 1 ? "pc" : `${p.pack_size_base_units} pcs`) : p.pack_size_base_units === 1000 ? (p.base_unit === "g" ? "kg" : "L") : formatBaseQty(p.pack_size_base_units, p.base_unit);
+  const packLabel = p.base_unit === "ml" && p.pack_size_base_units >= 4000 ? "ڈبہ" : "پیک";
+  const per = p.base_unit === "pcs" ? (p.pack_size_base_units === 1 ? "عدد" : `${p.pack_size_base_units} عدد`) : p.pack_size_base_units === 1000 ? (p.base_unit === "g" ? "کلو" : "لیٹر") : formatBaseQty(p.pack_size_base_units, p.base_unit);
   const parsedRestockQty = Number(restockQty);
   const restockMult = restockByPack && hasPackUnit ? p.pack_size_base_units : (p.base_unit === "pcs" ? 1 : 1000);
   const restockBaseUnits = Number.isFinite(parsedRestockQty) && parsedRestockQty > 0
@@ -367,7 +470,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
       setRestockQty("");
       setRestockCost("");
       await refresh();
-      toast(`${p.name} restock ho gaya ✓`, "ok");
+      toast(`${p.name_ur || p.name} کا نیا مال گودام میں درج ہو گیا ✓`, "ok");
     } catch (e) {
       toast(friendlyError(e), "err");
     } finally {
@@ -390,7 +493,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
       });
       setAdjQty("");
       await refresh();
-      toast("Stock update ho gaya ✓", "ok");
+      toast("گودام کا حساب درست ہو گیا ✓", "ok");
     } catch (e) {
       toast(friendlyError(e), "err");
     } finally {
@@ -408,20 +511,20 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
             ["Days left", p.days_left === null ? "—" : `${p.days_left}d`],
           ].map(([k, v]) => (
             <div key={k} className="surface-card p-3">
-              <div className="section-label">{k}</div>
+              <div className="section-label">{k === "Stock" ? "گودام" : k === "Sold 7d" ? "سات دن کی فروخت" : "باقی دن"}</div>
               <div className="num mt-1 text-[17px] font-bold">{v}</div>
             </div>
           ))}
         </div>
         <div className="rounded-[12px] bg-canvas px-3 py-2 text-[12px] text-ink-2">
-          Unit guide:{" "}
+          مقدار کا حساب: {" "}
           {p.base_unit === "g"
-            ? "1 kg = 1,000g · 1 pao = 250g · adha pao = 125g"
+            ? "1 کلو = 1,000 گرام · 1 پاؤ = 250 گرام · آدھا پاؤ = 125 گرام"
             : p.base_unit === "ml"
-              ? "1 L = 1,000ml · 1 pao = 250ml"
-              : "1 darjan = 12 pcs"}
+              ? "1 لیٹر = 1,000 ملی لیٹر · 1 پاؤ = 250 ملی لیٹر"
+              : "1 درجن = 12 عدد"}
         </div>
-        <div className="section-label pt-1">Sell price (per {per})</div>
+        <div className="section-label pt-1">فروخت کی قیمت، فی {per}</div>
         <div className="flex flex-wrap items-center gap-2">
           <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ""))} className="num h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
           <button
@@ -429,18 +532,18 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
               try {
                 await api("/api/shop/price", { json: { product_id: p.id, unit_price_paisa: rupeesToPaisa(Number(price)) } });
                 await refresh();
-                toast("Price updated", "ok");
+                toast("قیمت محفوظ ہو گئی", "ok");
               } catch (e) {
                 toast(friendlyError(e), "err");
               }
             }}
             className="tactile h-11 rounded-[12px] bg-ink px-4 text-[14px] font-semibold text-white"
           >
-            Save
+            محفوظ کریں
           </button>
         </div>
 
-        <div className="section-label pt-1">Manual Restock (No Parchi)</div>
+        <div className="section-label pt-1">سامان کی آمد درج کریں</div>
         <div className="surface-card space-y-2 p-3">
           {hasPackUnit && (
             <div className="flex gap-1.5 text-[12px]">
@@ -457,14 +560,14 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
               inputMode="decimal"
               value={restockQty}
               onChange={(e) => setRestockQty(e.target.value.replace(/[^\d.]/g, ""))}
-              placeholder={`Add qty (${restockByPack && hasPackUnit ? packLabel : unitLabel})`}
+              placeholder={`آئی ہوئی مقدار (${restockByPack && hasPackUnit ? packLabel : unitLabel})`}
               className="num h-10 rounded-[10px] bg-canvas px-3 text-[14px] outline-none"
             />
             <input
               inputMode="decimal"
               value={restockCost}
               onChange={(e) => setRestockCost(e.target.value.replace(/[^\d.]/g, ""))}
-              placeholder={suggestedRestockPaisa > 0 ? `Cost Rs. (~${Math.round(suggestedRestockPaisa / 100)})` : "Total cost (Rs.)"}
+              placeholder={suggestedRestockPaisa > 0 ? `اندازاً خرید قیمت ${formatRs(suggestedRestockPaisa)}` : "کل خرید قیمت"}
               className="num h-10 rounded-[10px] bg-canvas px-3 text-[14px] outline-none"
             />
           </div>
@@ -472,7 +575,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
             <input
               value={restockSupplier}
               onChange={(e) => setRestockSupplier(e.target.value)}
-              placeholder="Supplier (optional)"
+              placeholder="سپلائر کا نام (اختیاری)"
               className="h-10 min-w-0 flex-1 rounded-[10px] bg-canvas px-3 text-[13.5px] outline-none"
             />
             <select
@@ -480,8 +583,8 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
               onChange={(e) => setRestockPaid(e.target.value as "cash" | "credit")}
               className="h-10 rounded-[10px] bg-canvas px-2 text-[13px] font-semibold outline-none"
             >
-              <option value="cash">Cash Paid</option>
-              <option value="credit">Wholesale Udhaar</option>
+              <option value="cash">نقد ادائیگی</option>
+              <option value="credit">ہول سیل ادھار</option>
             </select>
             <button
               type="button"
@@ -489,23 +592,23 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
               onClick={() => void submitManualRestock()}
               className="tactile h-10 shrink-0 rounded-[10px] bg-maal px-3.5 text-[13px] font-semibold text-white disabled:opacity-40"
             >
-              {restockBusy ? "Saving…" : "Restock"}
+              {restockBusy ? "محفوظ ہو رہا ہے…" : "گودام میں درج کریں"}
             </button>
           </div>
         </div>
 
-        <div className="section-label pt-1">Stock Count / Wastage / Personal Use</div>
+        <div className="section-label pt-1">موجود مقدار درست کریں</div>
         <div className="surface-card space-y-2 p-3">
           <div className="grid grid-cols-2 gap-1.5">
             <select value={adjDir} onChange={(e) => setAdjDir(Number(e.target.value) as -1 | 1)} className="h-10 rounded-[10px] bg-canvas px-2 text-[13px] font-semibold outline-none">
-              <option value={-1}>Kam karein (-)</option>
-              <option value={1}>Barhayein (+)</option>
+              <option value={-1}>مقدار گھٹائیں (−)</option>
+              <option value={1}>مقدار بڑھائیں (+)</option>
             </select>
             <select value={adjReason} onChange={(e) => setAdjReason(e.target.value as typeof adjReason)} className="h-10 rounded-[10px] bg-canvas px-2 text-[13px] outline-none">
-              <option value="wastage">Wastage / Kharab</option>
-              <option value="spoilage">Spoilage / Expiry</option>
-              <option value="personal_use">Ghar ka istemal</option>
-              <option value="stock_count">Stock count</option>
+              <option value="wastage">ضائع / خراب</option>
+              <option value="spoilage">میعاد ختم</option>
+              <option value="personal_use">گھر میں استعمال</option>
+              <option value="stock_count">گنتی کی درستگی</option>
             </select>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -513,7 +616,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
               inputMode="decimal"
               value={adjQty}
               onChange={(e) => setAdjQty(e.target.value.replace(/[^\d.]/g, ""))}
-              placeholder={`Qty (${p.base_unit === "pcs" ? "pcs" : p.base_unit === "g" ? "kg" : "L"})`}
+              placeholder={`مقدار (${unitLabel})`}
               className="num h-10 min-w-0 flex-1 rounded-[10px] bg-canvas px-3 text-[14px] outline-none"
             />
             <button
@@ -522,20 +625,20 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
               onClick={() => void submitAdj()}
               className="tactile h-10 rounded-[10px] bg-udhaar px-3.5 text-[13px] font-semibold text-white disabled:opacity-40"
             >
-              {adjBusy ? "Saving…" : "Adjust"}
+              {adjBusy ? "محفوظ ہو رہا ہے…" : "درج کریں"}
             </button>
           </div>
         </div>
 
         {!helperMode && (
           <>
-            <div className="section-label pt-1">Low Stock Alert Threshold</div>
+            <div className="section-label pt-1">کم مقدار کی وارننگ</div>
             <div className="flex flex-wrap items-center gap-2">
               <input
                 inputMode="decimal"
                 value={reorderInput}
                 onChange={(e) => setReorderInput(e.target.value.replace(/[^\d.]/g, ""))}
-                placeholder={`Alert below (${unitLabel})`}
+                placeholder={`اس مقدار سے کم ہو تو خبر دیں (${unitLabel})`}
                 className="num h-10 min-w-0 flex-1 rounded-[10px] bg-canvas px-3 text-[14px] outline-none"
               />
               {p.sold_7d > 0 && (
@@ -547,7 +650,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
                   }}
                   className="tactile h-10 rounded-[10px] bg-maal-bg px-2.5 text-[12px] font-semibold text-maal"
                 >
-                  3-day auto
+                  تین دن کی خودکار مقدار
                 </button>
               )}
               <button
@@ -560,7 +663,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
                   try {
                     await api("/api/shop/reorder-level", { json: { product_id: p.id, reorder_level_base_units: baseVal } });
                     await refresh();
-                    toast("Alert threshold save ho gaya ✓", "ok");
+                    toast("کم مقدار کی وارننگ محفوظ ہو گئی ✓", "ok");
                   } catch (e) {
                     toast(friendlyError(e), "err");
                   } finally {
@@ -569,7 +672,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
                 }}
                 className="tactile h-10 rounded-[10px] bg-ink px-3.5 text-[13px] font-semibold text-white disabled:opacity-40"
               >
-                {reorderBusy ? "…" : "Save"}
+                {reorderBusy ? "…" : "محفوظ کریں"}
               </button>
             </div>
           </>
@@ -577,7 +680,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
 
         {supplierHistory.length > 0 && !helperMode && (
           <div>
-            <div className="section-label mb-1.5 pt-1">Supplier purchase history</div>
+            <div className="section-label mb-1.5 pt-1">سپلائر سے پچھلی خریداری</div>
             <div className="surface-card overflow-hidden">
               {supplierHistory.map((s) => (
                 <button key={s.id} type="button" onClick={() => openSheet({ type: xrayOn ? "xray" : "entry", txId: s.id })} className="hairline-b flex w-full items-center justify-between px-3.5 py-2.5 text-left text-[13px] last:border-b-0">
@@ -592,7 +695,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
           </div>
         )}
 
-        <div className="section-label pt-1">Local names / aliases</div>
+        <div className="section-label pt-1">سامان کے دوسرے نام</div>
         <div className="flex flex-wrap gap-1.5">
           {p.aliases.map((a) => (
             <Pill key={a} dir-auto="true">
@@ -601,7 +704,7 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <input value={alias} onChange={(e) => setAlias(e.target.value)} dir="auto" placeholder="e.g. khand, کھنڈ" className="h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
+          <input value={alias} onChange={(e) => setAlias(e.target.value)} dir="auto" placeholder="مثلاً کھنڈ" className="h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
           <button
             disabled={!alias.trim()}
             onClick={async () => {
@@ -615,11 +718,11 @@ export function ProductSheet({ productId, onClose }: { productId: string; onClos
             }}
             className="tactile h-11 rounded-[12px] bg-surface-sunken px-4 text-[14px] font-semibold disabled:opacity-40"
           >
-            Add
+            شامل کریں
           </button>
         </div>
         <PrimaryButton tone="maal" className="w-full" onClick={() => openSheet({ type: "parchi" })}>
-          Restock via Parchi
+          پرچی سے سامان درج کریں
         </PrimaryButton>
       </div>
     </Sheet>

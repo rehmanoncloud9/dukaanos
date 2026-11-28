@@ -5,6 +5,8 @@
  * Read-only: writes made offline still go through the idempotent queue in ./queue.
  */
 import { createStore, get, set } from "idb-keyval";
+import type { ShopState } from "@/lib/api/contracts";
+import { syncShopStateToIndexedDB } from "./local-db";
 
 const store = typeof indexedDB !== "undefined" ? createStore("dukaanos-cache", "snapshots") : undefined;
 
@@ -16,6 +18,10 @@ export interface Snapshot<T> {
 export async function saveSnapshot<T>(key: string, data: T): Promise<void> {
   if (!store) return;
   await set(key, { saved_at: Date.now(), data } satisfies Snapshot<T>, store).catch(() => undefined);
+  if (key.startsWith("state:") && data && typeof data === "object" && "products" in data) {
+    const shopId = key.slice("state:".length);
+    void syncShopStateToIndexedDB(shopId, data as ShopState).catch(() => undefined);
+  }
 }
 
 export async function loadSnapshot<T>(key: string): Promise<Snapshot<T> | null> {

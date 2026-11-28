@@ -35,16 +35,27 @@ import type {
 
 export const TIER1_CONFIDENCE = 0.9;
 
+const productEntryCache = new WeakMap<Catalog["products"], CatalogEntry[]>();
+const customerEntryCache = new WeakMap<CustomerRow[], CatalogEntry[]>();
+
 export function productEntries(products: Catalog["products"]): CatalogEntry[] {
-  return products.map((p) => ({ id: p.id, name: p.name, aliases: [...p.aliases, ...(p.name_ur ? [p.name_ur] : [])] }));
+  const cached = productEntryCache.get(products);
+  if (cached) return cached;
+  const entries = products.map((p) => ({ id: p.id, name: p.name, aliases: [...p.aliases, ...(p.name_ur ? [p.name_ur] : [])] }));
+  productEntryCache.set(products, entries);
+  return entries;
 }
 
 export function customerEntries(customers: CustomerRow[]): CatalogEntry[] {
-  return customers.map((c) => ({
+  const cached = customerEntryCache.get(customers);
+  if (cached) return cached;
+  const entries = customers.map((c) => ({
     id: c.id,
     name: c.name,
     aliases: [...c.aliases, ...(c.role_tag ? [`${c.name} ${c.role_tag}`] : [])],
   }));
+  customerEntryCache.set(customers, entries);
+  return entries;
 }
 
 /** Guess a sensible base unit for a brand-new SKU from how it was spoken. */
@@ -223,20 +234,33 @@ export function setLineQty(line: ProposalLine, qtyBaseUnits: number, stockBefore
 }
 
 export function buildCustomerBlock(mention: string | null, customers: CustomerRow[]): SaleProposal["customer"] {
-  if (!mention) return { mention: null, candidates: [], selected_id: null, ambiguous: false, match_ms: 0 };
+  if (!mention) return { mention: null, candidates: [], selected_id: null, ambiguous: false, match_ms: 0, use_walk_in: true };
   const report = customerCandidates(mention, customerEntries(customers), 3);
   const candidates: CustomerCandidate[] = report.results.map((r) => {
     const c = customers.find((x) => x.id === r.id)!;
     return { id: c.id, name: c.name, role_tag: c.role_tag ?? null, balance_paisa: c.balance_paisa, score: r.score };
   });
-  const ambiguous = isAmbiguous(report.results);
+  const ambiguous = report.results.length > 0 && isAmbiguous(report.results);
   return {
     mention,
     candidates,
-    selected_id: candidates[0]?.id ?? null,
+    selected_id: ambiguous ? null : candidates[0]?.id ?? null,
     ambiguous,
     match_ms: report.ms,
+    new_customer_id: candidates.length === 0 ? createCustomerId() : null,
+    use_walk_in: false,
   };
+}
+
+function createCustomerId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") crypto.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 export interface SettlementInput {
@@ -258,7 +282,8 @@ export function settle(input: SettlementInput): SaleProposal {
   const discount = Math.max(0, Math.min(input.discount_paisa, subtotal));
   const total = subtotal - discount;
 
-  const hasCustomer = customer.selected_id !== null;
+  const isNewCustomer = Boolean(customer.mention && customer.candidates.length === 0 && !customer.use_walk_in);
+  const hasCustomer = customer.selected_id !== null || isNewCustomer;
   let cash: number;
   if (input.cash_paid_paisa !== null) cash = Math.max(0, input.cash_paid_paisa);
   else if (input.payment_mode === "udhaar" || input.payment_mode === "split") cash = 0;
@@ -266,14 +291,14 @@ export function settle(input: SettlementInput): SaleProposal {
   else cash = total;
 
   let change = 0;
-  if (!hasCustomer && cash > total) {
+  if (customer.selected_id === null && cash > total) {
     change = cash - total;
     cash = total;
   }
   const credit = total - cash;
 
   const selected = input.customers.find((c) => c.id === customer.selected_id) ?? null;
-  const newBalance = selected ? selected.balance_paisa + credit : null;
+  const newBalance = selected ? selected.balance_paisa + credit : isNewCustomer ? credit : null;
 
   const reasons: TierReason[] = [];
   if (lines.length === 0) reasons.push("NO_ITEMS");
@@ -292,6 +317,7 @@ export function settle(input: SettlementInput): SaleProposal {
   }
   if (discount > 0) reasons.push("DISCOUNT");
   if (customer.mention && customer.ambiguous) reasons.push("AMBIGUOUS_CUSTOMER");
+  if (isNewCustomer) reasons.push("NEW_CUSTOMER");
   if (lines.some((l) => l.kind === "new_sku")) reasons.push("NEW_SKU");
   const minConf = Math.min(input.confidence, ...lines.map((l) => l.confidence));
   if (minConf < TIER1_CONFIDENCE) reasons.push("LOW_CONFIDENCE");
@@ -343,13 +369,17 @@ export function resettle(
   patch: Partial<Pick<SaleProposal, "lines" | "discount_paisa" | "payment_mode">> & {
     cash_paid_paisa?: number | null;
     selected_customer_id?: string | null;
+    use_walk_in?: boolean;
   },
 ): SaleProposal {
   const customer = {
     ...p.customer,
     selected_id: patch.selected_customer_id !== undefined ? patch.selected_customer_id : p.customer.selected_id,
     // an explicit tap resolves the ambiguity
-    ambiguous: patch.selected_customer_id !== undefined ? false : p.customer.ambiguous,
+    ambiguous: (patch.selected_customer_id !== undefined && patch.selected_customer_id !== null) || patch.use_walk_in === true
+      ? false
+      : p.customer.ambiguous,
+    use_walk_in: patch.use_walk_in !== undefined ? patch.use_walk_in : p.customer.use_walk_in,
   };
   if (patch.selected_customer_id && !customer.candidates.some((c) => c.id === patch.selected_customer_id)) {
     const c = customers.find((x) => x.id === patch.selected_customer_id);
@@ -395,9 +425,15 @@ export function buildPaymentProposal(parsed: ParsedTurn, customers: CustomerRow[
 
 /** Wire payload for /api/transactions/commit — server recomputes everything again. */
 export function toCommitInput(p: SaleProposal, idempotencyKey: string, auditMeta: Record<string, unknown>): CommitSaleInput {
+  const createNewCustomer = Boolean(
+    p.customer.mention && p.customer.selected_id === null && p.customer.candidates.length === 0 && !p.customer.use_walk_in,
+  );
   return {
     idempotency_key: idempotencyKey,
     customer_id: p.customer.selected_id,
+    ...(createNewCustomer
+      ? { new_customer_id: p.customer.new_customer_id ?? createCustomerId(), new_customer_name: p.customer.mention!.trim() }
+      : {}),
     discount_paisa: p.discount_paisa,
     cash_paid_paisa: p.cash_paid_paisa,
     lines: p.lines.map((l) =>

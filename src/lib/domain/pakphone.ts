@@ -208,11 +208,79 @@ export function now(): number {
   return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
+/** Inverted phonetic-key index that narrows candidate scans for large catalogs. */
+const indexCache = new WeakMap<CatalogEntry[], Map<string, Set<number>>>();
+const entryCache = new WeakMap<CatalogEntry[], Map<string, CatalogEntry>>();
+
+function getEntryLookup(entries: CatalogEntry[]): Map<string, CatalogEntry> {
+  const hit = entryCache.get(entries);
+  if (hit) return hit;
+  const lookup = new Map(entries.map((entry) => [entry.id, entry]));
+  entryCache.set(entries, lookup);
+  return lookup;
+}
+
+function getPhoneticIndex(entries: CatalogEntry[]): Map<string, Set<number>> {
+  const hit = indexCache.get(entries);
+  if (hit) return hit;
+  const idx = new Map<string, Set<number>>();
+  const add = (key: string, entryIdx: number) => {
+    if (!key) return;
+    let set = idx.get(key);
+    if (!set) {
+      set = new Set<number>();
+      idx.set(key, set);
+    }
+    set.add(entryIdx);
+  };
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    for (const cand of [e.name, ...(e.aliases ?? [])]) {
+      const tokens = normalizeText(cand).split(" ").filter(Boolean);
+      for (const tok of tokens) {
+        const pk = phoneticKey(tok);
+        add(pk, i);
+        if (pk.length >= 2) add(`p:${pk.slice(0, 2)}`, i);
+      }
+    }
+  }
+  indexCache.set(entries, idx);
+  return idx;
+}
+
+function selectCandidateIndices(query: string, entries: CatalogEntry[]): number[] | null {
+  if (entries.length <= 150) return null;
+  const idx = getPhoneticIndex(entries);
+  const tokens = normalizeText(query).split(" ").filter(Boolean);
+  if (tokens.length === 0) return null;
+  const counts = new Map<number, number>();
+  for (const tok of tokens) {
+    const pk = phoneticKey(tok);
+    const exactSet = idx.get(pk);
+    if (exactSet) {
+      for (const i of exactSet) counts.set(i, (counts.get(i) ?? 0) + 3);
+    }
+    if (pk.length >= 2) {
+      const prefSet = idx.get(`p:${pk.slice(0, 2)}`);
+      if (prefSet) {
+        for (const i of prefSet) counts.set(i, (counts.get(i) ?? 0) + 1);
+      }
+    }
+  }
+  if (counts.size === 0) return null;
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 80)
+    .map(([i]) => i);
+}
+
 /** Rank catalog entries against a spoken mention. */
 export function matchCatalog(query: string, entries: CatalogEntry[], limit = 5): MatchReport {
   const t0 = now();
+  const candidateIndices = selectCandidateIndices(query, entries);
+  const pool = candidateIndices ? candidateIndices.map((i) => entries[i]) : entries;
   const results: MatchResult[] = [];
-  for (const e of entries) {
+  for (const e of pool) {
     let best = 0;
     let matched = e.name;
     for (const cand of [e.name, ...(e.aliases ?? [])]) {
@@ -249,9 +317,10 @@ export const CUSTOMER_CANDIDATE_THRESHOLD = 0.6;
 export function customerCandidates(query: string, entries: CatalogEntry[], limit = 3): MatchReport {
   const report = matchCatalog(query, entries, entries.length);
   const qKeys = new Set(normalizeText(query).split(" ").map(phoneticKey).filter(Boolean));
+  const byId = getEntryLookup(entries);
   const filtered = report.results.filter((r) => {
     if (r.score >= CUSTOMER_CANDIDATE_THRESHOLD) return true;
-    const entry = entries.find((e) => e.id === r.id);
+    const entry = byId.get(r.id);
     const names = [entry?.name ?? "", ...(entry?.aliases ?? [])];
     return names.some((n) => normalizeText(n).split(" ").some((t) => qKeys.has(phoneticKey(t))));
   });

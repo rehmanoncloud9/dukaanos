@@ -12,6 +12,9 @@ import { formatBaseQty } from "@/lib/domain/desi-units";
 import { formatRs } from "@/lib/domain/money";
 import type { SaleProposal } from "@/lib/domain/types";
 import { MicButton } from "./MicButton";
+import { AajKiSalahCard } from "./AajKiSalahCard";
+import { VirtualList } from "./VirtualList";
+import { WalkieTalkieBar } from "./WalkieTalkieBar";
 import { cx, Money, Pill, relTime, Spinner, SW } from "./ui";
 export const DEMO_UTTERANCES = [
   "Chhote Ali ko dedh pao cheeni, 250 ka khula oil, 30 rupay chhor do, 400 cash diya baqi khate mein",
@@ -69,7 +72,7 @@ export function FeedRow({ t, onOpen, flash }: { t: FeedTx; onOpen: () => void; f
       <div className="shrink-0 text-right">
         <div className={cx("text-[17px] font-bold leading-5", color, t.is_reversed && "line-through")}>
           {sign}
-          <span className="rs-prefix">Rs.</span>
+          <span className="rs-prefix">روپے</span>
           <span className="num">{(amount / 100).toLocaleString("en-US")}</span>
         </div>
         <div className="text-[12px] leading-4 text-ink-2">{t.is_reversed ? tr("undoneTag", lang) : feedTag(t, lang)}</div>
@@ -261,13 +264,27 @@ export function MunshiTab() {
           <div className="mt-1 text-[13px] text-ink-2" dir="auto">{today.sales_count} {tr("sales", lang)}</div>
         </div>
         <div className="surface-card p-3.5">
-          <div className={cx("section-label flex items-center gap-1.5", lang === "ur" && "urdu-ui")} dir="auto">
-            <span className="h-1.5 w-1.5 rounded-full bg-udhaar" /> {tr("todayUdhaar", lang)}
+          <div className="flex items-center justify-between gap-1">
+            <div className={cx("section-label flex items-center gap-1.5", lang === "ur" && "urdu-ui")} dir="auto">
+              <span className="h-1.5 w-1.5 rounded-full bg-udhaar" /> {tr("todayUdhaar", lang)}
+            </div>
+            <button
+              type="button"
+              aria-label={tr("listen", lang)}
+              onClick={() => void speak(`آج کا ادھار ${Math.round(today.udhaar_paisa / 100)} روپے ہے، ${today.udhaar_accounts} کھاتوں پر۔`)}
+              className="tactile inline-flex h-7 items-center gap-1 rounded-full bg-surface-sunken px-2 text-[11px] font-semibold text-ink-2"
+            >
+              <Volume2 size={12} strokeWidth={SW} />
+            </button>
           </div>
           <Money paisa={today.udhaar_paisa} className="mt-1.5 block text-[22px] font-bold leading-[26px] tracking-[-0.02em] text-udhaar" />
           <div className="mt-1 text-[13px] text-ink-2" dir="auto">{today.udhaar_accounts} {tr("accounts", lang)}</div>
         </div>
       </div>
+
+      {/* Ambient Walkie-Talkie Counter Mode + Aaj Ki Salah Morning Briefing */}
+      <WalkieTalkieBar />
+      <AajKiSalahCard state={state} />
 
       {/* Quick-Sell Top-4 strip — rush-hour 1-tap cash sale, Rs. 0 LLM */}
       <QuickSellStrip products={state.products} />
@@ -451,18 +468,23 @@ export function MunshiTab() {
           </div>
         )}
         {list.length === 0 && !thinking && <div className={cx("px-4 py-6 text-center text-[14px] text-ink-2", lang === "ur" && "urdu-ui")} dir="auto">{tr("emptyMunshi", lang)}</div>}
-        {list.map((t) => (
-          <FeedRow
-            key={t.id}
-            t={t}
-            flash={highlightTx === t.id}
-            onOpen={() =>
-              xrayOn && t.seq >= 0
-                ? openSheet({ type: "xray", txId: t.id })
-                : openSheet({ type: "entry", tx: t, txId: t.id })
-            }
-          />
-        ))}
+        <VirtualList
+          items={list}
+          itemHeight={60}
+          maxHeightClass="max-h-[55dvh]"
+          getKey={(t) => t.id}
+          renderItem={(t) => (
+            <FeedRow
+              t={t}
+              flash={highlightTx === t.id}
+              onOpen={() =>
+                xrayOn && t.seq >= 0
+                  ? openSheet({ type: "xray", txId: t.id })
+                  : openSheet({ type: "entry", tx: t, txId: t.id })
+              }
+            />
+          )}
+        />
         {showAll && (nextSeq !== null || state.feed.length >= 25) && (
           <button
             onClick={() => void loadMoreFeed()}

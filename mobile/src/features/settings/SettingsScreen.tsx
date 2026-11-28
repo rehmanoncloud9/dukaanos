@@ -29,7 +29,6 @@ import { ApiError, apiClient, friendlyApiError } from "@/core/api/client";
 import { useSession } from "@/core/auth/SessionProvider";
 import { configStatus } from "@/core/config";
 import { useT } from "@/core/i18n/I18nProvider";
-import type { Lang } from "@/core/i18n/dict";
 import { listReplayClips, type ReplayClipRow } from "@/core/offline/db";
 import { useOffline } from "@/core/offline/OfflineProvider";
 import { useAppLock } from "@/core/security/AppLockGate";
@@ -45,7 +44,6 @@ import {
   relTime,
   Screen,
   SecondaryButton,
-  Segmented,
   Sheet,
   useToast,
 } from "@/core/ui";
@@ -61,7 +59,7 @@ import {
 
 export function SettingsScreen() {
   const router = useRouter();
-  const { t, lang, setLang } = useT();
+  const { t } = useT();
   const { toast } = useToast();
   const { user, signOut } = useSession();
   const { shops, shop, setShopId, invalidateShop } = useShop();
@@ -246,17 +244,7 @@ export function SettingsScreen() {
     >
       <View style={styles.container}>
         <View>
-          <Text style={styles.eyebrow}>{t("language").toUpperCase()}</Text>
-          <View style={styles.sectionGap}>
-            <Segmented<Lang>
-              value={lang}
-              onChange={setLang}
-              options={[
-                { value: "en", label: "English" },
-                { value: "ur", label: "اردو" },
-              ]}
-            />
-          </View>
+          <Text style={styles.eyebrow}>زبان: اردو</Text>
         </View>
 
         <View>
@@ -648,7 +636,7 @@ export function SettingsScreen() {
         <View style={styles.sheetBody}>
           <View style={styles.deleteWarningBox}>
             <Text style={styles.deleteWarningTitle}>
-              {lang === "ur" ? "مستقل حذف · ناقابل واپسی" : "Permanent Action"}
+              مستقل حذف · ناقابل واپسی
             </Text>
             <Text style={styles.deleteWarningText}>
               Deleting your account permanently removes your profile, shop memberships, and
@@ -673,7 +661,7 @@ export function SettingsScreen() {
           ) : null}
 
           <Text style={styles.eyebrow}>
-            {lang === "ur" ? 'تصدیق کے لیے DELETE یا حذف لکھیں' : "TYPE DELETE (OR حذف) TO CONFIRM"}
+            تصدیق کے لیے DELETE یا حذف لکھیں
           </Text>
           <TextInput
             value={deleteConfirm}
@@ -696,7 +684,7 @@ export function SettingsScreen() {
             disabled={!isDeleteConfirmationValid(deleteConfirm)}
             onPress={() => void handleDeleteAccount()}
           >
-            {lang === "ur" ? "میرا اکاؤنٹ مستقل حذف کریں" : "Permanently Delete My Account"}
+            میرا اکاؤنٹ مستقل حذف کریں
           </PrimaryButton>
 
           <SecondaryButton onPress={() => void openLegalPage("/delete-account")}>

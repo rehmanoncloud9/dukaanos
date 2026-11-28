@@ -125,6 +125,7 @@ export type TierReason =
   | "LOW_CONFIDENCE"
   | "AMBIGUOUS_CUSTOMER"
   | "NEW_SKU"
+  | "NEW_CUSTOMER"
   | "NO_ITEMS"
   | "UDHAAR_REQUIRES_CUSTOMER"
   | "OVERPAYMENT_TO_KHATA"
@@ -162,6 +163,8 @@ export interface SaleProposal {
     selected_id: string | null;
     ambiguous: boolean;
     match_ms: number;
+    new_customer_id?: string | null;
+    use_walk_in?: boolean;
   };
   new_balance_paisa: number | null;
   tier: 1 | 2;
@@ -190,6 +193,8 @@ export interface CommitLineInput {
 export interface CommitSaleInput {
   idempotency_key: string;
   customer_id: string | null;
+  new_customer_id?: string;
+  new_customer_name?: string;
   lines: CommitLineInput[];
   discount_paisa: number;
   cash_paid_paisa: number;
