@@ -8,6 +8,7 @@ import { tr } from "@/lib/client/i18n";
 import { useDukaan } from "@/lib/client/store";
 import { formatBaseQty } from "@/lib/domain/desi-units";
 import { computeReorderForecast, formatReorderLine } from "@/lib/domain/forecast";
+import { analyzeMargins } from "@/lib/domain/margin-shield";
 import { waLink } from "@/lib/domain/messages";
 import { formatAmount, formatRs, rupeesToPaisa } from "@/lib/domain/money";
 import { startContinuousScan, isBarcodeDetectorSupported } from "@/lib/client/barcode";
@@ -91,6 +92,7 @@ export function MaalTab() {
 
   if (!state) return <div className="surface-card h-[400px] animate-pulse" />;
   const negative = state.products.filter((p) => p.stock_base_units < 0);
+  const marginAlerts = analyzeMargins(state.products);
   const sorted = state.products.slice().sort((a, b) => Number(isLow(b)) - Number(isLow(a)) || a.name.localeCompare(b.name));
   const q = query.trim().toLowerCase();
   const filtered = filter === "low" ? sorted.filter(isLow) : sorted;
@@ -110,6 +112,20 @@ export function MaalTab() {
           </button>
         </div>
       ))}
+      {marginAlerts.length > 0 && (
+        <button
+          type="button"
+          onClick={() => openSheet({ type: "margin" })}
+          className="tactile flex w-full items-center justify-between rounded-[14px] bg-amber-bg px-3.5 py-2.5 text-left text-[13px] font-semibold text-amber-ink"
+        >
+          <span dir="auto">
+            {lang === "ur"
+              ? `${marginAlerts.length} اشیاء پر منافع کم یا نقصان میں ہے`
+              : `${marginAlerts.length} items at low margin or loss`}
+          </span>
+          <span>{tr("marginShield", lang)} →</span>
+        </button>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <Segmented<"all" | "low">
           value={filter}

@@ -12,6 +12,7 @@ import { MunshiTab } from "./MunshiTab";
 import { CreateShop, Loading, SetupNeeded, Splash } from "./Onboarding";
 import { InsightsSheet } from "./InsightsSheet";
 import { EodSheet } from "./EodSheet";
+import { MarginShieldSheet } from "./MarginShieldSheet";
 import { PulseSheet } from "./PulseSheet";
 import { AnswerSheet, EntryDetailSheet, PaymentSheet, PromiseSheet, ReceiptSheet, ReturnSheet, ReversalSheet, SaleReviewSheet } from "./ReviewSheets";
 import { AppLockGate } from "./AppLock";
@@ -356,6 +357,8 @@ function SheetRouter() {
       return <InsightsSheet onClose={closeSheet} />;
     case "eod":
       return <EodSheet onClose={closeSheet} />;
+    case "margin":
+      return <MarginShieldSheet onClose={closeSheet} />;
     default:
       return null;
   }

@@ -298,6 +298,9 @@ export function MunshiTab() {
             <button type="button" onClick={() => openSheet({ type: "eod" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
               {tr("closeDay", lang)}
             </button>
+            <button type="button" onClick={() => openSheet({ type: "margin" })} className={cx("tactile flex h-8 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-surface px-3 text-[12.5px] font-semibold", lang === "ur" && "urdu-ui")} dir="auto">
+              {tr("marginShield", lang)}
+            </button>
             <button
               type="button"
               onClick={() => setShowGuide((g) => !g)}
