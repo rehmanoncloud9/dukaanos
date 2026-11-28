@@ -37,20 +37,27 @@ export function formatAmount(paisa: Paisa): string {
   return paisa < 0 ? `-${body}` : body;
 }
 
-/** "Rs. 1,400" / "-Rs. 120" */
+/** "Rs. 1,400" / "-Rs. 120" — used in messages, receipts, and test assertions. */
 export function formatRs(paisa: Paisa): string {
   const body = formatAmount(Math.abs(paisa));
   return paisa < 0 ? `-Rs. ${body}` : `Rs. ${body}`;
 }
 
-/** "Rs. 1.24M" / "Rs. 84.5K" for dense metric tiles. */
+/** Urdu shop display: "1,400 روپے" / "-120 روپے" — for Urdu-only UI surfaces. */
+export function formatRsUrdu(paisa: Paisa): string {
+  const body = formatAmount(Math.abs(paisa));
+  return paisa < 0 ? `-${body} روپے` : `${body} روپے`;
+}
+
+/** Keeps full values so dense totals remain clear in Urdu. */
 export function formatRsCompact(paisa: Paisa): string {
-  const rupees = paisa / 100;
-  const abs = Math.abs(rupees);
-  const sign = rupees < 0 ? "-" : "";
-  if (abs >= 1_000_000) return `${sign}Rs. ${(abs / 1_000_000).toFixed(2).replace(/\.?0+$/, "")}M`;
-  if (abs >= 10_000) return `${sign}Rs. ${(abs / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
-  return `${sign}Rs. ${grouping.format(abs)}`;
+  const rupees = Math.abs(paisa) / 100;
+  const sign = paisa < 0 ? "-" : "";
+  const short = (value: number) => value.toFixed(value >= 100 ? 0 : 1).replace(/\.0$/, "");
+  if (rupees >= 10_000_000) return `${sign}${short(rupees / 10_000_000)} کروڑ روپے`;
+  if (rupees >= 100_000) return `${sign}${short(rupees / 100_000)} لاکھ روپے`;
+  if (rupees >= 1_000) return `${sign}${short(rupees / 1_000)} ہزار روپے`;
+  return `${sign}${grouping.format(rupees)} روپے`;
 }
 
 /** Journal display "400.00" used in the X-Ray mono block. */

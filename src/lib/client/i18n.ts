@@ -3,9 +3,9 @@ export type Lang = "en" | "ur";
 export const LANG_KEY = "dukaanos.lang";
 
 const DICT = {
-  munshi: { en: "Munshi", ur: "منشی" },
-  khata: { en: "Khata", ur: "کھاتہ" },
-  maal: { en: "Maal", ur: "مال" },
+  munshi: { en: "Bikri", ur: "بکری" },
+  khata: { en: "Udhaar", ur: "ادھار" },
+  maal: { en: "Godam", ur: "گودام" },
   zeroFbr: { en: "Zero FBR", ur: "ایف بی آر سے پاک" },
   todayCash: { en: "Today cash", ur: "آج کا کیش" },
   todayUdhaar: { en: "Today udhaar", ur: "آج کا ادھار" },

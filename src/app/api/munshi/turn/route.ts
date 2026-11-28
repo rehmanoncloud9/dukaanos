@@ -28,6 +28,7 @@ export const POST = handle(async (req: Request) => {
 
   let audio: { base64: string; mimeType: string } | null = null;
   let text: string | null = null;
+  let ambient = false;
   const ct = req.headers.get("content-type") ?? "";
   if (ct.startsWith("multipart/form-data")) {
     let parsed: FormData | null;
@@ -40,6 +41,7 @@ export const POST = handle(async (req: Request) => {
     const form = parsed;
     const file = form.get("audio");
     const t = form.get("text");
+    ambient = form.get("mode") === "ambient";
     text = typeof t === "string" && t.trim() ? t.trim() : null;
     if (file && typeof file !== "string") {
       const mime = (file.type || "").toLowerCase();
@@ -95,6 +97,14 @@ export const POST = handle(async (req: Request) => {
     degraded_reason: turn.degraded_reason,
     intent: p.intent,
   });
+
+  // A foreground counter mic may hear customers, radio, or shop staff. Ambient audio
+  // cannot reach any ledger action unless its transcript begins with the wake phrase.
+  const romanTranscript = (p as { transcript_roman?: string }).transcript_roman ?? "";
+  const hasAmbientWakePhrase = AMBIENT_WAKE_PREFIX.test(romanTranscript) || AMBIENT_WAKE_PREFIX.test(p.transcript);
+  if (ambient && !hasAmbientWakePhrase) {
+    return ok<TurnResponse>({ kind: "unknown", trace: { ...baseTrace(null), intent: "ambient_ignored" } });
+  }
 
   // Mutual Khata wada: a promise word + a resolvable date overrides the model's intent. The date
   // is computed by deterministic TS (wada.ts), never by the LLM; nothing is written until confirmed.
@@ -186,6 +196,8 @@ export const POST = handle(async (req: Request) => {
       return ok<TurnResponse>({ kind: "unknown", trace: baseTrace(null) });
   }
 });
+
+const AMBIENT_WAKE_PREFIX = /^\s*(?:(?:hey|o|oye|اوئے?|ارے)\s+)?(?:munshi|منشی)(?:\s+(?:ji|jee|جی))?(?=$|[\s,:،۔!؛])/iu;
 
 /**
  * Server-side dialect fallback: QuickAdd lines get one more chance against the 100+

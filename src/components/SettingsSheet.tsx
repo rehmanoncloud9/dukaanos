@@ -6,12 +6,12 @@ import { useEffect, useRef, useState } from "react";
 import { api, friendlyError } from "@/lib/client/api";
 import { downloadCsv, exportKhataCsv, exportMaalCsv } from "@/lib/client/csv-export";
 import { parseCustomerCsv, parseProductCsv } from "@/lib/client/csv-import";
-import { tr, type Lang } from "@/lib/client/i18n";
+import { tr } from "@/lib/client/i18n";
 import { listReplays, type ReplayClip } from "@/lib/client/queue";
 import { useDukaan } from "@/lib/client/store";
 import { eodSummaryText, waLink } from "@/lib/domain/messages";
 import { formatRs, rupeesToPaisa } from "@/lib/domain/money";
-import { cx, Pill, PrimaryButton, SecondaryButton, Segmented, Sheet, Spinner, SW } from "./ui";
+import { cx, Pill, PrimaryButton, SecondaryButton, Sheet, Spinner, SW } from "./ui";
 
 interface Health {
   ok: boolean;
@@ -23,7 +23,7 @@ interface Health {
 }
 
 export function SettingsSheet({ onClose }: { onClose: () => void }) {
-  const { shops, shop, setShopId, state, pending, queue, queuedCommits, flush, openQueuedReview, discardQueued, retryCommit, discardCommit, simulatedOffline, setSimulatedOffline, xrayOn, setXrayOn, helperMode, setHelperMode, refresh, reloadShops, toast, signOut, openSheet, submitTurn, session, lang, setLang } = useDukaan();
+  const { shops, shop, setShopId, state, pending, queue, queuedCommits, flush, openQueuedReview, discardQueued, retryQueuedTurn, retryCommit, discardCommit, simulatedOffline, setSimulatedOffline, xrayOn, setXrayOn, helperMode, setHelperMode, refresh, reloadShops, toast, signOut, openSheet, session, lang } = useDukaan();
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
@@ -36,7 +36,7 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
   // Shift Handover — Galla Count
   const [gallaInput, setGallaInput] = useState("");
   const [raastId, setRaastId] = useState("");
-  const [autoSpeak, setAutoSpeak] = useState(() => typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") === "1");
+  const [autoSpeak, setAutoSpeak] = useState(() => typeof window !== "undefined" && localStorage.getItem("dukaanos.autoSpeak") !== "0");
   const [storageInfo, setStorageInfo] = useState<string | null>(null);
   const csvRef = useRef<HTMLInputElement>(null);
   const prodCsvRef = useRef<HTMLInputElement>(null);
@@ -84,15 +84,7 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
     <Sheet open onClose={onClose} title={tr("settings", lang)}>
       <div className="space-y-4 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">
         <section>
-          <div className="section-label mb-2" dir="auto">{tr("language", lang)}</div>
-          <Segmented<Lang>
-            value={lang}
-            onChange={setLang}
-            options={[
-              { value: "en", label: "English" },
-              { value: "ur", label: "اردو" },
-            ]}
-          />
+          <div className="section-label mb-2" dir="rtl">زبان: اردو</div>
           <button
             type="button"
             onClick={() => {
@@ -103,7 +95,7 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
               } catch {
                 /* ignore */
               }
-              toast(next ? "Urdu audio confirmations ON" : "Audio confirmations OFF", "info");
+              toast(next ? "ہر اندراج کی آواز میں تصدیق آن ہے" : "آواز میں تصدیق بند ہے", "info");
             }}
             className="tactile mt-2 flex h-10 w-full items-center justify-between rounded-[12px] bg-surface px-3.5 text-[13.5px] font-medium"
           >
@@ -430,15 +422,15 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
             </section>
 
             <section>
-              <div className="section-label mb-2">Offline Queue &amp; Storage</div>
+              <div className="section-label mb-2 urdu-ui">محفوظ اندراجات اور فون کی جگہ</div>
               <div className="surface-card space-y-3 p-4">
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <Pill tone={pending ? "amber" : "cash"}>{pending} queued</Pill>
-                    {storageInfo && <div className="mt-1 text-[11.5px] text-ink-2">Device storage: {storageInfo}</div>}
+                    <Pill tone={pending ? "amber" : "cash"}>فون میں محفوظ: {pending}</Pill>
+                    {storageInfo && <div className="mt-1 text-[11.5px] text-ink-2 urdu-ui">فون میں خالی جگہ: {storageInfo}</div>}
                   </div>
                   <button onClick={() => void act("flush", flush)} className="tactile flex h-8 items-center gap-1.5 rounded-full bg-surface-sunken px-3 text-[13px] font-semibold">
-                    {busy === "flush" ? <Spinner /> : <RefreshCw size={13} strokeWidth={SW} />} Sync now
+                    {busy === "flush" ? <Spinner /> : <RefreshCw size={13} strokeWidth={SW} />} <span className="urdu-ui">اب حساب ملائیں</span>
                   </button>
                 </div>
                 <button onClick={() => setSimulatedOffline(!simulatedOffline)} className={cx("tactile flex h-10 w-full items-center justify-center gap-2 rounded-[12px] text-[14px] font-semibold", simulatedOffline ? "bg-amber-bg text-amber-ink" : "bg-surface-sunken")}>
@@ -448,37 +440,37 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
                   <div key={c.idempotency_key} className="space-y-1 rounded-[10px] bg-canvas p-2.5 text-[12.5px]">
                     <div className="flex items-center gap-2">
                       <span className="min-w-0 flex-1 truncate font-medium">{c.optimistic.label}</span>
-                      <Pill tone={c.status === "failed" ? "udhaar" : "amber"}>{c.status}</Pill>
+                      <Pill tone={c.status === "failed" ? "udhaar" : "amber"}>{c.status === "failed" ? "نہیں پہنچا" : "محفوظ"}</Pill>
                       {c.status === "failed" && (
                         <button type="button" onClick={() => void retryCommit(c.idempotency_key)} className="tactile font-semibold text-cash">
-                          Retry
+                          دوبارہ کوشش
                         </button>
                       )}
-                      <button type="button" aria-label="Discard commit" onClick={() => void discardCommit(c.idempotency_key)} className="grid h-7 w-7 place-items-center text-ink-3">
+                      <button type="button" aria-label="محفوظ اندراج حذف کریں" onClick={() => void discardCommit(c.idempotency_key)} className="grid h-7 w-7 place-items-center text-ink-3">
                         <Trash2 size={13} strokeWidth={SW} />
                       </button>
                     </div>
-                    {c.last_error && <div className="text-[11.5px] text-udhaar-ink">{c.last_error}</div>}
+                    {c.last_error && <div className="text-[11.5px] text-udhaar-ink urdu-ui">اندراج نہیں پہنچ سکا — دوبارہ کوشش کریں یا حذف کریں</div>}
                   </div>
                 ))}
                 {queue.map((q) => (
                   <div key={q.idempotency_key} className="flex items-center gap-2 text-[13px]">
                     <FileAudio size={14} strokeWidth={SW} className="text-ink-2" />
-                    <span className="min-w-0 flex-1 truncate">{q.kind === "text" ? q.text : `Voice clip · ${new Date(q.created_at).toLocaleTimeString()}`}</span>
-                    <Pill tone={q.status === "review" ? "maal" : q.status === "failed" ? "udhaar" : "amber"}>{q.status}</Pill>
+                    <span className="min-w-0 flex-1 truncate urdu-ui">{q.kind === "text" ? q.text : `آواز · ${new Date(q.created_at).toLocaleTimeString("ur-PK")}`}</span>
+                    <Pill tone={q.status === "review" ? "maal" : q.status === "failed" ? "udhaar" : "amber"}>{q.status === "review" ? "دیکھنا باقی" : q.status === "failed" ? "نہیں پہنچا" : "محفوظ"}</Pill>
                     {q.status !== "pending" && (
                       <button
                         className="tactile min-h-[36px] px-2 text-[12.5px] font-semibold text-cash"
                         onClick={() =>
                           q.status === "review"
                             ? void openQueuedReview(q.idempotency_key)
-                            : void submitTurn({ blob: q.blob, mime: q.mime, text: q.text }, q.idempotency_key)
+                            : void retryQueuedTurn(q.idempotency_key)
                         }
                       >
-                        Open
+                        {q.status === "review" ? "کھولیں" : "دوبارہ کوشش"}
                       </button>
                     )}
-                    <button aria-label="Discard" onClick={() => void discardQueued(q.idempotency_key)} className="grid h-9 w-9 place-items-center text-ink-3">
+                    <button aria-label="محفوظ آواز یا بات حذف کریں" onClick={() => void discardQueued(q.idempotency_key)} className="grid h-9 w-9 place-items-center text-ink-3">
                       <Trash2 size={14} strokeWidth={SW} />
                     </button>
                   </div>

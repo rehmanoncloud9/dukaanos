@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Camera, Check, ChevronDown, ChevronUp, FileImage, Pencil, Plus, Trash2, Volume2, Wand2, ZoomIn } from "lucide-react";
+import { AlertTriangle, Camera, Check, ChevronDown, ChevronUp, FileImage, Pencil, Plus, ShieldAlert, Trash2, Volume2, Wand2, ZoomIn } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CommitResponse } from "@/lib/api/contracts";
 import type { ParchiParseResult, ParchiReviewLine } from "@/lib/ai/parchi";
@@ -11,6 +11,7 @@ import { speak } from "@/lib/client/speak";
 import { useDukaan } from "@/lib/client/store";
 import { parseQuantityPhrase, quantityToBaseUnits, requiresExplicitPackSize, type BaseUnit } from "@/lib/domain/desi-units";
 import { formatAmount, formatJournal, formatRs, mulDiv } from "@/lib/domain/money";
+import { detectParchiMarginAlerts, parchiMarginSpeech } from "@/lib/domain/parchi-margin";
 import { parseRupeeAmount } from "@/lib/domain/urdu-numbers";
 import { cx, Money, Pill, PrimaryButton, SecondaryButton, Sheet, Spinner, SW } from "./ui";
 import { PriceMemoryCard } from "./PriceMemory";
@@ -79,7 +80,8 @@ function blankResult(): ParchiParseResult & { api_ms: number } {
 }
 
 export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; autoSample?: boolean }) {
-  const { state, commitPurchase, toast, openSheet, xrayOn } = useDukaan();
+  const { state, commitPurchase, refresh, toast, openSheet, xrayOn } = useDukaan();
+  const [updatingRetailId, setUpdatingRetailId] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>("capture");
   const [img, setImg] = useState<PreparedImage | null>(null);
   const [rawBlob, setRawBlob] = useState<Blob | null>(null);
@@ -164,6 +166,10 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
       );
       setEditing(firstNeedsEditor?.key ?? null);
       setStage("review");
+      const alerts = detectParchiMarginAlerts(initialLines, products);
+      if (alerts.length > 0) {
+        void speak(parchiMarginSpeech(alerts));
+      }
     } catch (error) {
       const msg = friendlyError(error);
       setParseErr(msg);
@@ -631,6 +637,60 @@ export function ParchiSheet({ onClose, autoSample }: { onClose: () => void; auto
               <span>Bari parchi ({formatRs(total)}) — save karne se pehle rakam zaroor check karein.</span>
             </div>
           )}
+
+          {(() => {
+            const marginAlerts = detectParchiMarginAlerts(lines, products);
+            if (marginAlerts.length === 0) return null;
+            return (
+              <div dir="rtl" className="mx-5 mb-3 rounded-[14px] border border-udhaar/25 bg-udhaar-bg/60 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-[13.5px] font-bold text-udhaar-ink urdu-ui">
+                    <ShieldAlert size={16} strokeWidth={SW} className="shrink-0" />
+                    <span>خبردار: ہول سیل ریٹ بڑھ گیا ({marginAlerts.length})</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void speak(parchiMarginSpeech(marginAlerts))}
+                    className="tactile inline-flex h-8 items-center gap-1 rounded-full bg-surface px-2.5 text-[12px] font-semibold text-ink urdu-ui"
+                  >
+                    <Volume2 size={13} strokeWidth={SW} /> سنیں
+                  </button>
+                </div>
+                <div className="mt-2 space-y-2">
+                  {marginAlerts.slice(0, 4).map((a) => (
+                    <div key={a.productId} className="flex items-center justify-between gap-2 rounded-[10px] bg-surface px-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13.5px] font-bold text-ink urdu-ui">{a.name}</div>
+                        <div className="text-[12px] text-ink-2 urdu-ui">
+                          پہلے {formatRs(a.oldCostPaisa)} ← اب {formatRs(a.newCostPaisa)} (+{formatRs(a.deltaPaisa)})
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={updatingRetailId !== null}
+                        onClick={async () => {
+                          setUpdatingRetailId(a.productId);
+                          try {
+                            await api("/api/shop/product", { json: { id: a.productId, unit_price_paisa: a.suggestedRetailPaisa } });
+                            await refresh();
+                            toast(`${a.name} کا نیا ریٹ ${formatRs(a.suggestedRetailPaisa)} سیٹ ہو گیا`, "ok");
+                            void speak(`${a.name} کا نیا ریٹ ${Math.round(a.suggestedRetailPaisa / 100)} روپے سیٹ کر دیا گیا ہے۔`);
+                          } catch (e) {
+                            toast(friendlyError(e), "err");
+                          } finally {
+                            setUpdatingRetailId(null);
+                          }
+                        }}
+                        className="tactile h-9 shrink-0 rounded-[10px] bg-cash px-3 text-[12px] font-bold text-white urdu-ui disabled:opacity-50"
+                      >
+                        {updatingRetailId === a.productId ? "…" : `نیا ریٹ ${formatRs(a.suggestedRetailPaisa)}`}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Extracted & editable lines */}
           <div className="mx-5 surface-card overflow-hidden">

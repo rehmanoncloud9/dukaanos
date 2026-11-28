@@ -7,12 +7,14 @@ import type { CommitResponse, StateCustomer } from "@/lib/api/contracts";
 import { api, friendlyError, newKey } from "@/lib/client/api";
 import { isoDate, pktToday, wadaLabel } from "@/lib/domain/wada";
 import { tr } from "@/lib/client/i18n";
-import { speak } from "@/lib/client/speak";
+import { getSpeakAudioBlob, speak } from "@/lib/client/speak";
 import { useDukaan } from "@/lib/client/store";
 import { computeBharosaIndex, verifyPassport, type PassportPayload, type TradeSummary } from "@/lib/crypto/passport";
 import { rankReminders, reminderText, smsLink, waLink } from "@/lib/domain/messages";
 import { formatRs, formatRsCompact, rupeesToPaisa } from "@/lib/domain/money";
+import { normalizeText } from "@/lib/domain/pakphone";
 import { FeedRow } from "./MunshiTab";
+import { VirtualList } from "./VirtualList";
 import { cx, Money, PrimaryButton, SecondaryButton, Segmented, Sheet, shortDate, Spinner } from "./ui";
 
 interface ReminderLogEntry {
@@ -92,17 +94,22 @@ export function KhataTab() {
   }, []);
 
   const customers = useMemo(() => state?.customers ?? [], [state]);
-  const receivable = customers.reduce((s, c) => s + Math.max(0, c.balance_paisa), 0);
-  const active = customers.filter((c) => c.balance_paisa > 0);
-  const overdue = active.filter((c) => (c.days_overdue ?? 0) > 15);
-  const withWada = customers.filter((c) => bharosa[c.id]?.promise_date && bharosa[c.id]?.promise_state !== "kept" && c.balance_paisa > 0);
-  const baseList = (filter === "overdue" ? overdue : filter === "wada" ? withWada : filter === "settled" ? customers.filter((c) => c.balance_paisa <= 0) : customers)
-    .slice()
-    .sort((a, b) => (filter === "wada" ? String(bharosa[a.id]?.promise_date).localeCompare(String(bharosa[b.id]?.promise_date)) : b.balance_paisa - a.balance_paisa));
-  const q = query.trim().toLowerCase();
-  const list = q ? baseList.filter((c) => c.name.toLowerCase().includes(q) || (c.phone ?? "").includes(q) || (c.role_tag ?? "").toLowerCase().includes(q)) : baseList;
-  const verified = Object.values(bharosa).reduce((s, b) => s + b.confirmed, 0);
-  const unverified = Object.values(bharosa).reduce((s, b) => s + b.pending, 0);
+  const receivable = useMemo(() => customers.reduce((s, c) => s + Math.max(0, c.balance_paisa), 0), [customers]);
+  const active = useMemo(() => customers.filter((c) => c.balance_paisa > 0), [customers]);
+  const overdue = useMemo(() => active.filter((c) => (c.days_overdue ?? 0) > 15), [active]);
+  const withWada = useMemo(() => customers.filter((c) => bharosa[c.id]?.promise_date && bharosa[c.id]?.promise_state !== "kept" && c.balance_paisa > 0), [customers, bharosa]);
+  const baseList = useMemo(() => {
+    const base = filter === "overdue" ? overdue : filter === "wada" ? withWada : filter === "settled" ? customers.filter((c) => c.balance_paisa <= 0) : customers;
+    return base.slice().sort((a, b) => (filter === "wada" ? String(bharosa[a.id]?.promise_date).localeCompare(String(bharosa[b.id]?.promise_date)) : b.balance_paisa - a.balance_paisa));
+  }, [filter, overdue, withWada, customers, bharosa]);
+  const customerSearch = useMemo(() => new Map(customers.map((c) => [c.id, normalizeText(`${c.name} ${c.role_tag ?? ""} ${(c.aliases ?? []).join(" ")}`)])), [customers]);
+  const q = normalizeText(query);
+  const list = useMemo(
+    () => q ? baseList.filter((c) => customerSearch.get(c.id)?.includes(q) || (c.phone ?? "").includes(q)) : baseList,
+    [q, baseList, customerSearch],
+  );
+  const verified = useMemo(() => Object.values(bharosa).reduce((s, b) => s + b.confirmed, 0), [bharosa]);
+  const unverified = useMemo(() => Object.values(bharosa).reduce((s, b) => s + b.pending, 0), [bharosa]);
 
   if (!state) return <div className="surface-card h-[400px] animate-pulse" />;
 
@@ -135,7 +142,7 @@ export function KhataTab() {
         options={[
           { value: "all", label: tr("all", lang) },
           { value: "overdue", label: tr("overdueFilter", lang) },
-          { value: "wada", label: "Wada" },
+          { value: "wada", label: lang === "ur" ? "وعدہ" : "Wada" },
           { value: "settled", label: tr("settled", lang) },
         ]}
       />
@@ -147,21 +154,33 @@ export function KhataTab() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={tr("searchCustomers", lang)}
-          aria-label="Search customers"
+          aria-label="گاہک تلاش کریں"
           dir="auto"
-          className="h-11 w-full rounded-[12px] border border-black/10 bg-surface pl-10 pr-3 text-[15px] outline-none focus:border-ink"
+          className="h-12 w-full rounded-[12px] border border-black/10 bg-surface pl-10 pr-3 text-[15px] outline-none focus:border-ink"
         />
       </div>
 
       <div className="surface-card overflow-hidden">
-        {list.length === 0 && <div className="px-4 py-6 text-center text-[14px] text-ink-2">Koi account nahi</div>}
-        {list.map((c) => (
-          <DebtorRow key={c.id} c={c} b={bharosa[c.id]} shop={state.shop.name} onOpen={() => openSheet({ type: "customer", customerId: c.id })} onWasooli={() => openSheet({ type: "wasooli", customerId: c.id })} />
-        ))}
+        {list.length === 0 && <div className="px-4 py-6 text-center text-[14px] text-ink-2 urdu-ui">کوئی کھاتہ نہیں</div>}
+        <VirtualList
+          items={list}
+          itemHeight={192}
+          maxHeightClass="max-h-[58dvh]"
+          getKey={(c) => c.id}
+          renderItem={(c) => (
+            <DebtorRow
+              c={c}
+              b={bharosa[c.id]}
+              shop={state.shop.name}
+              onOpen={() => openSheet({ type: "customer", customerId: c.id })}
+              onWasooli={() => openSheet({ type: "wasooli", customerId: c.id })}
+            />
+          )}
+        />
       </div>
 
-      <button onClick={() => setAdding(true)} className="tactile flex h-11 w-full items-center justify-center gap-2 rounded-[12px] border border-dashed border-black/20 text-[14px] font-semibold text-ink-2">
-        <UserPlus size={16} strokeWidth={1.75} /> New customer
+      <button onClick={() => setAdding(true)} className="tactile flex h-14 w-full items-center justify-center gap-2 rounded-[14px] border border-dashed border-black/20 text-[15px] font-semibold text-ink-2 urdu-ui">
+        <UserPlus size={18} strokeWidth={1.75} /> {tr("newCustomer", lang)}
       </button>
       {!xrayOn && !helperMode && (
         <button
@@ -184,7 +203,7 @@ function todayPkt(): string {
 
 /** "Aaj kisko yaad dilana hai" — the app does the asking so the shopkeeper doesn't have to. */
 function RemindToday({ customers, bharosa, shop }: { customers: StateCustomer[]; bharosa: Record<string, BharosaItem>; shop: string }) {
-  const { shopId } = useDukaan();
+  const { shopId, toast } = useDukaan();
   const [busyId, setBusyId] = useState<string | null>(null);
   const ranked = rankReminders(
     customers.map((c) => ({
@@ -194,42 +213,73 @@ function RemindToday({ customers, bharosa, shop }: { customers: StateCustomer[];
     todayPkt(),
   );
   if (ranked.length === 0) return null;
-  const why = { wada_broken: "Wada toota", wada_due: "Aaj wada hai", overdue: "din se baqaya" } as const;
+  const why = { wada_broken: "وعدہ ٹوٹا", wada_due: "آج وعدہ ہے", overdue: "دن سے بقایا" } as const;
 
-  const sendReminder = async (c: StateCustomer) => {
+  const shareVoiceReminder = async (c: StateCustomer, voiceMsg: string) => {
     setBusyId(c.id);
     logReminder(shopId, c.id, "wa");
-    const fallbackText = reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue });
+    const text = reminderText({ name: c.name, shop, balance_paisa: c.balance_paisa, days_overdue: c.days_overdue });
+    const openTextReminder = () => {
+      window.open(waLink(c.phone, text), "_blank", "noopener,noreferrer");
+      void speak(voiceMsg);
+    };
     try {
-      const r = await api<{ wa: string }>("/api/khata/link", { json: { customer_id: c.id } });
-      window.open(r.wa, "_blank", "noopener,noreferrer");
-    } catch {
-      window.open(waLink(c.phone, fallbackText), "_blank", "noopener,noreferrer");
+      const audio = await getSpeakAudioBlob(voiceMsg);
+      if (!audio) {
+        openTextReminder();
+        toast("پیغام واٹس ایپ کے لیے تیار ہے؛ آڈیو بھیجنے کے لیے انٹرنیٹ درکار ہے", "warn");
+        return;
+      }
+      const mime = audio.type || "audio/mpeg";
+      const ext = /wav/i.test(mime) ? "wav" : "mp3";
+      const file = new File([audio], `yaad-dihani.${ext}`, { type: mime });
+      if (!navigator.share || !navigator.canShare?.({ files: [file] })) {
+        openTextReminder();
+        toast("اس فون سے آڈیو بانٹنا ممکن نہیں؛ پیغام کھول دیا اور آواز سنا دی", "warn");
+        return;
+      }
+      await navigator.share({ files: [file], title: "ادھار کی یاددہانی", text });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      openTextReminder();
+      toast("آڈیو تیار نہیں ہو سکی؛ پیغام واٹس ایپ میں کھول دیا", "warn");
     } finally {
       setBusyId(null);
     }
   };
 
   return (
-    <div className="surface-card overflow-hidden">
+    <div dir="rtl" className="surface-card overflow-hidden">
       <div className="flex items-center justify-between px-4 pt-3.5">
-        <div className="section-label">Aaj kisko yaad dilana hai</div>
-        <span className="text-[12px] text-ink-2">Munshi poochega, aap nahi</span>
+        <div className="section-label urdu-ui">آج کس کو یاد دلانا ہے (وصولی)</div>
+        <span className="text-[12px] text-ink-2 urdu-ui">ایک بٹن سے واٹس ایپ</span>
       </div>
       {ranked.map((r) => {
         const c = customers.find((x) => x.id === r.id)!;
+        const voiceMsg = `السلام علیکم ${r.name} صاحب! ${shop} پر آپ کا بقایا ${Math.round(r.balance_paisa / 100)} روپے ہے۔ مہربانی فرما کر سہولت سے ادا کر دیں۔ شکریہ۔`;
         return (
-          <div key={r.id} className="hairline-b flex items-center gap-3 px-4 py-3 last:border-b-0">
+          <div key={r.id} className="hairline-b flex items-center gap-2 px-4 py-3 last:border-b-0">
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[15px] font-semibold">{r.name}</div>
-              <div className={cx("text-[13px]", r.reason === "overdue" ? "text-ink-2" : "font-semibold text-udhaar")}>
+              <div className="truncate text-[15px] font-semibold urdu-ui">{r.name}</div>
+              <div className={cx("text-[13px] urdu-ui", r.reason === "overdue" ? "text-ink-2" : "font-semibold text-udhaar")}>
                 {r.reason === "overdue" ? `${r.days_overdue} ${why.overdue}` : why[r.reason]} · {formatRs(r.balance_paisa)}
               </div>
             </div>
-            <button onClick={() => void sendReminder(c)} disabled={busyId !== null}
-              className="tactile flex h-11 shrink-0 items-center gap-1.5 rounded-[12px] bg-ink px-3.5 text-[13.5px] font-semibold text-white disabled:opacity-60">
+            <button
+              type="button"
+              aria-label="یاددہانی سنیں"
+              onClick={() => {
+                logReminder(shopId, c.id, "voice");
+                void speak(voiceMsg);
+              }}
+              className="tactile grid h-12 w-12 shrink-0 place-items-center rounded-[12px] bg-surface-sunken text-ink"
+            >
+              <Volume2 size={18} strokeWidth={1.75} />
+            </button>
+            <button onClick={() => void shareVoiceReminder(c, voiceMsg)} disabled={busyId !== null}
+              className="tactile flex h-12 shrink-0 items-center gap-1.5 rounded-[12px] bg-cash px-3.5 text-[13.5px] font-semibold text-white urdu-ui disabled:opacity-60">
               {busyId === c.id ? <Spinner className="h-4 w-4" /> : <Link2 size={15} strokeWidth={1.75} />}
-              WhatsApp
+              واٹس ایپ + آواز
             </button>
           </div>
         );
@@ -245,14 +295,14 @@ function BharosaBadges({ b }: { b?: BharosaItem }) {
     <>
       {b.confirmed > 0 && b.disputed === 0 && (
         <span className="inline-flex items-center gap-1 rounded-[6px] bg-cash-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-cash-ink">
-          <Check size={11} strokeWidth={1.75} /> Tasdeeq shuda
+          <Check size={11} strokeWidth={1.75} /> تصدیق شدہ
         </span>
       )}
-      {b.disputed > 0 && <span className="rounded-[6px] bg-udhaar-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-udhaar-ink">Ikhtilaf ({b.disputed})</span>}
+      {b.disputed > 0 && <span className="rounded-[6px] bg-udhaar-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-udhaar-ink">اختلاف ({b.disputed})</span>}
       {b.promise_date && b.promise_state === "open" && (
-        <span className="rounded-[6px] bg-[#FEF3C7] px-1.5 py-0.5 text-[11.5px] font-semibold text-[#92400E]">Wada · {wadaLabel(b.promise_date)}</span>
+        <span className="rounded-[6px] bg-[#FEF3C7] px-1.5 py-0.5 text-[11.5px] font-semibold text-[#92400E]">وعدہ · {wadaLabel(b.promise_date)}</span>
       )}
-      {b.promise_state === "broken" && <span className="rounded-[6px] bg-udhaar-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-udhaar-ink">Wada toota</span>}
+      {b.promise_state === "broken" && <span className="rounded-[6px] bg-udhaar-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-udhaar-ink">وعدہ پورا نہیں ہوا</span>}
     </>
   );
 }
@@ -300,7 +350,7 @@ function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: Bh
     if (!b?.paid_claim_paisa) return;
     try {
       await confirmPayment(c.id, b.paid_claim_paisa, newKey("claim"));
-      toast(`Wasooli ${formatRs(b.paid_claim_paisa)} — gahak ki khabar tasdeeq`, "ok");
+      toast(`${formatRs(b.paid_claim_paisa)} وصولی کی تصدیق ہو گئی`, "ok");
     } catch (e) {
       toast(friendlyError(e), "err");
     }
@@ -311,35 +361,35 @@ function DebtorRow({ c, b, shop, onOpen, onWasooli }: { c: StateCustomer; b?: Bh
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-[16px] font-semibold">{c.name}</span>
-            {od && <span className="rounded-[6px] bg-udhaar-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-udhaar-ink">{c.days_overdue}d overdue</span>}
+            {od && <span className="rounded-[6px] bg-udhaar-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-udhaar-ink">{c.days_overdue} دن سے بقایا</span>}
           </div>
           <div className="mt-1 flex flex-wrap gap-1.5 empty:hidden">
             <BharosaBadges b={b} />
-            {paidAfterRem && <span className="rounded-[6px] bg-cash-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-cash-ink">Wasooli aa gayi ✓</span>}
-            {remindedRecently && <span className="rounded-[6px] bg-surface-sunken px-1.5 py-0.5 text-[11.5px] font-semibold text-ink-2">Aaj yaad dilaya ✓</span>}
+            {paidAfterRem && <span className="rounded-[6px] bg-cash-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-cash-ink">رقم وصول ہو گئی ✓</span>}
+            {remindedRecently && <span className="rounded-[6px] bg-surface-sunken px-1.5 py-0.5 text-[11.5px] font-semibold text-ink-2">آج یاد دہانی بھیجی ✓</span>}
           </div>
           <div className="text-[13px] text-ink-2">
-            {c.role_tag ?? "Customer"} · Last paid {shortDate(c.last_paid_at)}
-            {!c.phone && c.balance_paisa > 0 ? " · Phone add karein" : ""}
+            {c.role_tag ? `${c.role_tag} · ` : ""}آخری وصولی {shortDate(c.last_paid_at)}
+            {!c.phone && c.balance_paisa > 0 ? " · فون نمبر درج کریں" : ""}
           </div>
         </div>
         <Money paisa={c.balance_paisa} className={cx("text-[18px] font-bold", c.balance_paisa > 0 ? "text-udhaar" : "text-cash")} />
       </button>
       {b && b.paid_claim_paisa > 0 && (
         <div className="mt-2.5 flex items-center justify-between gap-2 rounded-[12px] bg-cash-bg px-3 py-2">
-          <span className="text-[13px] font-semibold text-cash-ink">Gahak: &quot;{formatRs(b.paid_claim_paisa)} Raast se bhej diya&quot;</span>
-          <button onClick={() => void acceptClaim()} className="tactile h-9 shrink-0 rounded-full bg-cash px-3 text-[13px] font-semibold text-white">Mil gaya</button>
+          <span className="text-[13px] font-semibold text-cash-ink">گاہک کا کہنا ہے کہ {formatRs(b.paid_claim_paisa)} بھیج دیے</span>
+          <button onClick={() => void acceptClaim()} className="tactile h-9 shrink-0 rounded-full bg-cash px-3 text-[13px] font-semibold text-white">وصول ہو گئے</button>
         </div>
       )}
       <div className="mt-2.5 flex flex-wrap gap-2">
         <button onClick={onWasooli} className="tactile h-9 rounded-full border border-cash/30 bg-cash-bg px-3.5 text-[13.5px] font-semibold text-cash-ink">
-          Wasooli
+          وصولی
         </button>
         <button onClick={() => void send("wa")} disabled={sending !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
-          {sending === "wa" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />} WhatsApp
+          {sending === "wa" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />} واٹس ایپ
         </button>
         <button onClick={() => void send("sms")} disabled={sending !== null} className="tactile flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-surface-sunken px-3.5 text-[13.5px] font-semibold">
-          {sending === "sms" ? <Spinner className="h-3.5 w-3.5" /> : null} SMS (2G)
+          {sending === "sms" ? <Spinner className="h-3.5 w-3.5" /> : null} پیغام بھیجیں
         </button>
         <button
           type="button"
@@ -360,11 +410,11 @@ function NewCustomerSheet({ onClose }: { onClose: () => void }) {
   const [role, setRole] = useState("");
   const [busy, setBusy] = useState(false);
   return (
-    <Sheet open onClose={onClose} title="New customer">
+    <Sheet open onClose={onClose} title="نیا گاہک">
       <div className="space-y-2.5 px-5 pb-[max(16px,env(safe-area-inset-bottom))]">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Naam (e.g. Ali Tailor)" dir="auto" className="h-12 w-full rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
-        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone 03xx-xxxxxxx" inputMode="tel" className="h-12 w-full rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
-        <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Tag (Electrician, Gali 4…)" className="h-12 w-full rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="گاہک کا نام" dir="auto" className="h-12 w-full rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
+        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="فون نمبر (03xx…)" inputMode="tel" className="h-12 w-full rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
+        <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="پہچان (گلی نمبر، پیشہ…)" className="h-12 w-full rounded-[12px] bg-canvas px-3 text-[16px] outline-none" />
         <PrimaryButton
           className="w-full"
           busy={busy}
@@ -374,7 +424,7 @@ function NewCustomerSheet({ onClose }: { onClose: () => void }) {
             try {
               await api("/api/shop/customer", { json: { name, phone: phone || undefined, role_tag: role || undefined } });
               await refresh();
-              toast("Customer added", "ok");
+              toast("گاہک محفوظ ہو گیا", "ok");
               onClose();
             } catch (e) {
               toast(friendlyError(e), "err");
@@ -383,7 +433,7 @@ function NewCustomerSheet({ onClose }: { onClose: () => void }) {
             }
           }}
         >
-          Save customer
+          گاہک محفوظ کریں
         </PrimaryButton>
       </div>
     </Sheet>
@@ -418,7 +468,7 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
         window.open(r.wa, "_blank", "noopener,noreferrer");
       } else {
         await navigator.clipboard?.writeText(r.url);
-        toast("Mutual Khata link copied", "ok");
+        toast("گاہک کا کھاتہ لنک نقل ہو گیا", "ok");
       }
     } catch (e) {
       toast(friendlyError(e), "err");
@@ -460,7 +510,7 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
         <div className="surface-card p-4">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <div className="section-label">Balance</div>
+              <div className="section-label">بقایا</div>
               <Money paisa={c.balance_paisa} className={cx("mt-1 block text-[30px] font-bold", c.balance_paisa > 0 ? "text-udhaar" : "text-cash")} />
             </div>
             <div className="flex gap-1.5">
@@ -532,28 +582,28 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
           onClick={() => setShowMore((v) => !v)}
           className="tactile flex h-10 w-full items-center justify-between rounded-[12px] px-2 text-[13px] font-semibold text-ink-2"
         >
-          <span>More options (Phone, Udhaar limit, Link, Maaf)</span>
+          <span>مزید اختیارات (فون، ادھار کی حد، لنک، معافی)</span>
           {showMore ? <ChevronUp size={15} strokeWidth={1.75} /> : <ChevronDown size={15} strokeWidth={1.75} />}
         </button>
 
         {showMore && (
           <div className="space-y-2.5 border-t border-black/10 pt-2.5">
             <div className="flex gap-2">
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone (03xx…)" inputMode="tel" className="h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
-              <input value={roleTag} onChange={(e) => setRoleTag(e.target.value)} placeholder="Tag / Family" className="h-11 w-[130px] rounded-[12px] bg-canvas px-3 text-[14px] outline-none" />
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="فون نمبر (03xx…)" inputMode="tel" className="h-11 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[15px] outline-none" />
+              <input value={roleTag} onChange={(e) => setRoleTag(e.target.value)} placeholder="پہچان / خاندان" className="h-11 w-[130px] rounded-[12px] bg-canvas px-3 text-[14px] outline-none" />
               <button
                 onClick={async () => {
                   try {
                     await api("/api/shop/customer-update", { json: { customer_id: c.id, phone, role_tag: roleTag } });
                     await refresh();
-                    toast("Customer details saved", "ok");
+                    toast("گاہک کی معلومات محفوظ ہو گئیں", "ok");
                   } catch (e) {
                     toast(friendlyError(e), "err");
                   }
                 }}
                 className="tactile h-11 rounded-[12px] bg-ink px-4 text-[14px] font-semibold text-white"
               >
-                Save
+                محفوظ کریں
               </button>
             </div>
             <div className="flex items-center gap-2">
@@ -561,7 +611,7 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
                 inputMode="numeric"
                 value={limitRs}
                 onChange={(e) => setLimitRs(e.target.value.replace(/[^\d]/g, ""))}
-                placeholder="Udhaar limit (Rs. — blank = none)"
+                placeholder="ادھار کی حد (خالی چھوڑیں تو کوئی حد نہیں)"
                 className="num h-10 min-w-0 flex-1 rounded-[12px] bg-canvas px-3 text-[14px] outline-none"
               />
               <button
@@ -608,7 +658,7 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
             </a>
             {remLog.length > 0 && (
               <div className="rounded-[12px] bg-canvas px-3 py-2 text-[12px] text-ink-2">
-                <span className="font-semibold text-ink">Reminder history:</span>{" "}
+                <span className="font-semibold text-ink">یاد دہانی کی تفصیل:</span>{" "}
                 {remLog.slice(0, 3).map((r) => `${r.channel.toUpperCase()} (${new Date(r.at).toLocaleDateString("en-PK", { day: "numeric", month: "short" })})`).join(" · ")}
               </div>
             )}
@@ -623,8 +673,8 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
                     }}
                     className="flex w-full items-center justify-between text-[13px] font-semibold text-udhaar-ink"
                   >
-                    <span>Maaf / Write-off Bad Debt</span>
-                    <span className="text-[12px] text-ink-2">Balanced A/R adjustment</span>
+                    <span>ادھار معاف کریں</span>
+                    <span className="text-[12px] text-ink-2">کھاتے کی درستگی</span>
                   </button>
                 ) : (
                   <div className="space-y-2">
@@ -653,7 +703,7 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
                             });
                             await refresh();
                             setWriteOffOpen(false);
-                            toast("Write-off darj ho gaya ✓", "ok");
+                            toast("ادھار معاف درج ہو گیا ✓", "ok");
                           } catch (e) {
                             toast(friendlyError(e), "err");
                           } finally {
@@ -671,10 +721,10 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
             )}
           </div>
         )}
-        <div className="section-label pt-1">Khata history</div>
+        <div className="section-label pt-1">کھاتے کی تاریخ</div>
         <div className="surface-card overflow-hidden">
           {items === null && <div className="flex items-center justify-center p-4 text-[13px] text-ink-2"><Spinner /></div>}
-          {items !== null && history.length === 0 && <div className="px-4 py-4 text-[13px] text-ink-2">Koi entry nahi</div>}
+          {items !== null && history.length === 0 && <div className="px-4 py-4 text-[13px] text-ink-2">کوئی اندراج نہیں</div>}
           {history.map((t) => (
             <FeedRow key={t.id} t={t} onOpen={() => openSheet(xrayOn && t.seq >= 0 ? { type: "xray", txId: t.id } : { type: "entry", tx: t, txId: t.id })} />
           ))}
@@ -756,7 +806,7 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
               <Volume2 size={13} strokeWidth={1.75} /> سنیں
             </button>
           )}
-          <button onClick={onClose} className="text-[16px] font-semibold">Done</button>
+          <button onClick={onClose} className="text-[16px] font-semibold">مکمل</button>
         </div>
       }
     >
@@ -779,7 +829,7 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
               <div className="px-5 pt-4">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[15px]">
-                    <b>DukaanOS</b> <span className="text-pass-muted">{xrayOn ? "SMEConnect" : "Karobar"}</span>
+                    <b>دکان او ایس</b> <span className="text-pass-muted">کاروبار</span>
                   </span>
                   <div className="flex items-center gap-1.5">
                     {bharosa && (
@@ -802,20 +852,20 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
                     <div className="num mt-0.5 text-[17px] font-bold">{formatRsCompact(s!.gmv_paisa)}</div>
                   </div>
                   <div>
-                    <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-pass-muted">Cash/Credit</div>
+                    <div className="text-[10.5px] font-semibold text-pass-muted">نقد / ادھار</div>
                     <div className="num mt-0.5 text-[17px] font-bold">
                       {Math.round(pl!.cash_bp / 100)}% / {100 - Math.round(pl!.cash_bp / 100)}%
                     </div>
                   </div>
                   <div>
-                    <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-pass-muted">Recovery</div>
+                    <div className="text-[10.5px] font-semibold text-pass-muted">وصولی</div>
                     <div className="num mt-0.5 text-[17px] font-bold text-pass-emerald">{(pl!.rec_bp / 100).toFixed(1)}%</div>
                   </div>
                 </div>
                 {pl!.v === 2 && (
                   <div className="mt-3 flex items-center justify-between rounded-[12px] border border-pass-emerald/30 bg-pass-elevated px-3 py-2.5">
                     <div>
-                      <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-pass-muted">Gahak-tasdeeq udhaar</div>
+                      <div className="text-[10.5px] font-semibold text-pass-muted">گاہک کی تصدیق</div>
                       <div className="text-[12px] text-pass-muted">{pl!.att ?? 0} confirmations · {((pl!.dr_bp ?? 0) / 100).toFixed(1)}% disputed</div>
                     </div>
                     <div className="num text-[22px] font-bold text-pass-emerald">{((pl!.vr_bp ?? 0) / 100).toFixed(0)}%</div>
@@ -845,9 +895,9 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
         {p && (
           <div className="space-y-2.5">
             <div className="surface-card p-3.5 text-[12.5px] leading-[18px] text-ink-2">
-              <div className="font-semibold text-ink">Kya share hota hai (Owner-consented)</div>
+              <div className="font-semibold text-ink">کون سی معلومات شیئر ہوتی ہیں؟</div>
               <div className="mt-1">Share hota hai: {days}-din ki kul bikri, cash/udhaar hissa, wasooli %, active din, gahak-tasdeeq %.</div>
-              <div className="mt-1 text-cash-ink">Kabhi share nahi hota: CNIC, tax/FBR data, gahak ke naam/phone, ya bills ki tafseel.</div>
+              <div className="mt-1 text-cash-ink">شناختی کارڈ، ٹیکس، گاہک کے نام یا فون، اور بل کی تفصیل کبھی شیئر نہیں ہوتی۔</div>
             </div>
             <div className="grid grid-cols-2 gap-2.5">
               <a href="/report" target="_blank" rel="noreferrer" className="tactile flex h-11 items-center justify-center gap-2 rounded-[12px] bg-surface-sunken text-[14px] font-semibold">
@@ -856,7 +906,7 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
               <button
                 onClick={() => {
                   void navigator.clipboard?.writeText(p.verify_url);
-                  toast("Verify link copied", "ok");
+                  toast("تصدیق کا لنک نقل ہو گیا", "ok");
                 }}
                 className="tactile h-11 rounded-[12px] bg-surface-sunken text-[14px] font-semibold"
               >
@@ -870,7 +920,7 @@ export function PassportSheet({ onClose }: { onClose: () => void }) {
                 setRevoking(true);
                 try {
                   await api("/api/shop/passport-revoke", { json: {} });
-                  toast("Purane sab QR links band ho gaye — naya QR tayyar ho raha hai", "ok");
+                  toast("پرانے کیو آر لنک بند ہو گئے — نیا لنک تیار ہو رہا ہے", "ok");
                   loadPassport(days);
                 } catch (e) {
                   toast(friendlyError(e), "err");

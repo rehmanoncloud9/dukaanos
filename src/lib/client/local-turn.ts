@@ -1,5 +1,5 @@
 /**
- * Pure-client deterministic turn engine (<5 ms, Rs. 0 LLM).
+ * Pure-client deterministic turn engine with no LLM cost.
  * - Offline text: resolves against cached ShopState so ReviewSheet/PaymentSheet/PulseSheet open immediately.
  * - Online text: strict confidence gate — only fast-paths exact catalog/alias + unambiguous customer matches.
  */
@@ -9,6 +9,17 @@ import { buildPaymentProposal, buildSaleProposal } from "@/lib/domain/bill";
 import { detectViewCommand, parseFallback } from "@/lib/domain/fallback-parser";
 import { answerQuestionFromState } from "@/lib/domain/qa";
 import { detectWadaUtterance } from "@/lib/domain/wada";
+import type { Catalog } from "@/lib/domain/types";
+
+const catalogCache = new WeakMap<ShopState, Catalog>();
+
+function catalogForState(state: ShopState): Catalog {
+  const cached = catalogCache.get(state);
+  if (cached) return cached;
+  const catalog = stateToCatalog(state);
+  catalogCache.set(state, catalog);
+  return catalog;
+}
 
 export function buildLocalPulse(state: ShopState): Pulse {
   const overdueItems = state.customers
@@ -67,7 +78,7 @@ export function tryLocalTurn(
   if (!text || !state) return null;
 
   const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
-  const catalog = stateToCatalog(state);
+  const catalog = catalogForState(state);
   const parsed = parseFallback(text);
   const wadaDate = detectWadaUtterance(text);
 

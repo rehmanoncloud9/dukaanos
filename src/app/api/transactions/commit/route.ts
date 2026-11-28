@@ -12,6 +12,8 @@ const Int = z.number().int();
 const Body = z.object({
   idempotency_key: z.string().min(8).max(120),
   customer_id: z.string().uuid().nullable(),
+  new_customer_id: z.string().uuid().optional(),
+  new_customer_name: z.string().trim().min(1).max(120).optional(),
   discount_paisa: Int.min(0).default(0),
   cash_paid_paisa: Int.min(0).nullable(),
   lines: z
@@ -36,6 +38,8 @@ const Body = z.object({
     .min(1)
     .max(40),
   audit_meta: z.record(z.string(), z.unknown()).default({}),
+}).refine((body) => Boolean(body.new_customer_id) === Boolean(body.new_customer_name), {
+  message: "new_customer_id and new_customer_name must be provided together",
 });
 
 /** commit_sale — the ONLY way a sale reaches the books (server recomputes every paisa). */
@@ -44,7 +48,7 @@ export const POST = handle(async (req: Request) => {
   const { sb, shopId, userId } = await requireShopContext(req);
   await enforceRateLimit(`write:${userId}`, 120, "1 minute");
   const body = await parseJson(req, Body);
-  const res = await rpc<CommitResponse>(sb, "commit_sale", {
+  const res = await rpc<CommitResponse>(sb, "commit_sale_with_customer", {
     p_shop_id: shopId,
     p_payload: { ...body, audit_meta: { ...body.audit_meta, user_agent: req.headers.get("user-agent")?.slice(0, 120) } },
   });

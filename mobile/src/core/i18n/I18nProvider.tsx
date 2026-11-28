@@ -1,6 +1,5 @@
-import * as Localization from "expo-localization";
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { getKv, setKv } from "@/core/offline/db";
+import { setKv } from "@/core/offline/db";
 import { translate, type I18nKey, type Lang } from "./dict";
 
 const LANG_KV_KEY = "dukaanos.lang";
@@ -15,22 +14,17 @@ interface I18nContextValue {
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 function detectInitialLang(): Lang {
-  const saved = getKv(LANG_KV_KEY);
-  if (saved === "en" || saved === "ur") return saved;
-  try {
-    const code = Localization.getLocales()[0]?.languageCode?.toLowerCase();
-    return code === "ur" ? "ur" : "en";
-  } catch {
-    return "en";
-  }
+  // Dukan OS is purpose-built for owners who read Urdu. Force Urdu even when
+  // an older install persisted English or Android reports another locale.
+  return "ur";
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(detectInitialLang);
 
-  const setLang = useCallback((next: Lang) => {
-    setKv(LANG_KV_KEY, next);
-    setLangState(next);
+  const setLang = useCallback((_next: Lang) => {
+    setKv(LANG_KV_KEY, "ur");
+    setLangState("ur");
   }, []);
 
   const t = useCallback((key: I18nKey) => translate(key, lang), [lang]);

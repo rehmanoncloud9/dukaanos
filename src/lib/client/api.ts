@@ -111,55 +111,55 @@ export function newKey(prefix = "k"): string {
   return `${prefix}-${r}`;
 }
 
-/** Human copy for canonical error codes (Roman Urdu + English). */
+/** Human copy for canonical error codes (100% Urdu script). */
 export function friendlyError(e: unknown): string {
-  if (!(e instanceof ClientApiError)) return e instanceof Error ? e.message : "Kuch ghalat ho gaya";
+  if (!(e instanceof ClientApiError)) return e instanceof Error ? "کچھ غلط ہو گیا، دوبارہ کوشش کریں" : "کچھ غلط ہو گیا";
   const details = (e.details && typeof e.details === "object" ? e.details : null) as Record<string, unknown> | null;
   switch (e.code) {
     case "UDHAAR_REQUIRES_CUSTOMER":
-      return "Udhaar ke liye customer chunein — pick a customer first";
+      return "ادھار کے لیے پہلے گاہک منتخب کریں";
     case "CREDIT_LIMIT_EXCEEDED":
-      return "Customer ki udhaar limit poori ho chuki hai — wasooli ya limit barhaein";
+      return "گاہک کی ادھار حد پوری ہو چکی ہے — وصولی کریں یا حد بڑھائیں";
     case "AUDIO_TOO_LARGE":
-      return "Clip bohat lambi hai (max 4 MB)";
+      return "آواز کی کلپ بہت لمبی ہے";
     case "PAYLOAD_TOO_LARGE":
     case "IMAGE_TOO_LARGE":
-      return "File bohat badi hai — chhoti photo ya clip bhejein";
+      return "تصویر یا فائل بہت بڑی ہے — چھوٹی تصویر بھیجیں";
     case "AI_QUOTA_EXCEEDED":
-      return "Aaj ki AI limit poori ho gayi — kal dobara try karein";
+      return "آج کی اے آئی حد پوری ہو گئی — کل دوبارہ کوشش کریں";
     case "AI_TIMEOUT":
     case "AI_UNAVAILABLE":
-      return "Munshi abhi masroof hai — draft mehfooz hai, 1-tap retry";
+      return "منشی ابھی مصروف ہے — اندراج محفوظ ہے، دوبارہ کوشش کریں";
     case "AI_REJECTED":
-      return "Awaaz process nahi ho saki — neeche type kar dein (Settings → health check)";
+      return "آواز سمجھ نہیں آ سکی — نیچے ٹائپ کر دیں";
     case "AI_NOT_CONFIGURED":
-      return "AI set up nahi — typed entry chal rahi hai (AI key missing on server)";
+      return "آواز کی سہولت ابھی تیار نہیں — تحریری اندراج محفوظ ہے";
     case "RATE_LIMITED": {
       const sec = typeof details?.retry_after_s === "number" ? details.retry_after_s : typeof details?.retryAfter === "number" ? details.retryAfter : null;
-      return sec ? `Bohat tez requests — ${sec}s baad dobara try karein` : "Thori der baad dobara try karein (rate limited)";
+      return sec ? `بہت تیز درخواستیں — ${sec} سیکنڈ بعد کوشش کریں` : "تھوڑی دیر بعد دوبارہ کوشش کریں";
     }
     case "TURNSTILE_FAILED":
-      return "Human verification fail hui — page refresh kar ke dobara try karein";
+      return "تصدیق ناکام ہوئی — صفحہ دوبارہ لوڈ کریں";
     case "ORIGIN_FORBIDDEN":
-      return "Request origin ijazat-shuda nahi";
+      return "درخواست کی اجازت نہیں";
     case "NEGATIVE_STOCK":
-      return "Stock kam hai — Maal tab mein restock karein";
+      return "گودام میں مال کم ہے — گودام میں اسٹاک بڑھائیں";
     case "MATH_MISMATCH":
-      return "Items ka total aur bill match nahi kar raha";
+      return "اشیاء کا کل اور بل آپس میں نہیں مل رہے";
     case "CHAIN_BROKEN":
-      return "Hisaab ka record verify nahi ho saka";
+      return "حساب کا ریکارڈ تصدیق نہیں ہو سکا";
     case "REPLAY_DEDUPLICATED":
-      return "Yeh entry pehle hi save ho chuki hai (0 duplicates)";
+      return "یہ اندراج پہلے محفوظ ہو چکا ہے، دوبارہ نہیں لکھا گیا";
     case "ALREADY_REVERSED":
-      return "Yeh entry pehle hi wapas ho chuki hai";
+      return "یہ اندراج پہلے ہی واپس ہو چکا ہے";
     case "FORBIDDEN":
-      return "Is dukaan ki ijazat nahi — dobara shop chunein";
+      return "اس دکان تک رسائی نہیں — اپنی دکان منتخب کریں";
     case "AUTH_REQUIRED":
-      return "Session khatam ho gaya — dobara sign in karein (draft mehfooz hai)";
+      return "دوبارہ داخل ہوں — آپ کا اندراج فون میں محفوظ ہے";
     case "OFFLINE":
     case "NETWORK":
-      return "Internet band hai — phone par mehfooz hai";
+      return "انٹرنیٹ نہیں — اندراج فون میں محفوظ ہے";
     default:
-      return e.message;
+      return "کام مکمل نہیں ہوا — دوبارہ کوشش کریں";
   }
 }

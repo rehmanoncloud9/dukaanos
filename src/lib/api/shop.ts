@@ -16,7 +16,7 @@ export function numify<T>(v: T): T {
 }
 
 export async function loadState(sb: SupabaseClient, shopId: string): Promise<ShopState> {
-  return numify(await rpc<ShopState>(sb, "get_shop_state", { p_shop_id: shopId }));
+  return numify(await rpc<ShopState>(sb, "get_shop_state_with_stock_age", { p_shop_id: shopId }));
 }
 
 export async function loadCatalog(sb: SupabaseClient, shopId: string) {
