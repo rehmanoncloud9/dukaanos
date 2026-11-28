@@ -95,11 +95,17 @@ export function parseQuantityPhrase(phrase: string | null | undefined): Quantity
   // leading quantity prefix is accepted; unknown words inside it still fail.
   // The prefix must contain at least one recognized unit to avoid treating
   // bare numbers like "do unknown" as a resolved quantity phrase.
+  //
+  // Special case: a trailing suffix that consists entirely of unit tokens (e.g.
+  // `"2 mann"`, `"ek kilo"`) must NOT block the prefix trim, because the unit
+  // token belongs to the quantity expression itself, not to an item name.
   if (value === null) {
     for (let end = tokens.length - 1; end > 0; end--) {
-      if (tokens.slice(end).some((token) => parseQuantityNumber(token) !== null || lookupUnit(token) !== null)) continue;
+      const suffix = tokens.slice(end);
+      const suffixIsUnitOnly = suffix.every((token) => lookupUnit(token) !== null && parseQuantityNumber(token) === null);
+      if (!suffixIsUnitOnly && suffix.some((token) => parseQuantityNumber(token) !== null || lookupUnit(token) !== null)) continue;
       const prefix = tokens.slice(0, end);
-      if (!prefix.some((token) => lookupUnit(token) !== null)) break;
+      if (!prefix.some((token) => lookupUnit(token) !== null) && !suffixIsUnitOnly) break;
       value = parseQuantityNumber(prefix.join(" "));
       if (value !== null) break;
     }

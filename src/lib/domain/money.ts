@@ -37,8 +37,14 @@ export function formatAmount(paisa: Paisa): string {
   return paisa < 0 ? `-${body}` : body;
 }
 
-/** Urdu shop display: "1,400 روپے" / "-120 روپے". */
+/** "Rs. 1,400" / "-Rs. 120" — used in messages, receipts, and test assertions. */
 export function formatRs(paisa: Paisa): string {
+  const body = formatAmount(Math.abs(paisa));
+  return paisa < 0 ? `-Rs. ${body}` : `Rs. ${body}`;
+}
+
+/** Urdu shop display: "1,400 روپے" / "-120 روپے" — for Urdu-only UI surfaces. */
+export function formatRsUrdu(paisa: Paisa): string {
   const body = formatAmount(Math.abs(paisa));
   return paisa < 0 ? `-${body} روپے` : `${body} روپے`;
 }

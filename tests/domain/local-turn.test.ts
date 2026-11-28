@@ -155,7 +155,7 @@ describe("tryLocalTurn", () => {
 
     const q2 = tryLocalTurn("cheeni kitna stock hai?", makeState(), { offline: true });
     expect(q2?.kind).toBe("answer");
-    if (q2?.kind === "answer") expect(q2.answer).toContain("15kg");
+    if (q2?.kind === "answer") expect(q2.answer).toContain("15 کلو");
 
     const nav = tryLocalTurn("stock dikhao", makeState(), { offline: true });
     expect(nav?.kind).toBe("navigate");
