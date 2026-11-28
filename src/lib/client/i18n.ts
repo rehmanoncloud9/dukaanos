@@ -84,6 +84,7 @@ const DICT = {
   overdueAccounts: { en: "overdue", ur: "تاخیر" },
   lowStockCount: { en: "low stock", ur: "کم اسٹاک" },
   closeDay: { en: "Dukaan Band", ur: "دکان بند" },
+  marginShield: { en: "Munafa Bachao", ur: "منافع بچاؤ" },
 } as const;
 
 export type I18nKey = keyof typeof DICT;
