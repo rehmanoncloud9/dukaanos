@@ -27,11 +27,11 @@ describe("5,000+ SKU Scalability & Autonomous Munshi", () => {
   it("supports Pakistani wholesale unit mann (40 kg) and adha pao (125 g)", () => {
     const mann = parseQuantityPhrase("2 mann");
     expect(mann.unresolved).toBe(false);
-    expect(quantityToBaseUnits(mann, { base_unit: "g", pack_size_base_units: 1000 })).toBe(80_000);
+    expect(quantityToBaseUnits(mann, { name: "Basmati Chawal", base_unit: "g", pack_size_base_units: 1000, unit_price_paisa: 35_000 })).toBe(80_000);
 
     const adhaPao = parseQuantityPhrase("adha pao");
     expect(adhaPao.unresolved).toBe(false);
-    expect(quantityToBaseUnits(adhaPao, { base_unit: "g", pack_size_base_units: 1000 })).toBe(125);
+    expect(quantityToBaseUnits(adhaPao, { name: "Cheeni", base_unit: "g", pack_size_base_units: 1000, unit_price_paisa: 20_000 })).toBe(125);
   });
 
   it("detects supplier rate hikes in Parchi Margin Guard and produces Urdu voice alert", () => {
