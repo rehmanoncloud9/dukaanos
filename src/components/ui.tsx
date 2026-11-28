@@ -145,15 +145,15 @@ export function SecondaryButton({ children, onClick, className, disabled }: { ch
 export function relTime(iso: string): string {
   const d = new Date(iso).getTime();
   const s = Math.max(0, (Date.now() - d) / 1000);
-  if (s < 90) return "Just now";
-  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 90) return "ابھی";
+  if (s < 3600) return `${Math.round(s / 60)} منٹ پہلے`;
   const date = new Date(iso);
   const today = new Date();
-  if (date.toDateString() === today.toDateString()) return date.toLocaleTimeString("en-PK", { hour: "numeric", minute: "2-digit" });
-  return date.toLocaleDateString("en-PK", { day: "numeric", month: "short" });
+  if (date.toDateString() === today.toDateString()) return date.toLocaleTimeString("ur-PK", { hour: "numeric", minute: "2-digit" });
+  return date.toLocaleDateString("ur-PK", { day: "numeric", month: "short" });
 }
 
 export function shortDate(iso: string | null | undefined): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-PK", { day: "numeric", month: "short" });
+  return new Date(iso).toLocaleDateString("ur-PK", { day: "numeric", month: "short" });
 }

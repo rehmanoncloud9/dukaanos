@@ -45,9 +45,9 @@ export function PriceMemoryCard() {
   };
 
   return (
-    <div className="surface-card overflow-hidden">
+    <div className="surface-card overflow-hidden" dir="rtl">
       <div className="px-4 pt-3.5">
-        <div className="section-label">Price memory · cheezein mehngi huin</div>
+        <div className="section-label urdu-ui">پرچی ریٹ ریکارڈ · چیزیں مہنگی ہوئیں</div>
       </div>
       {items.map((i) => (
         <div key={i.product_id} className="hairline-b px-4 py-3 last:border-b-0">
@@ -55,14 +55,14 @@ export function PriceMemoryCard() {
             <span className="truncate text-[15px] font-semibold">{i.name}</span>
             <span className="num shrink-0 text-[14px] font-bold text-udhaar">+{(i.change_bp / 100).toFixed(1)}%</span>
           </div>
-          <div className="num text-[13px] text-ink-2">
-            Thok {formatRs(i.prev_cost_paisa)} → {formatRs(i.last_cost_paisa)}
-            {i.margin_before_bp !== null && i.margin_now_bp !== null && ` · margin ${(i.margin_before_bp / 100).toFixed(0)}% → ${(i.margin_now_bp / 100).toFixed(0)}%`}
+          <div className="num text-[13px] text-ink-2 urdu-ui">
+            تھوک {formatRs(i.prev_cost_paisa)} ← {formatRs(i.last_cost_paisa)}
+            {i.margin_before_bp !== null && i.margin_now_bp !== null && ` · منافع ${(i.margin_before_bp / 100).toFixed(0)}% ← ${(i.margin_now_bp / 100).toFixed(0)}%`}
           </div>
           {i.suggested_price_paisa && (
             <button onClick={() => void apply(i)} disabled={applied[i.product_id]}
-              className="tactile mt-2 h-11 rounded-[12px] bg-maal px-3.5 text-[14px] font-semibold text-white disabled:opacity-60">
-              {applied[i.product_id] ? "Rate update ho gaya ✓" : `Becho ${formatRs(i.retail_price_paisa)} → ${formatRs(i.suggested_price_paisa)}`}
+              className="tactile mt-2 h-11 rounded-[12px] bg-maal px-3.5 text-[14px] font-semibold text-white urdu-ui disabled:opacity-60">
+              {applied[i.product_id] ? "نیا ریٹ محفوظ ہو گیا ✓" : `نیا فروخت ریٹ: ${formatRs(i.retail_price_paisa)} ← ${formatRs(i.suggested_price_paisa)}`}
             </button>
           )}
         </div>

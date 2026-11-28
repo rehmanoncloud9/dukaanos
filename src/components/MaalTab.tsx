@@ -291,7 +291,7 @@ export function MaalTab() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 text-[15.5px] font-semibold truncate">
                       <span className="truncate">{p.name_ur || p.name}</span>
-                      {p.is_quick_added && <Pill tone="amber" className="h-5 px-1.5 text-[10.5px]">مقدار گِنیں</Pill>}
+                      {p.is_quick_added && <Pill tone="amber" className="h-5 px-1.5 text-[10.5px]">اس چیز کا مال ابھی درج نہیں ہے</Pill>}
                     </div>
                     <div className="text-[12.5px] text-ink-2 num">
                       {xrayOn ? `خرید ${formatAmount(p.cost_price_paisa)} · ` : ""}قیمت {formatAmount(p.unit_price_paisa)} روپے

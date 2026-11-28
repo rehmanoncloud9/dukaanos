@@ -102,21 +102,21 @@ export function InsightsSheet({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-[12px] text-ink-2 num">
-                <div>Laagat: {formatRs(s.cogs_paisa)}</div>
-                <div>Wapasi: {formatRs(s.returns_paisa)}</div>
-                <div>Khareedari: {formatRs(s.purchases_paisa)}</div>
+                <div>لاگت: {formatRs(s.cogs_paisa)}</div>
+                <div>واپسی: {formatRs(s.returns_paisa)}</div>
+                <div>خریداری: {formatRs(s.purchases_paisa)}</div>
               </div>
               {(s.wastage_paisa > 0 || s.writeoff_paisa > 0) && (
                 <div className="mt-1.5 flex gap-3 text-[12px] text-udhaar-ink num">
-                  {s.wastage_paisa > 0 && <span>Adjustments: {formatRs(s.wastage_paisa)}</span>}
-                  {s.writeoff_paisa > 0 && <span>Write-offs: {formatRs(s.writeoff_paisa)}</span>}
+                  {s.wastage_paisa > 0 && <span>گودام درستگی: {formatRs(s.wastage_paisa)}</span>}
+                  {s.writeoff_paisa > 0 && <span>ادھار معاف: {formatRs(s.writeoff_paisa)}</span>}
                 </div>
               )}
             </div>
 
             {doc.daily.length > 0 && (
               <div className="surface-card p-4">
-                <div className="section-label mb-2.5">Daily sales trend</div>
+                <div className="section-label mb-2.5 urdu-ui">روزانہ فروخت کا رجحان</div>
                 <div className="flex h-20 items-end gap-1.5">
                   {doc.daily.slice(-14).map((d) => {
                     const h = Math.max(6, Math.round((d.sales_paisa / maxDay) * 100));
@@ -132,13 +132,13 @@ export function InsightsSheet({ onClose }: { onClose: () => void }) {
             )}
 
             <div className="surface-card overflow-hidden">
-              <div className="px-4 pb-1 pt-3 text-[14px] font-semibold">Top selling items</div>
-              {doc.top_products.length === 0 && <div className="px-4 pb-3 text-[13px] text-ink-2">No sales in period</div>}
+              <div className="px-4 pb-1 pt-3 text-[14px] font-semibold urdu-ui">سب سے زیادہ بکنے والا سامان</div>
+              {doc.top_products.length === 0 && <div className="px-4 pb-3 text-[13px] text-ink-2 urdu-ui">اس عرصے میں کوئی فروخت نہیں</div>}
               {doc.top_products.map((p) => (
                 <div key={p.product_id} className="hairline-t flex items-center justify-between px-4 py-2.5 text-[13.5px]">
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{p.name}</div>
-                    <div className="text-[12px] text-ink-2">{formatBaseQty(p.qty, p.base_unit)} sold</div>
+                    <div className="text-[12px] text-ink-2 urdu-ui">{formatBaseQty(p.qty, p.base_unit)} فروخت</div>
                   </div>
                   <div className="text-right num">
                     <div className="font-semibold">{formatRs(p.revenue_paisa)}</div>
@@ -150,13 +150,13 @@ export function InsightsSheet({ onClose }: { onClose: () => void }) {
 
             <div className="grid grid-cols-1 gap-3">
               <div className="surface-card overflow-hidden">
-                <div className="px-4 pb-1 pt-3 text-[14px] font-semibold">Top customers</div>
-                {doc.top_customers.length === 0 && <div className="px-4 pb-3 text-[13px] text-ink-2">No customer activity</div>}
+                <div className="px-4 pb-1 pt-3 text-[14px] font-semibold urdu-ui">سب سے بڑے گاہک</div>
+                {doc.top_customers.length === 0 && <div className="px-4 pb-3 text-[13px] text-ink-2 urdu-ui">گاہکوں کی کوئی خریداری نہیں</div>}
                 {doc.top_customers.map((c) => (
                   <div key={c.id} className="hairline-t flex items-center justify-between px-4 py-2.5 text-[13.5px]">
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium">{c.name}</div>
-                      <div className="text-[12px] text-ink-2">{c.visits} orders · bal {formatRs(c.balance_paisa)}</div>
+                      <div className="text-[12px] text-ink-2 urdu-ui">{c.visits} بل · بقایا {formatRs(c.balance_paisa)}</div>
                     </div>
                     <span className="num font-semibold">{formatRs(c.spent_paisa)}</span>
                   </div>
@@ -164,13 +164,13 @@ export function InsightsSheet({ onClose }: { onClose: () => void }) {
               </div>
 
               <div className="surface-card overflow-hidden">
-                <div className="px-4 pb-1 pt-3 text-[14px] font-semibold">Slow-moving stock</div>
-                {doc.slow_products.length === 0 && <div className="px-4 pb-3 text-[13px] text-ink-2">All stocked items moving</div>}
+                <div className="px-4 pb-1 pt-3 text-[14px] font-semibold urdu-ui">کم بکنے والا سامان</div>
+                {doc.slow_products.length === 0 && <div className="px-4 pb-3 text-[13px] text-ink-2 urdu-ui">تمام سامان بک رہا ہے</div>}
                 {doc.slow_products.map((p) => (
                   <div key={p.id} className="hairline-t flex items-center justify-between px-4 py-2.5 text-[13.5px]">
                     <span className="truncate font-medium">{p.name}</span>
-                    <span className="num text-[12.5px] text-ink-2">
-                      {formatBaseQty(p.stock_base_units, p.base_unit)} left · {formatBaseQty(p.sold_qty, p.base_unit)} sold
+                    <span className="num text-[12.5px] text-ink-2 urdu-ui">
+                      {formatBaseQty(p.stock_base_units, p.base_unit)} موجود · {formatBaseQty(p.sold_qty, p.base_unit)} فروخت
                     </span>
                   </div>
                 ))}

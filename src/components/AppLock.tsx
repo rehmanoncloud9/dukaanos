@@ -147,14 +147,14 @@ function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   return (
     <div role="dialog" aria-modal="true" aria-label="App locked" className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-canvas px-6">
       <Lock size={28} strokeWidth={SW} className="text-ink" aria-hidden />
-      <h1 className="mt-3 text-[20px] font-bold tracking-[-0.02em]">DukaanOS locked</h1>
-      <p className="mt-1 text-[14px] text-ink-2">PIN darj karein</p>
+      <h1 className="mt-3 text-[20px] font-bold tracking-[-0.02em] urdu-ui">دکان او ایس لاک ہے</h1>
+      <p className="mt-1 text-[14px] text-ink-2 urdu-ui">اپنا ۴ ہندسوں کا کوڈ درج کریں</p>
       <div className="mt-5 flex gap-3" aria-live="polite">
         {[0, 1, 2, 3].map((i) => (
           <span key={i} className={cx("h-3.5 w-3.5 rounded-full border-2", wrong ? "border-udhaar" : "border-ink", i < pin.length && "bg-ink")} />
         ))}
       </div>
-      {wrong && <p role="alert" className="mt-3 text-[14px] font-semibold text-udhaar">Ghalat PIN — dobara koshish karein</p>}
+      {wrong && <p role="alert" className="mt-3 text-[14px] font-semibold text-udhaar urdu-ui">غلط کوڈ — دوبارہ کوشش کریں</p>}
       <div className="mt-6 grid grid-cols-3 gap-3">
         {["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"].map((k) =>
           k === "" ? <span key="blank" /> : (

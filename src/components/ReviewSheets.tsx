@@ -93,7 +93,9 @@ function CustomerRail({ proposalCustomer, customers, selected, onSelect, require
   return (
     <div className="px-5 pb-3">
       <div className={cx("section-label mb-2", required && !selected && "text-udhaar-ink")}>
-        {proposalCustomer.candidates.length > 1 ? "کون سا گاہک؟" : "گاہک"}
+        {proposalCustomer.candidates.length > 1
+          ? `${proposalCustomer.mention ?? "گاہک"} نام کے ${proposalCustomer.candidates.length === 2 ? "دو" : proposalCustomer.candidates.length} کھاتے ہیں، کس والے میں لکھوں؟`
+          : "گاہک"}
         {required && !selected && " · ادھار کے لیے ضروری"}
       </div>
       <div className="no-scrollbar -mx-5 flex flex-wrap gap-2 px-5">
@@ -226,7 +228,9 @@ function LineRow({ line, stockBefore, onChange, onRemove }: { line: ProposalLine
             <div className="mt-1 text-[12px] font-semibold text-udhaar">مقدار واضح نہیں — محفوظ کرنے سے پہلے درست کریں</div>
           )}
           {line.stock_after !== null && line.stock_after < 0 && (
-            <div className="mt-1 text-[12px] font-semibold text-udhaar">گودام میں کمی: {formatBaseQty(line.stock_after, line.base_unit)} — فروخت پھر بھی درج ہو گی</div>
+            <div className="mt-1 text-[12px] font-semibold text-udhaar">
+              {line.name} کا درج شدہ مال کم تھا، فروخت پھر بھی درج ہو گئی ({formatBaseQty(line.stock_after, line.base_unit)})
+            </div>
           )}
         </button>
         <Money paisa={line.line_total_paisa} className="text-[17px] font-bold" />

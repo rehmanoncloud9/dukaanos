@@ -522,20 +522,20 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
                 <Volume2 size={13} strokeWidth={1.75} /> {tr("listen", lang)}
               </button>
               {c.phone && (
-                <a href={`tel:${c.phone}`} className="tactile inline-flex h-9 items-center gap-1 rounded-full bg-cash-bg px-3 text-[12.5px] font-semibold text-cash-ink">
-                  <Phone size={13} strokeWidth={1.75} /> Call
+                <a href={`tel:${c.phone}`} className="tactile inline-flex h-9 items-center gap-1 rounded-full bg-cash-bg px-3 text-[12.5px] font-semibold text-cash-ink urdu-ui">
+                  <Phone size={13} strokeWidth={1.75} /> فون کریں
                 </a>
               )}
             </div>
           </div>
-          <div className="text-[13px] text-ink-2">
-            {c.role_tag ?? "Customer"} · Last paid {shortDate(c.last_paid_at)}
-            {c.days_overdue ? ` · oldest unpaid ${c.days_overdue}d` : ""}
+          <div className="text-[13px] text-ink-2 urdu-ui">
+            {c.role_tag ?? "گاہک"} · آخری وصولی {shortDate(c.last_paid_at)}
+            {c.days_overdue ? ` · ${c.days_overdue} دن سے باقی` : ""}
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <PrimaryButton tone="cash" onClick={() => openSheet({ type: "wasooli", customerId: c.id })}>
-            Wasooli
+            وصولی درج کریں
           </PrimaryButton>
           <SecondaryButton
             onClick={() =>
@@ -555,25 +555,25 @@ export function CustomerSheet({ customerId, onClose }: { customerId: string; onC
                 },
               })
             }
-            className="flex items-center justify-center gap-1.5"
+            className="flex items-center justify-center gap-1.5 urdu-ui"
           >
-            <Calendar size={14} strokeWidth={1.75} /> Set Wada Date
+            <Calendar size={14} strokeWidth={1.75} /> وعدے کی تاریخ
           </SecondaryButton>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => void handleKhataLink("wa")}
             disabled={linkBusy !== null}
-            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-cash/30 bg-cash-bg px-3 text-[13px] font-semibold text-cash-ink"
+            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-cash/30 bg-cash-bg px-3 text-[13px] font-semibold text-cash-ink urdu-ui"
           >
             {linkBusy === "wa" ? <Spinner className="h-3.5 w-3.5" /> : <Link2 size={14} strokeWidth={1.75} />}
-            WhatsApp Statement
+            واٹس ایپ کھاتہ
           </button>
           <button
             onClick={() => openSheet({ type: "return", customerId: c.id })}
-            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13px] font-semibold"
+            className="tactile flex h-11 items-center justify-center gap-1.5 rounded-[12px] border border-black/15 bg-surface-sunken px-3 text-[13px] font-semibold urdu-ui"
           >
-            <RotateCcw size={14} strokeWidth={1.75} /> Item Return
+            <RotateCcw size={14} strokeWidth={1.75} /> سامان واپسی
           </button>
         </div>
 
